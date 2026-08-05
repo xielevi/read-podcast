@@ -1,5 +1,5 @@
 [project]
-name = "podcast2md"
+name = "read-podcast"
 version = "0.1.0"
 description = "Turn podcasts and audio into readable Markdown with local MLX Whisper."
 readme = "README.md"

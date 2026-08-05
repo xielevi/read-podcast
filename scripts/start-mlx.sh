@@ -13,10 +13,10 @@ command -v uv >/dev/null 2>&1 || { echo "找不到 uv，请先运行 ./scripts/i
 
 if ! uv run --no-sync python -c \
   'from scripts.mlx_backend import API_TOKEN; raise SystemExit(0 if API_TOKEN else 1)'; then
-  echo "Docker 访问 MLX 需要 Token：请先在 .env 设置 PODCAST2MD_WHISPER_API_TOKEN。" >&2
+  echo "Docker 访问 MLX 需要 Token：请先在 .env 设置 READ_PODCAST_WHISPER_API_TOKEN。" >&2
   exit 1
 fi
-export PODCAST2MD_MLX_HOST=0.0.0.0
+export READ_PODCAST_MLX_HOST=0.0.0.0
 
 printf '\033[1;34m▶ 启动语音转录后端（首次会下载模型，可能需要几分钟）…\033[0m\n'
 exec uv run --no-sync python -m scripts.mlx_backend

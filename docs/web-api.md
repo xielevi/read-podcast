@@ -6,21 +6,21 @@
 
 中间件 `web_access_middleware`：
 - 反向代理保留前缀时剥离 `web.base_path`（设置 `root_path`），剥离前缀的代理无需配置。
-- 可选 Basic Auth：`PODCAST2MD_BASIC_AUTH_USERNAME` 与 `PODCAST2MD_BASIC_AUTH_PASSWORD` 必须同时设置或同时留空（只设一个会启动失败）；健康检查路径始终免认证。
+- 可选 Basic Auth：`READ_PODCAST_BASIC_AUTH_USERNAME` 与 `READ_PODCAST_BASIC_AUTH_PASSWORD` 必须同时设置或同时留空（只设一个会启动失败）；健康检查路径始终免认证。
 - GZip 中间件压缩大响应。
 
 根路径 `/` 返回 `app/static/index.html`；相对资源 `/app.css` 与 `/app.js` 由同一入口提供，支持代理子路径。
 
 ## app/router.py — HTTP API
 
-前缀 `/api/podcast2md`。`PublicTask` 模型仅暴露安全字段（不含 `log_path`、`output_path`），并包含经过脱敏的最后一条 `message`。
+前缀 `/api/read-podcast`。`PublicTask` 模型仅暴露安全字段（不含 `log_path`、`output_path`），并包含经过脱敏的最后一条 `message`。
 
 | 方法 | 路径 | 功能 |
 | :--- | :--- | :--- |
 | GET | `/health` | 健康检查，免认证 |
 | GET | `/transcription/status` | 转录引擎安全元数据（不含 URL/Token/路径） |
 | GET | `/subscriptions` | 当前播客订阅列表 |
-| GET | `/episodes` | 剧集列表（SWR 缓存，`X-Podcast2MD-Cache-State` 头标识 complete/stale/warming） |
+| GET | `/episodes` | 剧集列表（SWR 缓存，`X-Read-Podcast-Cache-State` 头标识 complete/stale/warming） |
 | GET | `/search/podcast` | iTunes 检索 + 直连 RSS 解析 |
 | POST | `/subscriptions` | 添加订阅（校验 RSS 可达，写入 `config.yaml` 顶层 `podcasts`，预热缓存） |
 | DELETE | `/subscriptions/{name}` | 删除订阅（同步清理缓存） |
@@ -73,7 +73,7 @@
 - JSON 响应会将 MLX 结果中的 `NaN`/`Infinity` 指标转换为 `null`，避免已完成的转录因非标准 JSON 失败。
 - 单把 `_transcription_lock` 保证一次只跑一个完整转录请求；任务结束后按 `mlx.model_idle_seconds`（默认 300s，`0` 立即释放）保温模型，超时释放模型与 Metal cache；连续任务复用已加载模型。
 
-普通参数来自 `mlx.*`；环境变量只保留 `PODCAST2MD_WHISPER_API_TOKEN`。
+普通参数来自 `mlx.*`；环境变量只保留 `READ_PODCAST_WHISPER_API_TOKEN`。
 
 ## scripts/ 下的维护脚本
 

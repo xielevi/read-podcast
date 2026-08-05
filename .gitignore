@@ -1,4 +1,4 @@
-# Podcast2MD local/runtime ignores
+# Read Podcast local/runtime ignores
 
 # Secrets and local configuration
 .env

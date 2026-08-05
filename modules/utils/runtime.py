@@ -14,7 +14,7 @@ if sys.platform == "darwin":
     os.environ["PATH"] = os.pathsep.join(current_paths)
 
 
-def setup_logging(log_dir, name="Podcast2md"):
+def setup_logging(log_dir, name="ReadPodcast"):
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / f"{datetime.now():%Y-%m-%d}.log"
     root_logger = logging.getLogger()

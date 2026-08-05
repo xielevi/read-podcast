@@ -1,4 +1,4 @@
-"""Podcast2MD 的单一业务流水线实现。"""
+"""Read Podcast 的单一业务流水线实现。"""
 from __future__ import annotations
 
 import logging

@@ -74,7 +74,7 @@ cd read-podcast
 
 **终端窗口 A —— 启动语音转录服务（保持开着）：**
 
-先在 `.env` 中为 `PODCAST2MD_WHISPER_API_TOKEN` 填入一段随机长字符串。Docker
+先在 `.env` 中为 `READ_PODCAST_WHISPER_API_TOKEN` 填入一段随机长字符串。Docker
 需要跨越宿主机网络访问 MLX，脚本会拒绝在没有 Token 时对外监听。
 
 ```bash

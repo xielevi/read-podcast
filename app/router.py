@@ -1,8 +1,8 @@
 """
-Podcast2MD API Router
+Read Podcast API Router
 =====================
 从原 app/main.py 提取的所有路由，作为 APIRouter 挂载到统一后端。
-前缀: /api/podcast2md
+规范前缀: /api/read-podcast（旧前缀由部署入口兼容挂载）
 """
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ _config_lock = asyncio.Lock()
 _background_tasks: set[asyncio.Task] = set()
 
 # 健康检查保持独立，其他 API 是否需要认证由 standalone 中间件统一决定。
-router = APIRouter(prefix="/api/podcast2md", tags=["podcast2md"])
+router = APIRouter(tags=["Read Podcast"])
 api_router = router
 
 
@@ -81,12 +81,12 @@ def _public_task(task: Task) -> PublicTask:
 
 # ── 路径常量 ──
 
-P2M_ROOT = Path(__file__).parent.parent.absolute()
-CACHE_DIR = P2M_ROOT / "workspace" / "data"
+READ_PODCAST_ROOT = Path(__file__).parent.parent.absolute()
+CACHE_DIR = READ_PODCAST_ROOT / "workspace" / "data"
 CACHE_FILE = CACHE_DIR / "episodes_cache.json"
 CACHE_TTL_SECONDS = 3600
 EPISODE_PREVIEW_LIMIT = 10
-UPLOAD_DIR = P2M_ROOT / "workspace" / "uploads"
+UPLOAD_DIR = READ_PODCAST_ROOT / "workspace" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".aac", ".opus", ".wma"}
 MAX_UPLOAD_BYTES = max(
@@ -121,7 +121,7 @@ _episodes_cache.update(_load_persistent_cache())
 
 @router.get("/health")
 async def health_check() -> Dict[str, str]:
-    return {"status": "healthy", "service": "podcast2md"}
+    return {"status": "healthy", "service": "read-podcast"}
 
 
 @api_router.get("/transcription/status")
@@ -234,6 +234,7 @@ async def get_episodes(
     cache_complete = bool(cached and cached.get("complete", True))
 
     def _set_cache_state(state: str) -> None:
+        response.headers["X-Read-Podcast-Cache-State"] = state
         response.headers["X-Podcast2MD-Cache-State"] = state
 
     # SWR (Stale-While-Revalidate) 模式：
@@ -360,7 +361,7 @@ async def _mutate_podcasts(mutate: Callable[[list], list]) -> list:
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 raw = yaml.safe_load(f) or {}
-            service_config = raw.get("podcast2md", raw)
+            service_config = raw.get("read-podcast", raw.get("podcast2md", raw))
             podcasts = service_config.get("podcasts", [])
             new_podcasts = mutate(list(podcasts))
             service_config["podcasts"] = new_podcasts
@@ -507,7 +508,7 @@ async def create_custom_task(body: CustomTaskRequest) -> Dict[str, str]:
     if p.name != filename:
         raise HTTPException(status_code=400, detail="文件名非法")
 
-    workspace_dir = P2M_ROOT / "workspace"
+    workspace_dir = READ_PODCAST_ROOT / "workspace"
     resolved_audio = workspace_dir / "uploads" / filename
     resolved_output = workspace_dir / "custom_outputs"
     resolved_output.mkdir(parents=True, exist_ok=True)

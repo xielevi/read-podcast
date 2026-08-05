@@ -1,10 +1,10 @@
 services:
-  podcast2md:
+  read-podcast:
     # 直接使用已发布的官方镜像；无需在本机构建。
     # 想用当前源码自行构建时，改用：
     #   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
     image: ghcr.io/xielevi/read-podcast:latest
-    container_name: podcast2md
+    container_name: read-podcast
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -14,12 +14,12 @@ services:
       - "127.0.0.1:28000:8080"
     environment:
       REFINER_API_KEY: ${REFINER_API_KEY:-}
-      PODCAST2MD_OUTPUT_DIR: /data/output
-      PODCAST2MD_TRANSCRIPTION_API_URL: http://host.docker.internal:21567/transcribe
-      PODCAST2MD_TRANSCRIPTION_SHARED_AUDIO_ROOT: /app/workspace
-      PODCAST2MD_WHISPER_API_TOKEN: ${PODCAST2MD_WHISPER_API_TOKEN:-}
-      PODCAST2MD_BASIC_AUTH_USERNAME: ${PODCAST2MD_BASIC_AUTH_USERNAME:-}
-      PODCAST2MD_BASIC_AUTH_PASSWORD: ${PODCAST2MD_BASIC_AUTH_PASSWORD:-}
+      READ_PODCAST_OUTPUT_DIR: /data/output
+      READ_PODCAST_TRANSCRIPTION_API_URL: http://host.docker.internal:21567/transcribe
+      READ_PODCAST_TRANSCRIPTION_SHARED_AUDIO_ROOT: /app/workspace
+      READ_PODCAST_WHISPER_API_TOKEN: ${READ_PODCAST_WHISPER_API_TOKEN:-${PODCAST2MD_WHISPER_API_TOKEN:-}}
+      READ_PODCAST_BASIC_AUTH_USERNAME: ${READ_PODCAST_BASIC_AUTH_USERNAME:-${PODCAST2MD_BASIC_AUTH_USERNAME:-}}
+      READ_PODCAST_BASIC_AUTH_PASSWORD: ${READ_PODCAST_BASIC_AUTH_PASSWORD:-${PODCAST2MD_BASIC_AUTH_PASSWORD:-}}
     volumes:
       - ./config:/config
       - ./workspace:/app/workspace

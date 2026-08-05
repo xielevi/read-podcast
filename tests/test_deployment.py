@@ -18,14 +18,29 @@ from scripts import podcast_pipeline
 
 @pytest.fixture(autouse=True)
 def clear_web_access_environment(monkeypatch):
-    monkeypatch.delenv("PODCAST2MD_BASIC_AUTH_USERNAME", raising=False)
-    monkeypatch.delenv("PODCAST2MD_BASIC_AUTH_PASSWORD", raising=False)
-    monkeypatch.delenv("PODCAST2MD_TRANSCRIPTION_API_URL", raising=False)
-    monkeypatch.delenv("PODCAST2MD_TRANSCRIPTION_SHARED_AUDIO_ROOT", raising=False)
+    for prefix in ("READ_PODCAST", "PODCAST2MD"):
+        monkeypatch.delenv(f"{prefix}_BASIC_AUTH_USERNAME", raising=False)
+        monkeypatch.delenv(f"{prefix}_BASIC_AUTH_PASSWORD", raising=False)
+        monkeypatch.delenv(f"{prefix}_TRANSCRIPTION_API_URL", raising=False)
+        monkeypatch.delenv(f"{prefix}_TRANSCRIPTION_SHARED_AUDIO_ROOT", raising=False)
+        monkeypatch.delenv(f"{prefix}_OUTPUT_DIR", raising=False)
+        monkeypatch.delenv(f"{prefix}_WHISPER_API_TOKEN", raising=False)
     monkeypatch.setattr(mlx_backend, "CHUNK_DURATION", 0)
 
 
 def test_settings_accepts_namespaced_config(tmp_path: Path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        yaml.safe_dump({"read-podcast": {"transcription": {"api_url": "http://mlx/transcribe"}}}),
+        encoding="utf-8",
+    )
+
+    loaded = Settings(config_path)
+
+    assert loaded.TRANSCRIPTION_CONFIG["api_url"] == "http://mlx/transcribe"
+
+
+def test_settings_accepts_legacy_namespaced_config(tmp_path: Path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
         yaml.safe_dump({"podcast2md": {"transcription": {"api_url": "http://mlx/transcribe"}}}),
@@ -56,8 +71,8 @@ def test_transcription_environment_overrides_persisted_deployment_mode(tmp_path,
         "  shared_audio_root: /app/workspace\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("PODCAST2MD_TRANSCRIPTION_API_URL", "http://127.0.0.1:21567/transcribe")
-    monkeypatch.setenv("PODCAST2MD_TRANSCRIPTION_SHARED_AUDIO_ROOT", "")
+    monkeypatch.setenv("READ_PODCAST_TRANSCRIPTION_API_URL", "http://127.0.0.1:21567/transcribe")
+    monkeypatch.setenv("READ_PODCAST_TRANSCRIPTION_SHARED_AUDIO_ROOT", "")
 
     loaded = Settings(config_path)
 
@@ -102,7 +117,7 @@ def test_settings_merges_prompt_templates_by_name(tmp_path: Path, monkeypatch):
         ),
         encoding="utf-8",
     )
-    monkeypatch.delenv("PODCAST2MD_OUTPUT_DIR", raising=False)
+    monkeypatch.delenv("READ_PODCAST_OUTPUT_DIR", raising=False)
 
     loaded = Settings(config_path)
     templates = {item["name"]: item for item in loaded.PROMPT_TEMPLATES}
@@ -113,7 +128,7 @@ def test_settings_merges_prompt_templates_by_name(tmp_path: Path, monkeypatch):
 
 
 def test_settings_uses_compose_output_dir(monkeypatch, tmp_path: Path):
-    monkeypatch.setenv("PODCAST2MD_OUTPUT_DIR", str(tmp_path / "output"))
+    monkeypatch.setenv("READ_PODCAST_OUTPUT_DIR", str(tmp_path / "output"))
 
     loaded = Settings(tmp_path / "missing.yaml")
 
@@ -122,18 +137,18 @@ def test_settings_uses_compose_output_dir(monkeypatch, tmp_path: Path):
 
 def test_standalone_health_and_frontend():
     with TestClient(app) as client:
-        health = client.get("/api/podcast2md/health").json()
-        transcription = client.get("/api/podcast2md/transcription/status").json()
+        health = client.get("/api/read-podcast/health").json()
+        transcription = client.get("/api/read-podcast/transcription/status").json()
         response = client.get("/")
         script = client.get("/app.js")
         stylesheet = client.get("/app.css")
 
-    assert health == {"status": "healthy", "service": "podcast2md"}
+    assert health == {"status": "healthy", "service": "read-podcast"}
     assert transcription["backend"] == "mlx-api"
     assert transcription["engine"] == "mlx-whisper"
     assert transcription["self_contained"] is False
     assert response.status_code == 200
-    assert "Podcast2MD" in response.text
+    assert "Read Podcast" in response.text
     assert script.status_code == 200
     assert stylesheet.status_code == 200
     assert "@media (min-width: 1440px)" in stylesheet.text
@@ -143,14 +158,22 @@ def test_standalone_health_and_frontend():
     assert 'id="episode-inspector"' in response.text
     assert 'id="reader-progress-range"' in response.text
     assert 'id="episode-summary-drawer"' in response.text
-    assert "window.PODCAST2MD_BASE_PATH" in response.text
+    assert "window.READ_PODCAST_BASE_PATH" in response.text
     assert 'href="app.css"' not in response.text
     assert '<script src="app.js"></script>' not in response.text
     assert "var APP_BASE_PATH = (function detectBasePath()" in script.text
     assert "function appUrl(path)" in script.text
     assert "var SAFE_LINK =" in script.text
-    assert "fetch('/api/podcast2md" not in script.text
-    assert "xhr.open('POST', '/api/podcast2md" not in script.text
+    assert "fetch('/api/read-podcast" not in script.text
+    assert "xhr.open('POST', '/api/read-podcast" not in script.text
+
+
+def test_standalone_keeps_legacy_api_health_alias():
+    with TestClient(app) as client:
+        response = client.get("/api/podcast2md/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"status": "healthy", "service": "read-podcast"}
 
 
 def test_standalone_supports_configured_base_path(monkeypatch):
@@ -160,28 +183,28 @@ def test_standalone_supports_configured_base_path(monkeypatch):
         frontend = client.get("/podcast")
         script = client.get("/podcast/app.js")
         stylesheet = client.get("/podcast/app.css")
-        health = client.get("/podcast/api/podcast2md/health")
+        health = client.get("/podcast/api/read-podcast/health")
 
     assert frontend.status_code == 200
     assert script.status_code == 200
     assert stylesheet.status_code == 200
     assert health.status_code == 200
-    assert health.json() == {"status": "healthy", "service": "podcast2md"}
+    assert health.json() == {"status": "healthy", "service": "read-podcast"}
 
 
 def test_optional_basic_auth_protects_webui_and_api(monkeypatch):
-    monkeypatch.setenv("PODCAST2MD_BASIC_AUTH_USERNAME", "reader")
-    monkeypatch.setenv("PODCAST2MD_BASIC_AUTH_PASSWORD", "secret")
+    monkeypatch.setenv("READ_PODCAST_BASIC_AUTH_USERNAME", "reader")
+    monkeypatch.setenv("READ_PODCAST_BASIC_AUTH_PASSWORD", "secret")
 
     with TestClient(app) as client:
         anonymous = client.get("/")
-        invalid = client.get("/api/podcast2md/transcription/status", auth=("reader", "wrong"))
+        invalid = client.get("/api/read-podcast/transcription/status", auth=("reader", "wrong"))
         frontend = client.get("/", auth=("reader", "secret"))
-        api = client.get("/api/podcast2md/transcription/status", auth=("reader", "secret"))
-        health = client.get("/api/podcast2md/health")
+        api = client.get("/api/read-podcast/transcription/status", auth=("reader", "secret"))
+        health = client.get("/api/read-podcast/health")
 
     assert anonymous.status_code == 401
-    assert anonymous.headers["www-authenticate"] == 'Basic realm="Podcast2MD", charset="UTF-8"'
+    assert anonymous.headers["www-authenticate"] == 'Basic realm="Read Podcast", charset="UTF-8"'
     assert invalid.status_code == 401
     assert frontend.status_code == 200
     assert api.status_code == 200
@@ -189,7 +212,7 @@ def test_optional_basic_auth_protects_webui_and_api(monkeypatch):
 
 
 def test_partial_basic_auth_configuration_fails_fast(monkeypatch):
-    monkeypatch.setenv("PODCAST2MD_BASIC_AUTH_USERNAME", "reader")
+    monkeypatch.setenv("READ_PODCAST_BASIC_AUTH_USERNAME", "reader")
 
     with pytest.raises(RuntimeError, match="must be configured together"):
         with TestClient(app):
@@ -197,8 +220,8 @@ def test_partial_basic_auth_configuration_fails_fast(monkeypatch):
 
 
 def test_transcriber_uses_public_api_url(monkeypatch):
-    monkeypatch.setenv("PODCAST2MD_WHISPER_API_URL", "http://ignored/transcribe")
-    monkeypatch.setenv("PODCAST2MD_WHISPER_API_TOKEN", "secret")
+    monkeypatch.setenv("READ_PODCAST_WHISPER_API_URL", "http://ignored/transcribe")
+    monkeypatch.setenv("READ_PODCAST_WHISPER_API_TOKEN", "secret")
 
     transcriber = get_transcriber({"api_url": "http://mlx-host:21567", "timeout": 60})
 
@@ -353,7 +376,7 @@ def test_task_content_returns_utf8_text_without_absolute_path(tmp_path: Path, mo
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=task))
 
     with TestClient(app) as client:
-        response = client.get("/api/podcast2md/tasks/task-success/content")
+        response = client.get("/api/read-podcast/tasks/task-success/content")
 
     assert response.status_code == 200
     assert response.json() == {
@@ -376,7 +399,7 @@ def test_task_status_does_not_expose_local_paths(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=task))
 
     with TestClient(app) as client:
-        response = client.get("/api/podcast2md/tasks/task-status")
+        response = client.get("/api/read-podcast/tasks/task-status")
 
     assert response.status_code == 200
     assert response.json()["id"] == "task-status"
@@ -390,7 +413,7 @@ def test_upload_rejects_oversize_audio_without_partial_file(tmp_path: Path, monk
 
     with TestClient(app) as client:
         response = client.post(
-            "/api/podcast2md/upload/audio",
+            "/api/read-podcast/upload/audio",
             files={"file": ("sample.wav", b"too-large", "audio/wav")},
         )
 
@@ -410,7 +433,7 @@ def test_task_content_uses_filename_when_episode_title_is_empty(tmp_path: Path, 
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=task))
 
     with TestClient(app) as client:
-        response = client.get("/api/podcast2md/tasks/task-fallback/content")
+        response = client.get("/api/read-podcast/tasks/task-fallback/content")
 
     assert response.status_code == 200
     assert response.json()["title"] == "fallback.markdown"
@@ -420,7 +443,7 @@ def test_task_content_returns_404_when_task_is_missing(monkeypatch):
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=None))
 
     with TestClient(app) as client:
-        response = client.get("/api/podcast2md/tasks/missing-task/content")
+        response = client.get("/api/read-podcast/tasks/missing-task/content")
 
     assert response.status_code == 404
 
@@ -443,8 +466,8 @@ def test_task_content_returns_404_when_output_is_missing(tmp_path: Path, monkeyp
     monkeypatch.setattr(router_module, "get_task", AsyncMock(side_effect=tasks))
 
     with TestClient(app) as client:
-        missing_path = client.get("/api/podcast2md/tasks/missing-path/content")
-        missing_file = client.get("/api/podcast2md/tasks/missing-file/content")
+        missing_path = client.get("/api/read-podcast/tasks/missing-path/content")
+        missing_file = client.get("/api/read-podcast/tasks/missing-file/content")
 
     assert missing_path.status_code == 404
     assert missing_file.status_code == 404
@@ -462,6 +485,6 @@ def test_task_content_rejects_non_text_output(tmp_path: Path, monkeypatch):
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=task))
 
     with TestClient(app) as client:
-        response = client.get("/api/podcast2md/tasks/task-pdf/content")
+        response = client.get("/api/read-podcast/tasks/task-pdf/content")
 
     assert response.status_code == 415

@@ -15,7 +15,7 @@ or other personal data in a report.
 
 ## Deployment boundary
 
-Podcast2MD is designed as a single-user local application. The WebUI and MLX
+Read Podcast is designed as a single-user local application. The WebUI and MLX
 backend bind to loopback by default. If you intentionally expose either service,
 use HTTPS, configure authentication, restrict the trusted network, and keep the
 host and container dependencies updated.

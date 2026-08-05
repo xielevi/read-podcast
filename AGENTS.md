@@ -1,4 +1,4 @@
-# Podcast2MD 协作边界
+# Read Podcast 协作边界
 
 ## 架构约束
 
@@ -12,7 +12,7 @@
 
 - 应用入口：`app.standalone:app`。本机原生启动经 `scripts/start.sh`（同时托管 MLX 后端），Docker 启动经 Compose。
 - 用户交互入口仅为 WebUI；`scripts/podcast_pipeline.py` 只作为维护包装层，不参与 Web 任务执行。
-- API 前缀：`/api/podcast2md`。
+- API 前缀：`/api/read-podcast`。
 - WebUI 必须同时支持域名根路径和反向代理子路径。
 - Web 侧鉴权仅使用可选 Basic Auth；默认关闭，不加入网关专属鉴权分支。
 - 原生后端入口：`scripts/mlx_backend.py`。
@@ -28,14 +28,14 @@
 ```bash
 uv sync --dev
 uv run pytest -q
-docker build -t podcast2md:test .
+docker build -t read-podcast:test .
 ```
 
 至少验证：
 
-- `GET /`、配置的子路径与 `GET /api/podcast2md/health` 返回 `200`。
+- `GET /`、配置的子路径与 `GET /api/read-podcast/health` 返回 `200`。
 - Basic Auth 关闭时不拦截；同时配置用户名和密码时保护 WebUI 与业务 API。
-- `GET /api/podcast2md/transcription/status` 只返回安全元数据。
+- `GET /api/read-podcast/transcription/status` 只返回安全元数据。
 - 原生 MLX 后端 `/health` 与带 Token 的 `/transcribe` 通过。
 - 容器进入 `healthy`。
 - 页面可以创建任务、接收 SSE 日志并打开生成稿件。

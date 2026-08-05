@@ -1,4 +1,4 @@
-"""Podcast2MD 流水线的维护入口；正式交互入口为 WebUI。"""
+"""Read Podcast 流水线的维护入口；正式交互入口为 WebUI。"""
 from __future__ import annotations
 
 import argparse
@@ -16,7 +16,7 @@ from modules.utils import acquire_lock, check_environment, setup_logging
 
 
 def _arguments() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Podcast2MD 后台维护流水线")
+    parser = argparse.ArgumentParser(description="Read Podcast 后台维护流水线")
     parser.add_argument("--config", help="配置文件路径")
     parser.add_argument("--limit", type=int, default=1, help="每个播客处理的节目数量")
     parser.add_argument("--reverse", action="store_true", help="从最早节目开始")
@@ -49,7 +49,7 @@ def main() -> None:
         if args.podcast
         else list(enabled_podcast_names(loaded_settings))
     )
-    logger.info("=== 开始 Podcast2MD 维护流水线 ===")
+    logger.info("=== 开始 Read Podcast 维护流水线 ===")
     for podcast_name in podcast_names:
         try:
             episodes = pipeline.fetch_episodes(
@@ -81,7 +81,7 @@ def main() -> None:
                 logger.exception("处理失败 [%s - %s]: %s", podcast_name, episode["title"], exc)
                 failed = True
 
-    logger.info("=== Podcast2MD 维护流水线结束 ===")
+    logger.info("=== Read Podcast 维护流水线结束 ===")
     if failed:
         raise SystemExit(1)
 

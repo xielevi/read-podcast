@@ -7,8 +7,8 @@ import pytest
 
 
 os.environ.setdefault(
-    "PODCAST2MD_CONFIG",
-    f"/tmp/podcast2md-pytest-{os.getpid()}-missing-config.yaml",
+    "READ_PODCAST_CONFIG",
+    f"/tmp/read-podcast-pytest-{os.getpid()}-missing-config.yaml",
 )
 
 
@@ -18,8 +18,8 @@ def isolate_runtime_state(tmp_path_factory, monkeypatch):
     import app.database as database
     import app.standalone as standalone
 
-    runtime_dir = tmp_path_factory.mktemp("podcast2md-runtime")
-    monkeypatch.setattr(database, "DB_PATH", runtime_dir / "podcast2md-test.db")
+    runtime_dir = tmp_path_factory.mktemp("read-podcast-runtime")
+    monkeypatch.setattr(database, "DB_PATH", runtime_dir / "read-podcast-test.db")
     monkeypatch.setattr(database, "_db", None)
     monkeypatch.setattr(database, "_db_path", None)
 

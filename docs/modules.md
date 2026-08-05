@@ -6,18 +6,18 @@
 
 `Settings` 单例（`settings`）在导入时加载配置。普通配置优先级：`config/config.yaml` 用户覆盖 > `config.default.yaml` 默认值。Prompt 模板按 `name` 合并，本地覆盖同名模板并保留默认模板。环境变量用于选择配置路径、输出目录和提供凭据。
 
-- 配置文件路径：`PODCAST2MD_CONFIG` 环境变量，否则 `PROJECT_ROOT/config/config.yaml`；容器内固定为 `/config/config.yaml`。覆盖文件可以为空，只需写偏离默认值的字段与 WebUI 订阅。
-- YAML 兼容顶层结构与 `podcast2md:` 命名空间（`full.get('podcast2md', full)`）。
+- 配置文件路径：`READ_PODCAST_CONFIG` 环境变量，否则 `PROJECT_ROOT/config/config.yaml`；容器内固定为 `/config/config.yaml`。覆盖文件可以为空，只需写偏离默认值的字段与 WebUI 订阅。
+- YAML 规范命名空间为 `read-podcast:`，同时兼容顶层结构和旧 `podcast2md:` 命名空间。
 
 环境变量仅保留：
 
 | 变量 | 作用 |
 | :--- | :--- |
-| `PODCAST2MD_CONFIG` | 配置文件路径 |
-| `PODCAST2MD_OUTPUT_DIR` | Markdown 输出目录；Docker Compose 默认指向 `/data/output`，本机直接运行时留空 |
-| `PODCAST2MD_WHISPER_API_TOKEN` | 转录服务 Bearer Token |
+| `READ_PODCAST_CONFIG` | 配置文件路径 |
+| `READ_PODCAST_OUTPUT_DIR` | Markdown 输出目录；Docker Compose 默认指向 `/data/output`，本机直接运行时留空 |
+| `READ_PODCAST_WHISPER_API_TOKEN` | 转录服务 Bearer Token |
 | `REFINER_API_KEY` | AI 精修 API Key |
-| `PODCAST2MD_BASIC_AUTH_USERNAME` / `_PASSWORD` | 可选 Web Basic Auth 凭据 |
+| `READ_PODCAST_BASIC_AUTH_USERNAME` / `_PASSWORD` | 可选 Web Basic Auth 凭据 |
 
 配置主要字段：`paths.*`、`runtime.*`、`web.*`、`mlx.*`、`transcription`、`refiner`、`podcasts[]`、`prompt_templates[]`。
 `get_podcast_dir(name, sub_type)` 自动创建目录；Obsidian 目录权限不足时降级回 `workspace/<podcast>/markdown`。

@@ -10,7 +10,7 @@
 浏览器（根路径或子路径）
   │ HTTP + SSE
   ▼
-Podcast2MD Web :28000（原生）或 Docker :8080 → :28000
+Read Podcast Web :28000（原生）或 Docker :8080 → :28000
   ├─ FastAPI WebUI / API（可选 Basic Auth）
   ├─ 分阶段调度：下载 / Whisper / 精修
   ├─ RSS / 音频下载 / SQLite / workspace / output
@@ -52,6 +52,8 @@ Podcast2MD Web :28000（原生）或 Docker :8080 → :28000
 **D5 本机原生部署为个人用户首选路径。** 面向非技术用户，`scripts/install.sh` 与 `scripts/start.sh` 在 macOS 上同时托管 MLX 后端与网页应用。Docker 保留为进阶备选，其网页应用镜像默认从 GHCR 拉取。两种路径下 MLX 均原生运行。启动入口通过环境覆盖确定模式：原生使用 `127.0.0.1:21567` 并关闭共享路径，Docker 使用 `host.docker.internal:21567` 与 `/app/workspace`；不会因持久化配置残留而串用地址。
 
 **D6 出站网络与资源边界。** 用户提供的 RSS 和媒体 URL 仅允许 HTTP(S)，并在请求及重定向前解析 DNS、拒绝回环、私网、保留和链路本地地址。RSS、直接音频下载、yt-dlp 和 MLX 上传均有大小或超时限制。日志去除 URL 凭据、query 和供应商响应正文，避免签名参数与转录片段落盘。
+
+**D7 品牌与兼容标识。** 项目品牌统一为 Read Podcast，规范技术标识为 `/api/read-podcast`、`READ_PODCAST_*`、`read-podcast:` 与 `X-Read-Podcast-*`。既有 `/api/podcast2md`、`PODCAST2MD_*`、`podcast2md:`、`X-Podcast2MD-*` 和 `workspace/podcast2md.db` 只作为隐藏兼容接口继续保留，避免升级破坏现有配置、客户端与任务数据。
 
 ## 容错
 
