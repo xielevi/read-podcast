@@ -53,7 +53,7 @@
     }
     function errorMessage(error) { return error && error.message ? error.message : String(error || '未知错误'); }
     function safeTaskUrl(taskId, suffix) {
-      return appUrl('/api/podcast2md/tasks/' + encodeURIComponent(String(taskId || '')) + suffix);
+      return appUrl('/api/read-podcast/tasks/' + encodeURIComponent(String(taskId || '')) + suffix);
     }
     function setHidden(element, hidden) { if (element) element.hidden = hidden; }
 
@@ -96,7 +96,7 @@
     }
 
     function loadPromptTemplates() {
-      fetch(appUrl('/api/podcast2md/prompt-templates'))
+      fetch(appUrl('/api/read-podcast/prompt-templates'))
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (templates) {
           _promptTemplates = Array.isArray(templates) ? templates : [];
@@ -137,7 +137,7 @@
       var formData = new FormData();
       formData.append('file', file);
       var xhr = new XMLHttpRequest();
-      xhr.open('POST', appUrl('/api/podcast2md/upload/audio'));
+      xhr.open('POST', appUrl('/api/read-podcast/upload/audio'));
       xhr.upload.onprogress = function (event) {
         if (!event.lengthComputable) return;
         var percent = Math.round(event.loaded / event.total * 100);
@@ -169,7 +169,7 @@
 
     function doDeleteSubscription(name) {
       if (!name) return;
-      fetch(appUrl('/api/podcast2md/subscriptions/' + encodeURIComponent(name)), { method: 'DELETE' })
+      fetch(appUrl('/api/read-podcast/subscriptions/' + encodeURIComponent(name)), { method: 'DELETE' })
         .then(function (res) { return res.json().then(function (data) { if (!res.ok) throw new Error(data.detail || 'HTTP ' + res.status); return data; }); })
         .then(function () {
           addLog('已取消订阅节目「' + name + '」', 'info');
@@ -255,7 +255,7 @@
     }
 
     function loadSubscriptions() {
-      return fetch(appUrl('/api/podcast2md/subscriptions'))
+      return fetch(appUrl('/api/read-podcast/subscriptions'))
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (podcasts) {
           renderPodcastList(podcasts);
@@ -373,12 +373,12 @@
       }
       var pageKey = String(podcastName) + '|page';
       if (!force && _episodeRequests.has(pageKey)) return _episodeRequests.get(pageKey);
-      var url = appUrl('/api/podcast2md/episodes?podcast_name=' + encodeURIComponent(podcastName) + '&limit=' + PAGE_SIZE + (force ? '&force=true' : ''));
+      var url = appUrl('/api/read-podcast/episodes?podcast_name=' + encodeURIComponent(podcastName) + '&limit=' + PAGE_SIZE + (force ? '&force=true' : ''));
       var request = fetch(url)
         .then(function (response) {
           if (!response.ok) throw new Error('HTTP ' + response.status);
           return response.json().then(function (episodes) {
-            return { episodes: Array.isArray(episodes) ? episodes : [], cacheState: response.headers.get('X-Podcast2MD-Cache-State') || 'complete' };
+            return { episodes: Array.isArray(episodes) ? episodes : [], cacheState: response.headers.get('X-Read-Podcast-Cache-State') || 'complete' };
           });
         })
         .then(function (result) {
@@ -412,12 +412,12 @@
       if (cached && cached.full) return Promise.resolve(cached.full);
       var fullKey = String(podcastName) + '|full';
       if (_episodeRequests.has(fullKey)) return _episodeRequests.get(fullKey);
-      var url = appUrl('/api/podcast2md/episodes?podcast_name=' + encodeURIComponent(podcastName) + '&limit=0');
+      var url = appUrl('/api/read-podcast/episodes?podcast_name=' + encodeURIComponent(podcastName) + '&limit=0');
       var request = fetch(url)
         .then(function (response) {
           if (!response.ok) throw new Error('HTTP ' + response.status);
           return response.json().then(function (episodes) {
-            return { episodes: Array.isArray(episodes) ? episodes : [], cacheState: response.headers.get('X-Podcast2MD-Cache-State') || 'complete' };
+            return { episodes: Array.isArray(episodes) ? episodes : [], cacheState: response.headers.get('X-Read-Podcast-Cache-State') || 'complete' };
           });
         })
         .then(function (result) {
@@ -588,7 +588,7 @@
       if (button) button.disabled = true;
       setHidden(byId('task-card'), false);
       setTaskStatus('正在转录', 0);
-      var url = appUrl('/api/podcast2md/tasks?podcast_name=' + encodeURIComponent(selectedPodcast)
+      var url = appUrl('/api/read-podcast/tasks?podcast_name=' + encodeURIComponent(selectedPodcast)
         + '&episode_title=' + encodeURIComponent(title)
         + (force ? '&force=true' : ''));
       fetch(url, { method: 'POST' })
@@ -628,7 +628,7 @@
       setHidden(byId('download-result-wrap'), true);
       setHidden(byId('task-card'), false);
       setTaskStatus('正在转录', 0);
-      fetch(appUrl('/api/podcast2md/tasks/custom'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio_filename: audioPath, custom_prompt: prompt }) })
+      fetch(appUrl('/api/read-podcast/tasks/custom'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ audio_filename: audioPath, custom_prompt: prompt }) })
         .then(function (response) { return response.json().then(function (data) { if (!response.ok || data.detail) throw new Error(data.detail || 'HTTP ' + response.status); return data; }); })
         .then(function (data) { subscribeSSE(data.task_id, audioPath); })
         .catch(function () { setTaskStatus('这次没有转录成功，请稍后再试。', 0); setTaskBadge('error', '未成功'); })
@@ -804,7 +804,7 @@
     }
     function ensureGlobalSSE() {
       if (globalEventSource) return;
-      globalEventSource = new EventSource(appUrl('/api/podcast2md/tasks/stream'));
+      globalEventSource = new EventSource(appUrl('/api/read-podcast/tasks/stream'));
       globalEventSource.onmessage = function (event) {
         var data;
         try { data = JSON.parse(event.data); } catch (error) { addLog('收到无法解析的日志事件', 'warning'); return; }
@@ -842,7 +842,7 @@
     }
 
     function loadHistory() {
-      return fetch(appUrl('/api/podcast2md/tasks'))
+      return fetch(appUrl('/api/read-podcast/tasks'))
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (tasks) {
           _taskHistory = Array.isArray(tasks) ? tasks : [];
@@ -865,7 +865,7 @@
             if (id !== 'local' && !visibleTaskIds[id] && _taskCards[id].status !== 'success') delete _taskCards[id];
           });
           renderTaskQueue();
-          fetch(appUrl('/api/podcast2md/tasks/completed-keys'))
+          fetch(appUrl('/api/read-podcast/tasks/completed-keys'))
             .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
             .then(function (completed) {
               _taskHistoryMap = {};
@@ -923,7 +923,7 @@
 
     function loadLibrary(tasks) {
       if (Array.isArray(tasks) && tasks.length) { _libraryTasks = tasks; renderLibrary(_libraryTasks); return Promise.resolve(_libraryTasks); }
-      return fetch(appUrl('/api/podcast2md/tasks?limit=200'))
+      return fetch(appUrl('/api/read-podcast/tasks?limit=200'))
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (data) { _libraryTasks = Array.isArray(data) ? data : []; renderLibrary(_libraryTasks); return _libraryTasks; })
         .catch(function (error) { addLog('稿件库加载失败：' + errorMessage(error), 'warning'); });
@@ -997,7 +997,7 @@
       _drawerSearchTimer = setTimeout(function () { fetchSearchResults(query); }, 500);
     }
     function fetchSearchResults(query) {
-      fetch(appUrl('/api/podcast2md/search/podcast?q=' + encodeURIComponent(query)))
+      fetch(appUrl('/api/read-podcast/search/podcast?q=' + encodeURIComponent(query)))
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (items) { renderSearchResults(Array.isArray(items) ? items : []); })
         .catch(function () { renderSearchResults([]); });
@@ -1029,7 +1029,7 @@
       if (!cleanName || !cleanUrl) { addLog('错误：节目名称和 RSS URL 均不能为空', 'error'); return; }
       var buttons = [byId('confirm-add-btn'), byId('manual-add-btn')]; buttons.forEach(function (button) { button.disabled = true; });
       addLog('正在验证 RSS：' + cleanName, 'running');
-      fetch(appUrl('/api/podcast2md/subscriptions'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cleanName, rss_url: cleanUrl }) })
+      fetch(appUrl('/api/read-podcast/subscriptions'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cleanName, rss_url: cleanUrl }) })
         .then(function (response) { return response.json().then(function (data) { if (!response.ok) throw new Error(data.detail || 'HTTP ' + response.status); return data; }); })
         .then(function () { addLog('节目「' + cleanName + '」已成功订阅', 'success'); closeDrawer(); loadSubscriptions(); })
         .catch(function (error) { addLog('添加失败：' + errorMessage(error), 'error'); })

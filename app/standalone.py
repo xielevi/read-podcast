@@ -1,4 +1,4 @@
-"""Podcast2MD 独立部署入口。"""
+"""Read Podcast 独立部署入口。"""
 from __future__ import annotations
 
 import asyncio
@@ -19,16 +19,18 @@ from app.router import router
 from modules.audio_cleanup import cleanup_expired_audio
 from modules.config import settings
 
-P2M_ROOT = Path(__file__).parent.parent.absolute()
-FRONTEND_FILE = P2M_ROOT / "app" / "static" / "index.html"
-FRONTEND_CSS_FILE = P2M_ROOT / "app" / "static" / "app.css"
-FRONTEND_JS_FILE = P2M_ROOT / "app" / "static" / "app.js"
+READ_PODCAST_ROOT = Path(__file__).parent.parent.absolute()
+FRONTEND_FILE = READ_PODCAST_ROOT / "app" / "static" / "index.html"
+FRONTEND_CSS_FILE = READ_PODCAST_ROOT / "app" / "static" / "app.css"
+FRONTEND_JS_FILE = READ_PODCAST_ROOT / "app" / "static" / "app.js"
 AUDIO_RETENTION_DAYS = int(settings.RUNTIME_CONFIG.get("audio_retention_days", 7))
 CLEANUP_INTERVAL_SECONDS = max(
     60,
     int(settings.RUNTIME_CONFIG.get("cleanup_interval_seconds", 24 * 60 * 60)),
 )
-HEALTH_PATH = "/api/podcast2md/health"
+API_PREFIX = "/api/read-podcast"
+LEGACY_API_PREFIX = "/api/podcast2md"
+HEALTH_PATHS = {f"{API_PREFIX}/health", f"{LEGACY_API_PREFIX}/health"}
 
 logger = logging.getLogger(__name__)
 
@@ -45,11 +47,17 @@ def _configured_base_path() -> str:
 
 
 def _basic_auth_credentials() -> tuple[str, str] | None:
-    username = os.getenv("PODCAST2MD_BASIC_AUTH_USERNAME", "").strip()
-    password = os.getenv("PODCAST2MD_BASIC_AUTH_PASSWORD", "")
+    username = os.getenv(
+        "READ_PODCAST_BASIC_AUTH_USERNAME",
+        os.getenv("PODCAST2MD_BASIC_AUTH_USERNAME", ""),
+    ).strip()
+    password = os.getenv(
+        "READ_PODCAST_BASIC_AUTH_PASSWORD",
+        os.getenv("PODCAST2MD_BASIC_AUTH_PASSWORD", ""),
+    )
     if bool(username) != bool(password):
         raise RuntimeError(
-            "PODCAST2MD_BASIC_AUTH_USERNAME and PODCAST2MD_BASIC_AUTH_PASSWORD "
+            "READ_PODCAST_BASIC_AUTH_USERNAME and READ_PODCAST_BASIC_AUTH_PASSWORD "
             "must be configured together"
         )
     if not username:
@@ -79,15 +87,15 @@ def _valid_basic_auth(request: Request, expected: tuple[str, str]) -> bool:
 def _basic_auth_challenge() -> Response:
     return Response(
         status_code=401,
-        headers={"WWW-Authenticate": 'Basic realm="Podcast2MD", charset="UTF-8"'},
+        headers={"WWW-Authenticate": 'Basic realm="Read Podcast", charset="UTF-8"'},
     )
 
 
 async def _cleanup_once():
     return await asyncio.to_thread(
         cleanup_expired_audio,
-        P2M_ROOT,
-        P2M_ROOT / "workspace" / "uploads",
+        READ_PODCAST_ROOT,
+        READ_PODCAST_ROOT / "workspace" / "uploads",
         settings.DOWNLOAD_DIR,
         AUDIO_RETENTION_DAYS,
     )
@@ -127,7 +135,7 @@ async def lifespan(_: FastAPI):
         await close_db()
 
 
-app = FastAPI(title="Podcast2MD", lifespan=lifespan)
+app = FastAPI(title="Read Podcast", lifespan=lifespan)
 
 # 配置 GZip 中间件，大幅压缩静态文件与大 JSON 传输体积
 app.add_middleware(GZipMiddleware, minimum_size=1000)
@@ -145,31 +153,32 @@ async def web_access_middleware(request: Request, call_next):
         request.scope["raw_path"] = stripped_path.encode("utf-8")
 
     credentials = _basic_auth_credentials()
-    if credentials and request.scope.get("path") != HEALTH_PATH:
+    if credentials and request.scope.get("path") not in HEALTH_PATHS:
         if not _valid_basic_auth(request, credentials):
             return _basic_auth_challenge()
 
     return await call_next(request)
 
-app.include_router(router)
+app.include_router(router, prefix=API_PREFIX)
+app.include_router(router, prefix=LEGACY_API_PREFIX, include_in_schema=False)
 
 
 @app.get("/")
 async def workspace():
     if FRONTEND_FILE.exists():
         return FileResponse(FRONTEND_FILE)
-    raise HTTPException(status_code=404, detail="podcast2md workspace page not found")
+    raise HTTPException(status_code=404, detail="Read Podcast workspace page not found")
 
 
 @app.get("/app.css")
 async def frontend_css():
     if FRONTEND_CSS_FILE.exists():
         return FileResponse(FRONTEND_CSS_FILE, media_type="text/css")
-    raise HTTPException(status_code=404, detail="podcast2md stylesheet not found")
+    raise HTTPException(status_code=404, detail="Read Podcast stylesheet not found")
 
 
 @app.get("/app.js")
 async def frontend_js():
     if FRONTEND_JS_FILE.exists():
         return FileResponse(FRONTEND_JS_FILE, media_type="application/javascript")
-    raise HTTPException(status_code=404, detail="podcast2md script not found")
+    raise HTTPException(status_code=404, detail="Read Podcast script not found")

@@ -86,7 +86,7 @@ class WhisperApiTranscriber:
         if self.api_token:
             headers["Authorization"] = f"Bearer {self.api_token}"
         if request_id:
-            headers["X-Podcast2MD-Request-ID"] = request_id
+            headers["X-Read-Podcast-Request-ID"] = request_id
         return headers or None
 
     def _transcribe_shared_path(
@@ -238,7 +238,10 @@ def _transcription_settings(config: dict | None) -> dict:
         "api_url": str(config.get("api_url", "")).strip(),
         "timeout": int(config.get("timeout", 1800)),
         "model": config.get("model", "server-managed"),
-        "api_token": os.getenv("PODCAST2MD_WHISPER_API_TOKEN", ""),
+        "api_token": os.getenv(
+            "READ_PODCAST_WHISPER_API_TOKEN",
+            os.getenv("PODCAST2MD_WHISPER_API_TOKEN", ""),
+        ),
         "shared_audio_root": config.get("shared_audio_root", ""),
     }
 

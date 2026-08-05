@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Podcast2MD 一键启动脚本（macOS Apple Silicon）
+# Read Podcast 一键启动脚本（macOS Apple Silicon）
 # 作用：同时启动语音转录后端（MLX）与网页应用，只用一个终端窗口。
 # 关闭：在本窗口按 Ctrl-C，两个服务会一起停止。
 set -euo pipefail
@@ -10,11 +10,11 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
 info() { printf '\033[1;34m▶ %s\033[0m\n' "$1"; }
 die()  { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
-APP_PORT="${PODCAST2MD_PORT:-28000}"
-MLX_PORT="${PODCAST2MD_MLX_PORT:-21567}"
-export PODCAST2MD_MLX_HOST=127.0.0.1
-export PODCAST2MD_TRANSCRIPTION_API_URL="http://127.0.0.1:${MLX_PORT}/transcribe"
-export PODCAST2MD_TRANSCRIPTION_SHARED_AUDIO_ROOT=""
+APP_PORT="${READ_PODCAST_PORT:-${PODCAST2MD_PORT:-28000}}"
+MLX_PORT="${READ_PODCAST_MLX_PORT:-${PODCAST2MD_MLX_PORT:-21567}}"
+export READ_PODCAST_MLX_HOST=127.0.0.1
+export READ_PODCAST_TRANSCRIPTION_API_URL="http://127.0.0.1:${MLX_PORT}/transcribe"
+export READ_PODCAST_TRANSCRIPTION_SHARED_AUDIO_ROOT=""
 
 command -v uv >/dev/null 2>&1 || die "找不到 uv，请先运行 ./scripts/install.sh"
 

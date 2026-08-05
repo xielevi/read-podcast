@@ -18,14 +18,14 @@ class Settings:
     """
     配置管理类。
 
-    同时兼容 ``podcast2md:`` 命名空间配置和顶层配置。
+    规范命名空间为 ``read-podcast:``，同时兼容旧 ``podcast2md:`` 与顶层配置。
     用户配置递归覆盖内置默认配置；Prompt 模板按名称合并；环境变量只提供路径和凭据。
     """
     def __init__(self, config_path=None):
         self.PROJECT_ROOT = PROJECT_ROOT
 
         # 配置文件路径（默认持久化目录 config/config.yaml，可由环境变量覆盖）
-        env_config = os.getenv("PODCAST2MD_CONFIG")
+        env_config = os.getenv("READ_PODCAST_CONFIG", os.getenv("PODCAST2MD_CONFIG"))
         if config_path:
             self.CONFIG_PATH = Path(config_path)
         elif env_config:
@@ -41,7 +41,7 @@ class Settings:
         try:
             with path.open('r', encoding='utf-8') as f:
                 full = yaml.safe_load(f) or {}
-            return full.get('podcast2md', full)
+            return full.get('read-podcast', full.get('podcast2md', full))
         except Exception as e:
             logger.error("解析配置文件失败 %s: %s", path, e)
             return {}
@@ -106,7 +106,11 @@ class Settings:
         self.OBSIDIAN_MARKDOWN_DIR = None
         # Docker Compose points this at the mounted output directory; local runs
         # intentionally fall back to the per-podcast workspace directory.
-        obsidian_dir = os.getenv("PODCAST2MD_OUTPUT_DIR") or paths.get('obsidian_markdown_dir')
+        obsidian_dir = (
+            os.getenv("READ_PODCAST_OUTPUT_DIR")
+            or os.getenv("PODCAST2MD_OUTPUT_DIR")
+            or paths.get('obsidian_markdown_dir')
+        )
         if obsidian_dir:
             abs_obsidian = self._to_abs_path(obsidian_dir)
             self.OBSIDIAN_MARKDOWN_DIR = abs_obsidian
@@ -114,12 +118,19 @@ class Settings:
 
         # --- [2. 转录与精修] ---
         transcription = dict(self._raw_config.get('transcription', {}))
-        if os.getenv("PODCAST2MD_TRANSCRIPTION_API_URL"):
-            transcription["api_url"] = os.environ["PODCAST2MD_TRANSCRIPTION_API_URL"]
-        if "PODCAST2MD_TRANSCRIPTION_SHARED_AUDIO_ROOT" in os.environ:
-            transcription["shared_audio_root"] = os.environ[
-                "PODCAST2MD_TRANSCRIPTION_SHARED_AUDIO_ROOT"
-            ]
+        api_url = os.getenv(
+            "READ_PODCAST_TRANSCRIPTION_API_URL",
+            os.getenv("PODCAST2MD_TRANSCRIPTION_API_URL"),
+        )
+        if api_url:
+            transcription["api_url"] = api_url
+        shared_root_key = (
+            "READ_PODCAST_TRANSCRIPTION_SHARED_AUDIO_ROOT"
+            if "READ_PODCAST_TRANSCRIPTION_SHARED_AUDIO_ROOT" in os.environ
+            else "PODCAST2MD_TRANSCRIPTION_SHARED_AUDIO_ROOT"
+        )
+        if shared_root_key in os.environ:
+            transcription["shared_audio_root"] = os.environ[shared_root_key]
         self.TRANSCRIPTION_CONFIG = transcription
         self.REFINER_CONFIG = self._raw_config.get('refiner', {})
         self.RUNTIME_CONFIG = self._raw_config.get('runtime', {})

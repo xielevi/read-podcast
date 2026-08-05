@@ -23,12 +23,23 @@ from modules.config import PROJECT_ROOT, settings
 
 MLX_CONFIG = settings.MLX_CONFIG
 MODEL = str(MLX_CONFIG.get("model", "mlx-community/whisper-large-v3-turbo"))
-HOST = os.getenv("PODCAST2MD_MLX_HOST", str(MLX_CONFIG.get("host", "127.0.0.1")))
-PORT = int(os.getenv("PODCAST2MD_MLX_PORT", str(MLX_CONFIG.get("port", 21567))))
+HOST = os.getenv(
+    "READ_PODCAST_MLX_HOST",
+    os.getenv("PODCAST2MD_MLX_HOST", str(MLX_CONFIG.get("host", "127.0.0.1"))),
+)
+PORT = int(
+    os.getenv(
+        "READ_PODCAST_MLX_PORT",
+        os.getenv("PODCAST2MD_MLX_PORT", str(MLX_CONFIG.get("port", 21567))),
+    )
+)
 CHUNK_DURATION = max(0, int(MLX_CONFIG.get("chunk_duration", 600)))
 CHUNK_WORKERS = max(1, int(MLX_CONFIG.get("chunk_workers", 2)))
 MODEL_IDLE_TTL_SECONDS = max(0, int(MLX_CONFIG.get("model_idle_seconds", 300)))
-API_TOKEN = os.getenv("PODCAST2MD_WHISPER_API_TOKEN", "")
+API_TOKEN = os.getenv(
+    "READ_PODCAST_WHISPER_API_TOKEN",
+    os.getenv("PODCAST2MD_WHISPER_API_TOKEN", ""),
+)
 MAX_UPLOAD_BYTES = max(1, int(MLX_CONFIG.get("max_upload_bytes", 2 * 1024 * 1024 * 1024)))
 
 logger = logging.getLogger(__name__)
@@ -122,7 +133,7 @@ async def lifespan(_: FastAPI):
         _cancel_model_release()
 
 
-app = FastAPI(title="Podcast2MD MLX Backend", lifespan=lifespan)
+app = FastAPI(title="Read Podcast MLX Backend", lifespan=lifespan)
 
 
 def _authorize(authorization: str | None) -> None:
@@ -402,11 +413,12 @@ async def transcribe(
     compression_ratio_threshold: float | None = Form(default=None),
     logprob_threshold: float | None = Form(default=None),
     no_speech_threshold: float | None = Form(default=None),
+    x_read_podcast_request_id: str | None = Header(default=None),
     x_podcast2md_request_id: str | None = Header(default=None),
 ):
     _authorize(authorization)
     response_format = _response_format(response_format)
-    request_id = _request_id(x_podcast2md_request_id)
+    request_id = _request_id(x_read_podcast_request_id or x_podcast2md_request_id)
     _set_request_progress(request_id, progress=0)
     suffix = Path(file.filename or "audio").suffix or ".audio"
     temp_path: Path | None = None
@@ -450,6 +462,7 @@ async def transcribe(
 async def transcribe_path(
     body: SharedPathRequest,
     authorization: str | None = Header(default=None),
+    x_read_podcast_request_id: str | None = Header(default=None),
     x_podcast2md_request_id: str | None = Header(default=None),
 ):
     _authorize(authorization)
@@ -469,7 +482,7 @@ async def transcribe_path(
         raise HTTPException(status_code=400, detail="unsupported audio file")
 
     response_format = _response_format(body.response_format)
-    request_id = _request_id(x_podcast2md_request_id)
+    request_id = _request_id(x_read_podcast_request_id or x_podcast2md_request_id)
     _set_request_progress(request_id, progress=0)
     try:
         result = await _transcribe_audio(

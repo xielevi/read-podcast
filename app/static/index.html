@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
-  <!-- Podcast2MD -->
-  <title>读 播客</title>
+  <!-- Read Podcast -->
+  <title>Read Podcast</title>
   <script>try { var savedReaderTheme = localStorage.getItem('reader_theme') || 'light'; document.documentElement.dataset.theme = savedReaderTheme === 'light' ? 'paper' : savedReaderTheme; } catch (ignore) { document.documentElement.dataset.theme = 'paper'; }</script>
   <script>
     (function () {
       var currentPath = String(window.location.pathname || '/').replace(/\/+$/, '');
       var appBasePath = currentPath && currentPath !== '/' ? currentPath : '';
-      window.PODCAST2MD_BASE_PATH = appBasePath;
+      window.READ_PODCAST_BASE_PATH = appBasePath;
       var stylesheet = document.createElement('link');
       stylesheet.rel = 'stylesheet';
       stylesheet.href = appBasePath + '/app.css';
@@ -25,11 +25,11 @@
   <div class="app-shell">
     <header class="masthead">
       <div class="edition" id="edition-date"></div>
-      <div class="brand" aria-label="读 播客">
+      <div class="brand" aria-label="Read Podcast">
         <div class="logo-mark" aria-hidden="true">🎙️</div>
         <div class="brand-copy">
           <span class="brand-kicker">让播客，从声音变成文字</span>
-          <h1>读 播客</h1>
+          <h1>Read Podcast</h1>
         </div>
       </div>
       <div class="mast-actions">
@@ -234,7 +234,7 @@
   <script>
     (function () {
       var script = document.createElement('script');
-      script.src = (window.PODCAST2MD_BASE_PATH || '') + '/app.js';
+      script.src = (window.READ_PODCAST_BASE_PATH || '') + '/app.js';
       document.body.appendChild(script);
     }());
   </script>

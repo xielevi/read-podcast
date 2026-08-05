@@ -1,6 +1,6 @@
-# Podcast2MD · 把播客变成能读的文章
+# Read Podcast · 把播客变成能读的文章
 
-Podcast2MD 是一个在你自己电脑上运行的小工具：给它一个播客节目，它会自动**下载音频 → 转成文字 → 用 AI 整理成排版漂亮、可以像杂志文章一样阅读的 Markdown**。全程在网页里点几下就行。
+Read Podcast 是一个在你自己电脑上运行的小工具：给它一个播客节目，它会自动**下载音频 → 转成文字 → 用 AI 整理成排版漂亮、可以像杂志文章一样阅读的 Markdown**。全程在网页里点几下就行。
 
 > 适合喜欢“听播客不如读文字”的人。你不需要懂编程，跟着下面的步骤复制粘贴即可。
 
@@ -74,7 +74,7 @@ cd read-podcast
 
 **终端窗口 A —— 启动语音转录服务（保持开着）：**
 
-先在 `.env` 中为 `PODCAST2MD_WHISPER_API_TOKEN` 填入一段随机长字符串。Docker
+先在 `.env` 中为 `READ_PODCAST_WHISPER_API_TOKEN` 填入一段随机长字符串。Docker
 需要跨越宿主机网络访问 MLX，脚本会拒绝在没有 Token 时对外监听。
 
 ```bash

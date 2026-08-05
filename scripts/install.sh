@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Podcast2MD 一键安装脚本（macOS Apple Silicon）
+# Read Podcast 一键安装脚本（macOS Apple Silicon）
 # 作用：检查环境 → 安装 ffmpeg 与 uv → 安装项目依赖 → 生成初始配置。
 # 只需运行一次；之后用 ./scripts/start.sh 启动。
 set -euo pipefail

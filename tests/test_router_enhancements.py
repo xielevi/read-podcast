@@ -34,7 +34,7 @@ def test_search_podcast_with_direct_rss_url(monkeypatch):
         instance.fetch_episodes.return_value = fake_episodes
 
         with TestClient(app) as client:
-            res = client.get("/api/podcast2md/search/podcast?q=https://example.com/feed.xml")
+            res = client.get("/api/read-podcast/search/podcast?q=https://example.com/feed.xml")
             assert res.status_code == 200
             data = res.json()
             assert len(data) >= 1
@@ -45,7 +45,7 @@ def test_search_podcast_with_direct_rss_url(monkeypatch):
 def test_delete_subscription(tmp_path, monkeypatch):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
-        "podcast2md:\n  podcasts:\n    - name: SubToDelete\n      rss_url: https://example.com/rss\n",
+        "read-podcast:\n  podcasts:\n    - name: SubToDelete\n      rss_url: https://example.com/rss\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(settings, "CONFIG_PATH", config_path)
@@ -53,11 +53,11 @@ def test_delete_subscription(tmp_path, monkeypatch):
 
     with TestClient(app) as client:
         # Delete non-existent
-        res_404 = client.delete("/api/podcast2md/subscriptions/NonExistent")
+        res_404 = client.delete("/api/read-podcast/subscriptions/NonExistent")
         assert res_404.status_code == 404
 
         # Delete existing
-        res_200 = client.delete("/api/podcast2md/subscriptions/SubToDelete")
+        res_200 = client.delete("/api/read-podcast/subscriptions/SubToDelete")
         assert res_200.status_code == 200
         assert res_200.json()["status"] == "ok"
         assert settings.PODCASTS == []
@@ -75,7 +75,7 @@ def test_get_episodes_swr_cache(monkeypatch):
 
     with TestClient(app) as client:
         # With SWR, expired cache returns immediately while triggering background refresh
-        res = client.get("/api/podcast2md/episodes?podcast_name=SWRPodcast")
+        res = client.get("/api/read-podcast/episodes?podcast_name=SWRPodcast")
         assert res.status_code == 200
         data = res.json()
         assert len(data) == 1
@@ -101,9 +101,10 @@ def test_get_episodes_cold_cache_returns_preview_and_schedules_full_refresh(monk
     monkeypatch.setattr(router_module, "_schedule_episode_refresh", lambda name, url: scheduled.append((name, url)))
 
     with TestClient(app) as client:
-        response = client.get("/api/podcast2md/episodes?podcast_name=ColdPodcast&limit=10")
+        response = client.get("/api/read-podcast/episodes?podcast_name=ColdPodcast&limit=10")
 
     assert response.status_code == 200
+    assert response.headers["x-read-podcast-cache-state"] == "warming"
     assert response.headers["x-podcast2md-cache-state"] == "warming"
     assert len(response.json()) == 10
     assert fetch_limits == [router_module.EPISODE_PREVIEW_LIMIT]
@@ -120,11 +121,11 @@ def test_get_episodes_limits_cached_payload(monkeypatch):
     }
 
     with TestClient(app) as client:
-        response = client.get("/api/podcast2md/episodes?podcast_name=PagedPodcast&limit=10")
+        response = client.get("/api/read-podcast/episodes?podcast_name=PagedPodcast&limit=10")
 
     assert response.status_code == 200
     assert len(response.json()) == 10
-    assert response.headers["x-podcast2md-cache-state"] == "complete"
+    assert response.headers["x-read-podcast-cache-state"] == "complete"
 
 
 def test_get_episodes_resumes_incomplete_cache_refresh(monkeypatch):
@@ -148,10 +149,10 @@ def test_get_episodes_resumes_incomplete_cache_refresh(monkeypatch):
     monkeypatch.setattr(router_module, "refresh_episodes_cache", fake_refresh)
 
     with TestClient(app) as client:
-        response = client.get("/api/podcast2md/episodes?podcast_name=WarmingPodcast&limit=0")
+        response = client.get("/api/read-podcast/episodes?podcast_name=WarmingPodcast&limit=0")
 
     assert response.status_code == 200
-    assert response.headers["x-podcast2md-cache-state"] == "complete"
+    assert response.headers["x-read-podcast-cache-state"] == "complete"
     assert len(response.json()) == 2
 
 
@@ -177,7 +178,7 @@ def test_get_episodes_applies_duration_filter(monkeypatch):
     monkeypatch.setattr(router_module, "_schedule_episode_refresh", lambda name, url: None)
 
     with TestClient(app) as client:
-        response = client.get(f"/api/podcast2md/episodes?podcast_name={podcast_name}&limit=10")
+        response = client.get(f"/api/read-podcast/episodes?podcast_name={podcast_name}&limit=10")
 
     assert response.status_code == 200
     assert [episode["title"] for episode in response.json()] == ["长集"]
@@ -211,7 +212,7 @@ def test_completed_keys_include_tasks_older_than_default_page(tmp_path, monkeypa
     monkeypatch.setattr(router_module, "list_completed_keys", database.list_completed_keys)
 
     with TestClient(app) as client:
-        response = client.get("/api/podcast2md/tasks/completed-keys")
+        response = client.get("/api/read-podcast/tasks/completed-keys")
 
     assert response.status_code == 200
     keys = response.json()
