@@ -1,0 +1,78 @@
+# Podcast2MD local/runtime ignores
+
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+config.yaml
+config.local.yaml
+secrets/
+
+# Docker deployment runtime configuration and generated output
+config/**
+!config/
+!config/**/
+!config/**/.gitkeep
+output/**
+!output/
+!output/**/
+!output/**/.gitkeep
+
+# Runtime workspace: downloads, transcripts, markdown output, logs, DB, cache
+workspace/**
+!workspace/
+!workspace/**/
+!workspace/**/.gitkeep
+/models/
+
+# Generated logs and local agent notes
+*.log
+test-log.md
+changelog.md
+
+# Media and generated transcription artifacts
+*.mp3
+*.m4a
+*.wav
+*.flac
+*.ogg
+*.aac
+*.opus
+*.wma
+*.audio
+*_raw.txt
+*.精修稿.md
+
+# Python runtime and build artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+.venv/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Local databases and caches
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+
+# Local one-off automation helpers that may contain machine paths or secrets
+*.local.py
+*.plist
+
+# IDE and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo

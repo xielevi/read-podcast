@@ -1,0 +1,242 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <!-- Podcast2MD -->
+  <title>读 播客</title>
+  <script>try { var savedReaderTheme = localStorage.getItem('reader_theme') || 'light'; document.documentElement.dataset.theme = savedReaderTheme === 'light' ? 'paper' : savedReaderTheme; } catch (ignore) { document.documentElement.dataset.theme = 'paper'; }</script>
+  <script>
+    (function () {
+      var currentPath = String(window.location.pathname || '/').replace(/\/+$/, '');
+      var appBasePath = currentPath && currentPath !== '/' ? currentPath : '';
+      window.PODCAST2MD_BASE_PATH = appBasePath;
+      var stylesheet = document.createElement('link');
+      stylesheet.rel = 'stylesheet';
+      stylesheet.href = appBasePath + '/app.css';
+      document.head.appendChild(stylesheet);
+    }());
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#episode-list">跳到单集列表</a>
+
+  <div class="app-shell">
+    <header class="masthead">
+      <div class="edition" id="edition-date"></div>
+      <div class="brand" aria-label="读 播客">
+        <div class="logo-mark" aria-hidden="true">🎙️</div>
+        <div class="brand-copy">
+          <span class="brand-kicker">让播客，从声音变成文字</span>
+          <h1>读 播客</h1>
+        </div>
+      </div>
+      <div class="mast-actions">
+        <span class="server-state"><span class="dot dot-accent" id="server-dot"></span><span id="server-status">可使用</span></span>
+        <span class="clock" id="clock"></span>
+      </div>
+    </header>
+
+    <main class="workspace">
+      <aside class="left-rail" aria-label="来源选择">
+        <div class="section-label">声音来源</div>
+        <div class="nav-tabs" role="tablist" aria-label="任务类型">
+          <button class="nav-tab active" id="tab-podcast" type="button" role="tab" aria-selected="true">播客订阅</button>
+          <button class="nav-tab" id="tab-custom" type="button" role="tab" aria-selected="false">本地音频</button>
+          <button class="nav-tab" id="tab-library" type="button" role="tab" aria-selected="false">稿件库</button>
+        </div>
+        <div class="podcast-scroll">
+          <div id="podcast-list"></div>
+          <button class="btn-add" id="add-podcast-btn" type="button">＋ 添加一档节目</button>
+        </div>
+      </aside>
+
+      <section class="content" id="main-content">
+        <div class="mode-panel is-active" id="podcast-panel" role="tabpanel">
+          <div class="content-head">
+            <div class="headline-group">
+              <span class="overline" id="center-sub">选择一档节目</span>
+              <h2 id="center-title">单集列表</h2>
+              <p>选择一期，转录后即可阅读。</p>
+            </div>
+            <div class="head-actions">
+              <label class="search" for="episode-search">
+                <span class="visually-hidden">搜索单集</span>
+                <input id="episode-search" type="search" placeholder="搜索单集标题" disabled>
+              </label>
+              <button class="icon-btn" id="refresh-btn" type="button" title="刷新单集" aria-label="刷新单集" hidden>刷新</button>
+            </div>
+          </div>
+          <div class="story-filter" role="tablist" aria-label="单集过滤">
+            <button class="active" id="filter-all" type="button" role="tab" aria-selected="true" aria-controls="episode-list">全部单集</button>
+            <button id="filter-pending" type="button" role="tab" aria-selected="false" aria-controls="episode-list">未转录</button>
+            <button id="filter-completed" type="button" role="tab" aria-selected="false" aria-controls="episode-list">已完成</button>
+          </div>
+          <div class="empty-state" id="episode-empty"><div><p>选择一档节目，看看最近更新。</p></div></div>
+          <div class="episode-list" id="episode-list" hidden></div>
+          <nav class="pagination" id="episode-pagination" aria-label="单集分页" hidden>
+            <button id="page-prev" type="button">上一页</button>
+            <span id="page-label" aria-live="polite">第 1 页</span>
+            <button id="page-next" type="button">下一页</button>
+          </nav>
+        </div>
+
+        <div class="mode-panel" id="custom-panel" role="tabpanel">
+          <div class="content-head">
+            <div class="headline-group">
+              <span class="overline">本地音频</span>
+              <h2>把一段声音变成文字</h2>
+              <p>选择音频和整理模板，转录后即可阅读。</p>
+            </div>
+          </div>
+          <div class="custom-form">
+            <div class="form-block">
+              <label class="form-label">音频文件 <span class="hint">支持常见音频格式</span></label>
+              <div class="upload-zone" id="upload-drop-zone" role="button" tabindex="0" aria-label="点击或拖拽上传音频">
+                <input type="file" id="audio-file-input" accept=".mp3,.m4a,.wav,.flac,.ogg,.aac,.opus,.wma" hidden>
+                <div class="upload-hint" id="upload-hint"><strong>选择音频文件</strong><span>也可以拖到这里</span></div>
+                <div id="upload-progress-wrap" hidden>
+                  <div class="progress-bar"><div class="progress-inner" id="upload-progress-inner"></div></div>
+                  <div class="upload-hint" id="upload-status"></div>
+                </div>
+                <div class="upload-hint" id="upload-success-info" hidden></div>
+              </div>
+            </div>
+
+            <div class="form-block">
+              <label class="form-label" for="prompt-template-select">文字样式</label>
+              <select class="form-input" id="prompt-template-select"><option value="">选择一种文字样式</option></select>
+            </div>
+
+            <div class="form-block">
+              <div class="prompt-head">
+                <label class="form-label" for="custom-prompt" style="margin:0">样式说明</label>
+              </div>
+              <textarea class="form-textarea" id="custom-prompt" rows="7" placeholder="选择文字样式后，这里会显示说明。" readonly></textarea>
+            </div>
+
+            <button class="solid-btn custom-submit" id="custom-submit-btn" type="button">转录</button>
+            <div class="result-actions" id="download-result-wrap" hidden>
+              <button class="solid-btn" id="read-result-btn" type="button">阅读</button>
+              <a class="download-btn" id="download-result-btn" href="#" download>下载</a>
+            </div>
+            <div class="about-note"><strong>一键转录</strong><br>从声音到文字，只需要选择文件和喜欢的文字样式。</div>
+          </div>
+        </div>
+
+        <div class="mode-panel" id="library-panel" role="tabpanel">
+          <div class="content-head">
+            <div class="headline-group">
+              <span class="overline">稿件库</span>
+              <h2>已完成的稿件</h2>
+              <p>播客与本地音频的产物都会留在这里。</p>
+            </div>
+            <label class="search" for="library-search">
+              <span class="visually-hidden">搜索稿件</span>
+              <input id="library-search" type="search" placeholder="搜索标题">
+            </label>
+          </div>
+          <div class="library-list" id="library-list" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <aside class="right-rail" aria-labelledby="inspector-title">
+        <section class="episode-inspector" id="episode-inspector">
+          <span class="overline">本期简介</span>
+          <h2 id="inspector-title">选择一期节目</h2>
+          <div class="inspector-meta" id="inspector-meta">点击单集卡片，在这里查看介绍。</div>
+          <div class="inspector-summary" id="inspector-summary">声音会在转录后变成可以慢慢阅读的文字。</div>
+        </section>
+
+        <section class="current-task" id="task-card" aria-label="转录状态" hidden>
+          <div class="task-queue-head"><span class="overline">任务队列</span><span id="task-queue-count"></span></div>
+          <div class="task-list" id="task-list" aria-live="polite"></div>
+        </section>
+
+        <section class="history-section" aria-labelledby="history-title">
+          <div class="history-head"><strong id="history-title">最近完成</strong><span>最近 7 条</span></div>
+          <div class="history-list" id="history-list"><p class="history-empty">完成稿件会出现在这里。</p></div>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div class="toast-container" id="toast-container" role="status" aria-live="polite" aria-atomic="false"></div>
+  <div class="overlay episode-summary-overlay" id="episode-summary-overlay"></div>
+  <aside class="episode-summary-drawer" id="episode-summary-drawer" aria-hidden="true" aria-labelledby="episode-summary-title" hidden>
+    <div class="drawer-head">
+      <div><span class="overline">本期简介</span><h2 id="episode-summary-title">选择一期节目</h2><p id="episode-summary-meta"></p></div>
+      <button class="close-btn" id="episode-summary-close-btn" type="button" aria-label="关闭本期简介">×</button>
+    </div>
+    <div class="inspector-summary" id="episode-summary-copy">声音会在转录后变成可以慢慢阅读的文字。</div>
+  </aside>
+
+  <div class="overlay" id="drawer-overlay"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-title">
+    <div class="drawer-head">
+      <div><span class="overline">添加节目</span><h2 id="drawer-title">订阅一档播客</h2><p>搜索节目名称，或直接粘贴订阅地址。</p></div>
+      <button class="close-btn" id="drawer-close-btn" type="button" aria-label="关闭添加订阅">×</button>
+    </div>
+    <div class="drawer-tools">
+      <input class="drawer-input" id="drawer-search" type="search" placeholder="搜索播客名称">
+      <div class="drawer-modes">
+        <button class="mode-btn active" id="mode-search-btn" type="button">搜索节目</button>
+        <button class="mode-btn" id="mode-manual-btn" type="button">输入订阅地址</button>
+      </div>
+    </div>
+    <div class="drawer-results" id="drawer-results"></div>
+    <div class="drawer-manual" id="drawer-manual" hidden>
+      <label for="manual-rss-url">订阅地址</label>
+      <input class="drawer-input mono" id="manual-rss-url" type="url" placeholder="https://example.com/feed.xml">
+      <label for="manual-pod-name">节目名称</label>
+      <input class="drawer-input" id="manual-pod-name" type="text" placeholder="例如：硬地骇客">
+      <button class="solid-btn" id="manual-add-btn" type="button" style="width:100%;margin-top:14px">添加节目</button>
+    </div>
+    <div class="drawer-confirm" id="drawer-confirm-footer" hidden>
+      <div class="selected-name" id="drawer-selected-name"></div>
+      <div class="selected-rss" id="drawer-selected-rss"></div>
+      <div class="button-row"><button class="ghost-btn" id="clear-selection-btn" type="button">取消</button><button class="solid-btn" id="confirm-add-btn" type="button">添加节目</button></div>
+    </div>
+  </aside>
+
+  <div class="overlay" id="reader-overlay"></div>
+  <section class="reader" id="manuscript-reader" aria-hidden="true" aria-labelledby="reader-title">
+    <article class="reader-sheet">
+      <header class="reader-head">
+        <div>
+          <h2 class="reader-title" id="reader-title">阅读</h2>
+          <div class="reader-meta-stats" id="reader-meta-stats"></div>
+        </div>
+        <div class="reader-actions">
+          <div class="reader-controls">
+            <button class="control-btn" id="font-dec-btn" type="button" title="减小字号">A-</button>
+            <button class="control-btn" id="font-inc-btn" type="button" title="增大字号">A+</button>
+            <button class="theme-btn theme-light" id="theme-light-btn" type="button" title="杏仁纸张" style="background:#fbf8f1;border:1px solid var(--line)"></button>
+            <button class="theme-btn theme-green" id="theme-green-btn" type="button" title="护眼绿" style="background:#eaf2e8;border:1px solid var(--line)"></button>
+            <button class="theme-btn theme-dark" id="theme-dark-btn" type="button" title="极夜黑" style="background:#1e1e1e;border:1px solid #444"></button>
+          </div>
+          <a class="reader-download" id="reader-download" href="#" download>下载</a>
+          <button class="close-btn" id="reader-close-btn" type="button" aria-label="关闭阅读">×</button>
+        </div>
+      </header>
+      <div class="reader-progress">
+        <input id="reader-progress-range" type="range" min="0" max="100" step="0.1" value="0" aria-label="阅读进度">
+        <span class="reader-progress-value" id="reader-progress-value">0%</span>
+      </div>
+      <div class="reader-layout">
+        <aside class="reader-toc" id="reader-toc" aria-label="大纲目录" hidden></aside>
+        <div class="manuscript-body" id="manuscript-body"><div class="reader-state">选择一份已完成稿件开始阅读。</div></div>
+      </div>
+    </article>
+  </section>
+
+  <script>
+    (function () {
+      var script = document.createElement('script');
+      script.src = (window.PODCAST2MD_BASE_PATH || '') + '/app.js';
+      document.body.appendChild(script);
+    }());
+  </script>
+</body>
+</html>

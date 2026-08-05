@@ -1,0 +1,8 @@
+# 开发者用：从当前源码构建镜像，而不是拉取官方镜像。
+# 用法：
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+services:
+  podcast2md:
+    image: podcast2md:local
+    build:
+      context: .

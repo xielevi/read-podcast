@@ -1,0 +1,84 @@
+# Web 层与脚本（app/、scripts/）
+
+## app/standalone.py — 应用入口
+
+`app.standalone:app` 是唯一运行入口。FastAPI `lifespan` 中：初始化数据库、执行一次音频清理、启动周期清理任务（`runtime.cleanup_interval_seconds`，默认 86400s；`runtime.audio_retention_days`，默认 7 天）。
+
+中间件 `web_access_middleware`：
+- 反向代理保留前缀时剥离 `web.base_path`（设置 `root_path`），剥离前缀的代理无需配置。
+- 可选 Basic Auth：`PODCAST2MD_BASIC_AUTH_USERNAME` 与 `PODCAST2MD_BASIC_AUTH_PASSWORD` 必须同时设置或同时留空（只设一个会启动失败）；健康检查路径始终免认证。
+- GZip 中间件压缩大响应。
+
+根路径 `/` 返回 `app/static/index.html`；相对资源 `/app.css` 与 `/app.js` 由同一入口提供，支持代理子路径。
+
+## app/router.py — HTTP API
+
+前缀 `/api/podcast2md`。`PublicTask` 模型仅暴露安全字段（不含 `log_path`、`output_path`），并包含经过脱敏的最后一条 `message`。
+
+| 方法 | 路径 | 功能 |
+| :--- | :--- | :--- |
+| GET | `/health` | 健康检查，免认证 |
+| GET | `/transcription/status` | 转录引擎安全元数据（不含 URL/Token/路径） |
+| GET | `/subscriptions` | 当前播客订阅列表 |
+| GET | `/episodes` | 剧集列表（SWR 缓存，`X-Podcast2MD-Cache-State` 头标识 complete/stale/warming） |
+| GET | `/search/podcast` | iTunes 检索 + 直连 RSS 解析 |
+| POST | `/subscriptions` | 添加订阅（校验 RSS 可达，写入 `config.yaml` 顶层 `podcasts`，预热缓存） |
+| DELETE | `/subscriptions/{name}` | 删除订阅（同步清理缓存） |
+| POST | `/tasks` | 创建 RSS 单集任务 |
+| POST | `/tasks/custom` | 创建自定义音频任务（prompt 必须来自预设模板，音频须在 uploads 内） |
+| GET | `/tasks` | 任务列表（`PublicTask`，`limit` 默认 20、最大 200） |
+| GET | `/tasks/completed-keys` | 全量成功稿件的节目/单集键与任务 ID |
+| GET | `/tasks/{id}` | 任务状态（`PublicTask`） |
+| DELETE | `/tasks/{id}` | 取消进行中任务；删除失败/取消记录（不删除音频、缓存或稿件） |
+| POST | `/tasks/{id}/retry` | 使用保留的原音频重试失败/取消任务，并替换旧记录 |
+| GET | `/tasks/{id}/stream` | SSE 实时日志流 |
+| GET | `/tasks/stream` | 全部活跃任务的 SSE 多路复用流 |
+| GET | `/tasks/{id}/content` | 读取输出文本（仅 `.md`/`.markdown`/`.txt`） |
+| GET | `/tasks/{id}/download` | 下载输出文件 |
+| POST | `/upload/audio` | 上传音频（扩展名白名单，`runtime.max_upload_bytes` 默认 2GiB；只返回文件名，不泄露绝对路径） |
+| GET | `/prompt-templates` | 预设 Prompt 模板列表 |
+
+订阅增删直接持久化到 `config.yaml`，重启后生效；写入逻辑与顶层/命名空间两种配置结构兼容。
+
+## app/tasks.py — 任务编排
+
+`run_pipeline`（RSS 任务）与 `run_custom_pipeline`（自定义音频任务）实现分阶段资源控制：
+
+- 下载：`_download_slots` 信号量，`runtime.download_concurrency`（默认 2）。
+- Whisper：`_whisper_lock` 全局单请求，确保不争用 Metal。
+- 精修：`_refine_slots` 信号量，`runtime.refine_concurrency`（默认 2）。
+
+同步流水线在 `asyncio.to_thread` 中执行，`_thread_reporter` 将阶段事件回投事件循环，同步更新数据库与 SSE。任务会持久化阶段、百分比和脱敏进度消息；失败时保留最后一个真实进度，原音频不被删除。**只有输出文件真实存在才标记 SUCCESS**，否则标记 FAILED 并提供重试入口。自定义任务的音频与输出路径必须位于 `workspace` 内（沙箱校验）。
+
+## app/sse.py — 实时日志
+
+`Notifier` 维护任务级与全局订阅队列。`subscribe(task_id)` 生成 SSE 消息（`data: {json}\n\n`），事件包含脱敏的 `status`、`stage`、`progress` 和 `message`；收到 `level=done` 或 `level=error` 终止；`subscribe()` 为全部任务复用流，仅在客户端断开时结束。每 15 秒发送一次注释心跳，队列上限 200，满时丢弃最旧消息。模块级单例 `notifier`。
+
+## app/database.py — 持久化
+
+基于 `aiosqlite`，数据库位于 `workspace/podcast2md.db`。lifespan 持有单连接并在退出时关闭，启用 WAL 与 `busy_timeout=5000`。`save_task`（INSERT OR REPLACE）、`update_task`（增量更新，自动写 `updated_at`）、`get_task`、`list_tasks`（按 `created_at DESC`）。任务更新字段经过白名单校验。
+
+## app/models/task.py — 数据模型
+
+`TaskStatus` 枚举：`pending`/`running`/`success`/`failed`/`cancelled`。`Task`（Pydantic）字段：`id`、`podcast_name`、`episode_title`、`status`、`progress_pct`、`stage`、`message`、`output_path`、`created_at`、`updated_at`。
+
+## scripts/mlx_backend.py — 原生 MLX Whisper 服务
+
+在 macOS Apple Silicon 主机上原生运行（Docker 外），提供 Metal 加速转录。
+
+- `GET /health`：返回引擎与模型状态。
+- `POST /transcribe`：接收 multipart `file`，Bearer Token 鉴权，写入临时文件后转录并删除。
+- `POST /transcribe-path`：接收共享根目录内的相对 `path`；服务端 `resolve` 后必须仍位于 `SHARED_AUDIO_ROOT` 且扩展名属于白名单，否则拒绝。未配置共享根时返回 404。
+- `GET/DELETE /progress/{request_id}`：为 Web 客户端提供安全的分片完成度查询；清理接口只删除内存中的进度记录。
+- JSON 响应会将 MLX 结果中的 `NaN`/`Infinity` 指标转换为 `null`，避免已完成的转录因非标准 JSON 失败。
+- 单把 `_transcription_lock` 保证一次只跑一个完整转录请求；任务结束后按 `mlx.model_idle_seconds`（默认 300s，`0` 立即释放）保温模型，超时释放模型与 Metal cache；连续任务复用已加载模型。
+
+普通参数来自 `mlx.*`；环境变量只保留 `PODCAST2MD_WHISPER_API_TOKEN`。
+
+## scripts/ 下的维护脚本
+
+均为维护包装层，**不参与 Web 任务执行**：
+
+- `podcast_pipeline.py`：CLI 批量处理（`--limit`/`--podcast`/`--title`/`--id`/`--dry-run`/`--force`/`--skip-refine`），文件锁防并发，调用 `PodcastPipeline`。
+- `reprocess.py single`：对一份已缓存的 `*_raw.txt` 重新精修。
+- `reprocess.py batch`：从 RSS 匹配元数据，批量重处理历史转录稿。
