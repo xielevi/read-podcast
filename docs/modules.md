@@ -24,7 +24,7 @@
 
 ## rss_parser.py — RSS 解析
 
-`RSSParser(rss_url, name, insecure_tls=False).fetch_episodes(limit, min_duration_seconds, reverse, filter_id, filter_title)` 默认校验 TLS；仅订阅显式开启 `insecure_tls` 时，证书错误才会降级重试。其余行为基于 `feedparser` 抓取并清洗节目：剥离 HTML 的简介、提取 enclosure 音频链接、解析 `itunes:duration`。
+`RSSParser(rss_url, name, insecure_tls=False).fetch_episodes(limit, min_duration_seconds, reverse, filter_id, filter_title)` 默认校验 TLS；仅订阅显式开启 `insecure_tls` 时，证书错误才会降级重试。其余行为基于 `feedparser` 抓取并清洗节目：剥离 HTML 的简介、提取 enclosure 音频链接、解析 `itunes:duration`。抓取时顺带记录频道封面到 `channel_image`（`itunes:image` 优先，零额外网络请求），供添加订阅时作为封面图回退。
 
 ## downloader.py — 音频下载
 
@@ -75,6 +75,10 @@
 - `state.py`：`StateManager`（已处理节目 ID 集合，文件锁 + 原子写）与 `acquire_lock`。
 - `quality.py`：`verify_refinement_quality(md, raw_text, min_output_ratio=0.9)`、`count_meaningful_chars` 与质量特征。
 - `metadata.py`：`extract_metadata_from_text`（识别主播/嘉宾）与 `extract_frontmatter`；`utils/__init__.py` 保留兼容导出。
+
+## connectors.py — 文件连接器
+
+把成稿推送到外部文档/群机器人的 Webhook，**代码不硬编码任何提供商**。`available_connectors(config)` 读取 `connectors` 声明并标注是否 `configured`（对应 `url_env` 环境变量是否有值），不暴露地址。`build_payload(fmt, doc, max_chars)` 按 `feishu`/`dingtalk`/`slack`/`markdown` 构造请求体并按上限裁剪正文。`send_document(connector, doc)` 从 `url_env` 取地址、`validate_public_url` 做 SSRF 校验后 POST；HTTP 非 2xx 或飞书/钉钉业务错误码非 0 时抛 `ConnectorError`（不记录地址与响应正文，避免泄露 token）。
 
 ## pipeline.py — 业务流水线（核心）
 

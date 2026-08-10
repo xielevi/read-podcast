@@ -143,6 +143,9 @@ class Settings:
         # --- [4. Prompt 模板列表] ---
         self.PROMPT_TEMPLATES = self._raw_config.get('prompt_templates', [])
 
+        # --- [5. 文件连接器] ---
+        self.CONNECTORS = self._raw_config.get('connectors', [])
+
     def get_podcast_dir(self, podcast_name, sub_type='markdown'):
         mapping = {
             'downloads': 'downloads',

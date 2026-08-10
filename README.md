@@ -225,6 +225,28 @@ Windows／Linux／Intel Mac 上也能转录。云端接口通常限制单文件 
 它复用你已经配置好的精修服务商（`refiner.api_base` / `refiner.model` 与 `REFINER_API_KEY`），
 无需另配 Key。没配置 AI 时，助手入口会自动隐藏，不影响转录主流程。
 
+### 🗂️ 杂志封面合集
+
+订阅节目时会自动记住它的封面图（搜索添加用 iTunes 封面，直接填 RSS 则用频道封面）。
+「播客订阅」页顶部会把这些封面拼成一条杂志式合集封面，点封面即可跳到对应节目。
+封面图统一经服务端代理加载（做了 SSRF 校验与体积/类型限制），浏览器不会直连第三方 CDN。
+
+### 📤 文件连接器（发送到飞书 / 钉钉 / 自建知识库）
+
+读完一篇稿件，可以在阅读页点「发送到…」，把成稿推送到你配置的外部目标——
+飞书/钉钉群机器人、Slack，或你自建服务/Zapier 的 Webhook（再由它转存到飞书文档、
+Google Drive、Notion 等）。在 `config/config.yaml` 里声明连接器：
+
+```yaml
+connectors:
+  - name: 飞书群
+    format: feishu        # feishu | dingtalk | slack | markdown
+    url_env: READ_PODCAST_CONNECTOR_FEISHU_URL
+```
+
+Webhook 地址（通常含 token，属机密）只填在 `.env` 的对应变量里，代码不硬编码任何服务商。
+没配置连接器时，「发送到…」入口会自动隐藏。
+
 ## 🛠️ 进阶与开发
 
 - 架构与设计决策：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)

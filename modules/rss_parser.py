@@ -21,6 +21,24 @@ class RSSParser:
         self.rss_url = rss_url
         self.name = name
         self.insecure_tls = bool(insecure_tls)
+        self.channel_image = ""
+
+    @staticmethod
+    def _extract_channel_image(feed) -> str:
+        """从频道信息里取封面图地址（itunes:image 优先），失败返回空串。"""
+        try:
+            channel = getattr(feed, "feed", None) or {}
+            itunes_image = channel.get("image")
+            if isinstance(itunes_image, dict):
+                href = itunes_image.get("href") or itunes_image.get("url") or ""
+                if href:
+                    return str(href)
+            href = channel.get("itunes_image", {})
+            if isinstance(href, dict) and href.get("href"):
+                return str(href["href"])
+        except Exception:
+            return ""
+        return ""
 
     def fetch_episodes(self, limit=5, min_duration_seconds=0, reverse=False, filter_id=None, filter_title=None):
         # 获取播客节目，支持从旧(reverse=True)或从新(reverse=False)开始，或指定 ID/标题过滤
@@ -53,6 +71,8 @@ class RSSParser:
             # 如果是 stovol.club 这种经常超时的，尝试备选镜像或稍后重试逻辑
             return []
         
+        self.channel_image = self._extract_channel_image(feed) or self.channel_image
+
         if feed.bozo and not feed.entries:
             logger.error(f"解析 RSS 失败 [{self.name}]: {feed.bozo_exception}")
             return []

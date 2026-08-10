@@ -254,11 +254,60 @@
       list.appendChild(fragment);
     }
 
+    // 封面图统一走服务端代理（SSRF 校验 + 体积/类型限制），避免浏览器直连第三方 CDN。
+    function artworkUrl(image) {
+      return image ? appUrl('/api/read-podcast/artwork?url=' + encodeURIComponent(image)) : '';
+    }
+
+    function makeArtworkTile(image, fallbackText, className) {
+      var wrap = document.createElement('span');
+      wrap.className = className;
+      var mono = document.createElement('span');
+      mono.className = 'art-monogram';
+      mono.textContent = String(fallbackText || '播').trim().slice(0, 1) || '播';
+      wrap.appendChild(mono);
+      if (image) {
+        var img = document.createElement('img');
+        img.loading = 'lazy';
+        img.alt = '';
+        img.decoding = 'async';
+        img.addEventListener('load', function () { wrap.classList.add('has-art'); });
+        img.addEventListener('error', function () { img.remove(); });
+        img.src = artworkUrl(image);
+        wrap.appendChild(img);
+      }
+      return wrap;
+    }
+
+    function renderCoverCollage(podcasts) {
+      var section = byId('cover-collage');
+      var strip = byId('cover-strip');
+      if (!section || !strip) return;
+      var withArt = (Array.isArray(podcasts) ? podcasts : []).filter(function (p) { return p && p.image; });
+      if (withArt.length < 2) { section.hidden = true; strip.replaceChildren(); return; }
+      strip.replaceChildren();
+      withArt.slice(0, 8).forEach(function (podcast) {
+        var tile = document.createElement('button');
+        tile.type = 'button';
+        tile.className = 'cover-tile';
+        tile.title = String(podcast.name || '');
+        tile.appendChild(makeArtworkTile(podcast.image, podcast.name, 'cover-art'));
+        tile.addEventListener('click', function () { selectPodcast(String(podcast.name || '')); });
+        strip.appendChild(tile);
+      });
+      var edition = byId('cover-edition');
+      if (edition) {
+        edition.textContent = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) + ' · 订阅合集';
+      }
+      section.hidden = false;
+    }
+
     function loadSubscriptions() {
       return fetch(appUrl('/api/read-podcast/subscriptions'))
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (podcasts) {
           renderPodcastList(podcasts);
+          renderCoverCollage(podcasts);
           prefetchEpisodePages(podcasts);
           return podcasts;
         })
@@ -1012,24 +1061,24 @@
       }
       items.forEach(function (podcast, index) {
         var item = document.createElement('button'); item.type = 'button'; item.className = 'search-result'; item.style.setProperty('--item-index', index);
-        var monogram = document.createElement('span'); monogram.className = 'result-monogram'; monogram.textContent = String(podcast.name || '播').trim().slice(0, 1) || '播';
+        var monogram = makeArtworkTile(podcast.image, podcast.name, 'result-monogram');
         var copy = document.createElement('span'); copy.style.minWidth = '0';
         var name = document.createElement('span'); name.className = 'result-name'; name.style.display = 'block'; name.textContent = String(podcast.name || '未命名播客');
         var meta = document.createElement('span'); meta.className = 'result-meta'; meta.style.display = 'block'; meta.textContent = [podcast.artist, podcast.genre, podcast.track_count ? podcast.track_count + ' 集' : ''].filter(Boolean).join(' · ');
         copy.append(name, meta);
         var arrow = document.createElement('span'); arrow.textContent = '›'; arrow.setAttribute('aria-hidden', 'true');
-        item.append(monogram, copy, arrow); item.addEventListener('click', function () { selectDrawerCandidate(String(podcast.name || ''), String(podcast.rss_url || '')); }); results.appendChild(item);
+        item.append(monogram, copy, arrow); item.addEventListener('click', function () { selectDrawerCandidate(String(podcast.name || ''), String(podcast.rss_url || ''), String(podcast.image || '')); }); results.appendChild(item);
       });
     }
-    function selectDrawerCandidate(name, rssUrl) { _drawerSelected = { name: name, rss_url: rssUrl }; byId('drawer-selected-name').textContent = name; byId('drawer-selected-rss').textContent = rssUrl; setHidden(byId('drawer-confirm-footer'), false); }
+    function selectDrawerCandidate(name, rssUrl, image) { _drawerSelected = { name: name, rss_url: rssUrl, image: image || '' }; byId('drawer-selected-name').textContent = name; byId('drawer-selected-rss').textContent = rssUrl; setHidden(byId('drawer-confirm-footer'), false); }
     function clearDrawerSelection() { _drawerSelected = null; setHidden(byId('drawer-confirm-footer'), true); }
-    function confirmSelectedPodcast() { if (_drawerSelected) confirmAddPodcast(_drawerSelected.name, _drawerSelected.rss_url); }
-    function confirmAddPodcast(name, rssUrl) {
+    function confirmSelectedPodcast() { if (_drawerSelected) confirmAddPodcast(_drawerSelected.name, _drawerSelected.rss_url, _drawerSelected.image); }
+    function confirmAddPodcast(name, rssUrl, image) {
       var cleanName = String(name || '').trim(); var cleanUrl = String(rssUrl || '').trim();
       if (!cleanName || !cleanUrl) { addLog('错误：节目名称和 RSS URL 均不能为空', 'error'); return; }
       var buttons = [byId('confirm-add-btn'), byId('manual-add-btn')]; buttons.forEach(function (button) { button.disabled = true; });
       addLog('正在验证 RSS：' + cleanName, 'running');
-      fetch(appUrl('/api/read-podcast/subscriptions'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cleanName, rss_url: cleanUrl }) })
+      fetch(appUrl('/api/read-podcast/subscriptions'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cleanName, rss_url: cleanUrl, image: String(image || '') }) })
         .then(function (response) { return response.json().then(function (data) { if (!response.ok) throw new Error(data.detail || 'HTTP ' + response.status); return data; }); })
         .then(function () { addLog('节目「' + cleanName + '」已成功订阅', 'success'); closeDrawer(); loadSubscriptions(); })
         .catch(function (error) { addLog('添加失败：' + errorMessage(error), 'error'); })
@@ -1351,6 +1400,7 @@
       closeAssistantPanel();
       hideLookupPopover();
       hideLookupCard();
+      closeExportMenu();
       if (_tocObserver) {
         _tocObserver.disconnect();
         _tocObserver = null;
@@ -1721,6 +1771,107 @@
       });
     }
 
+    // ── 文件连接器（把成稿发送到外部文档/群机器人） ──
+    var _connectors = [];
+
+    function closeExportMenu() {
+      var menu = byId('export-menu');
+      if (menu) menu.hidden = true;
+      var btn = byId('reader-export-btn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+
+    function renderExportMenu() {
+      var menu = byId('export-menu');
+      menu.replaceChildren();
+      if (!_connectors.length) {
+        var none = document.createElement('div');
+        none.className = 'export-menu-empty';
+        none.textContent = '未配置连接器';
+        menu.appendChild(none);
+        return;
+      }
+      _connectors.forEach(function (connector) {
+        var row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'export-menu-item';
+        row.setAttribute('role', 'menuitem');
+        var label = document.createElement('span');
+        label.textContent = String(connector.name || '');
+        row.appendChild(label);
+        if (!connector.configured) {
+          row.disabled = true;
+          var hint = document.createElement('span');
+          hint.className = 'export-menu-hint';
+          hint.textContent = '未配置';
+          row.appendChild(hint);
+        } else {
+          row.addEventListener('click', function () { exportToConnector(connector.name); });
+        }
+        menu.appendChild(row);
+      });
+    }
+
+    function openExportMenu() {
+      renderExportMenu();
+      var btn = byId('reader-export-btn');
+      var menu = byId('export-menu');
+      menu.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      var rect = btn.getBoundingClientRect();
+      var top = rect.bottom + 6;
+      var left = Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8));
+      menu.style.top = top + 'px';
+      menu.style.left = left + 'px';
+    }
+
+    function toggleExportMenu() {
+      if (byId('export-menu').hidden) openExportMenu();
+      else closeExportMenu();
+    }
+
+    function exportToConnector(name) {
+      if (!_currentReadingTaskId) { addLog('请先打开一篇稿件', 'error'); return; }
+      closeExportMenu();
+      addLog('正在发送到「' + name + '」…', 'running');
+      fetch(safeTaskUrl(_currentReadingTaskId, '/export'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connector: name })
+      })
+        .then(function (response) {
+          return response.text().then(function (raw) {
+            if (!response.ok) { var detail = raw; try { detail = JSON.parse(raw).detail || detail; } catch (ignore) {} throw new Error(detail || 'HTTP ' + response.status); }
+            return JSON.parse(raw);
+          });
+        })
+        .then(function (data) {
+          addLog('已发送到「' + name + '」' + (data && data.truncated ? '（内容较长已截断）' : ''), 'success');
+        })
+        .catch(function (error) { addLog('发送失败：' + errorMessage(error), 'error'); });
+    }
+
+    function initConnectors() {
+      fetch(appUrl('/api/read-podcast/connectors'))
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (data) {
+          _connectors = Array.isArray(data) ? data : [];
+          // 至少配置好一个连接器时才显示导出入口。
+          var anyConfigured = _connectors.some(function (c) { return c.configured; });
+          setHidden(byId('reader-export-btn'), !anyConfigured);
+        })
+        .catch(function () { _connectors = []; });
+
+      byId('reader-export-btn').addEventListener('click', function (event) { event.stopPropagation(); toggleExportMenu(); });
+      document.addEventListener('mousedown', function (event) {
+        var menu = byId('export-menu');
+        if (menu.hidden) return;
+        if (!menu.contains(event.target) && event.target !== byId('reader-export-btn')) closeExportMenu();
+      });
+      window.addEventListener('resize', closeExportMenu);
+    }
+
     initAssistant();
+    initConnectors();
     loadSubscriptions();
     loadHistory();

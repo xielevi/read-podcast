@@ -190,5 +190,27 @@ prompt_templates:
 
       可以使用 `##`、`###` 标题和简洁列表；只有在信息明确且适合对照时才使用表格。直接输出会议纪要，不要输出整理过程或额外说明。
 
+# ── 文件连接器（把成稿一键推送到外部文档/群机器人）──
+# 代码不硬编码任何提供商：这里只声明名称、格式与承载 Webhook 地址的环境变量名；
+# 真实地址（通常含 token，属机密）只放 .env。format 可选：
+#   feishu   飞书自定义机器人（text 消息）
+#   dingtalk 钉钉自定义机器人（markdown 消息）
+#   slack    Slack / 兼容 Incoming Webhook（text 消息）
+#   markdown 通用 Webhook：POST 结构化 JSON（title/podcast/markdown/source_link），
+#            可对接自建服务或 Zapier/Make 等，再转存到飞书文档 / Google Drive 等。
+# 示例（默认留空；需要时在 config/config.yaml 覆盖，并在 .env 填对应 URL）：
+# connectors:
+#   - name: 飞书群
+#     format: feishu
+#     url_env: READ_PODCAST_CONNECTOR_FEISHU_URL
+#   - name: 钉钉群
+#     format: dingtalk
+#     url_env: READ_PODCAST_CONNECTOR_DINGTALK_URL
+#   - name: 我的知识库
+#     format: markdown
+#     url_env: READ_PODCAST_CONNECTOR_WEBHOOK_URL
+#     max_chars: 40000
+connectors: []
+
 # Example podcasts (manage via WebUI or override in ./config/config.yaml)
 podcasts: []

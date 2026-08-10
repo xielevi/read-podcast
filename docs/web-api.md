@@ -19,10 +19,11 @@
 | :--- | :--- | :--- |
 | GET | `/health` | 健康检查，免认证 |
 | GET | `/transcription/status` | 转录引擎安全元数据（含 `backend`/`self_contained`，不含 URL/Token/路径） |
-| GET | `/subscriptions` | 当前播客订阅列表 |
+| GET | `/subscriptions` | 当前播客订阅列表（含持久化的 `image` 封面图，若有） |
+| GET | `/artwork` | SSRF 安全的封面图代理（`url` 参数；校验公网地址、限制类型 image/* 与体积 5MB，`Cache-Control` 一天） |
 | GET | `/episodes` | 剧集列表（SWR 缓存，`X-Read-Podcast-Cache-State` 头标识 complete/stale/warming） |
 | GET | `/search/podcast` | iTunes 检索 + 直连 RSS 解析 |
-| POST | `/subscriptions` | 添加订阅（校验 RSS 可达，写入 `config.yaml` 顶层 `podcasts`，预热缓存） |
+| POST | `/subscriptions` | 添加订阅（校验 RSS 可达，写入 `config.yaml` 顶层 `podcasts`，预热缓存；可选 `image` 封面图，缺省回退 RSS 频道封面） |
 | DELETE | `/subscriptions/{name}` | 删除订阅（同步清理缓存） |
 | POST | `/tasks` | 创建 RSS 单集任务 |
 | POST | `/tasks/custom` | 创建自定义音频任务（prompt 必须来自预设模板，音频须在 uploads 内） |
@@ -41,12 +42,16 @@
 | POST | `/assistant/lookup` | 百科查询：解释文字稿中的概念/人物/术语（`term`≤200，可选 `context`≤4000） |
 | POST | `/tasks/{id}/chat` | 针对某份已完成文字稿的问答，回答严格基于文字稿内容（`question`≤2000，可带 `history`） |
 | POST | `/assistant/library/chat` | 跨多期播客问答：在整个稿件库中检索相关节目后综合作答，返回 `answer` 与带编号的 `sources` |
+| GET | `/connectors` | 可用文件连接器清单（`name`/`format`/`configured`，不含 Webhook 地址） |
+| POST | `/tasks/{id}/export` | 把某份成稿推送到指定连接器目标（`connector` 名称，来自 `/connectors`） |
 
 订阅增删直接持久化到 `config.yaml`，重启后生效；写入逻辑与顶层/命名空间两种配置结构兼容。
 
 **AI 阅读助手（`/assistant/*` 与 `/tasks/{id}/chat`）** 复用 refiner 段的 OpenAI 兼容服务商配置与 `REFINER_API_KEY`，不引入新的凭据来源。`chat` 端点读取任务输出文本（沿用与 `/content` 一致的路径与类型校验），剥离 frontmatter 后按 `ASSISTANT_CONTEXT_CHAR_BUDGET`（默认 24000 字符）截断灌入模型，只保留最近 `ASSISTANT_MAX_HISTORY`（默认 8）轮历史。未配置 AI 时返回 503 并附可读原因，前端据 `/assistant/status` 隐藏入口。
 
 **跨节目问答（`/assistant/library/chat`）** 面向整个稿件库：取最近 `LIBRARY_CORPUS_LIMIT`（默认 60）期已成功稿件，经 `modules.library_qa` 的零依赖关键词检索（ASCII 词 + 中文二元组打分、新近意图回退）挑出最相关的若干期，从每期抽取有界相关片段拼成带编号来源的上下文，再交给模型综合作答（要求标注各观点来自哪一期、点出共识与分歧、片段外内容不编造）。返回的 `sources` 含 `index`/`task_id`/`title`/`podcast`，前端渲染为可点击跳转到对应稿件的来源标签。稿件库为空时返回 404。
+
+**文件连接器（`/connectors` 与 `/tasks/{id}/export`）** 复用 `modules.connectors`，把成稿一键推送到外部文档/群机器人。连接器在 `connectors` 配置里声明 `name`、`format`（feishu/dingtalk/slack/markdown）与承载 Webhook 地址的环境变量名 `url_env`；真实地址（含 token）只从 `.env` 读取，`/connectors` 只回传是否 `configured`，绝不暴露地址。导出前 `validate_public_url` 做 SSRF 校验，正文按平台上限裁剪并剥离 frontmatter，飞书/钉钉的业务错误码（`code`/`errcode`≠0）视为失败。目标返回失败时端点返回 502 并附脱敏原因。
 
 ## app/tasks.py — 任务编排
 

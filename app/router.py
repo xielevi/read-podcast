@@ -7,6 +7,7 @@ Read Podcast API Router
 from __future__ import annotations
 
 import json
+import re
 import uuid as _uuid
 import asyncio
 import time
@@ -39,6 +40,12 @@ from app.tasks import (
 )
 from app.sse import notifier
 from modules.config import settings
+from modules.connectors import (
+    ConnectorError,
+    available_connectors,
+    find_connector,
+    send_document,
+)
 from modules.formatter import strip_leading_frontmatter
 from modules.library_qa import EpisodeDoc, build_library_context
 from modules.refiner import AssistantError, assistant_available, chat_completion
@@ -60,6 +67,7 @@ api_router = router
 class AddPodcastRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     rss_url: str = Field(min_length=1, max_length=2048)
+    image: str = Field(default="", max_length=2048)
 
 class CreateTaskRequest(BaseModel):
     podcast_name: str = Field(min_length=1, max_length=200)
@@ -85,6 +93,9 @@ class ChatRequest(BaseModel):
 class LibraryChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     history: List[ChatMessage] = Field(default_factory=list)
+
+class ExportRequest(BaseModel):
+    connector: str = Field(min_length=1, max_length=200)
 
 class PublicTask(BaseModel):
     id: str
@@ -167,6 +178,65 @@ async def transcription_status() -> Dict:
 @api_router.get("/subscriptions")
 async def get_subscriptions() -> List[Dict]:
     return settings.PODCASTS
+
+
+# 允许代理的封面图类型；上游返回其他类型时拒绝，防止把代理当成任意抓取器。
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": "image/jpeg",
+    "image/jpg": "image/jpeg",
+    "image/png": "image/png",
+    "image/webp": "image/webp",
+    "image/gif": "image/gif",
+    "image/avif": "image/avif",
+}
+MAX_ARTWORK_BYTES = 5 * 1024 * 1024
+
+
+def _safe_artwork_url(url: str) -> str:
+    """仅接受解析到公网地址的 http(s) 封面图 URL，否则返回空串。"""
+    candidate = str(url or "").strip()
+    if not candidate:
+        return ""
+    try:
+        validate_public_url(candidate)
+    except UnsafeUrlError:
+        return ""
+    return candidate
+
+
+@api_router.get("/artwork")
+async def artwork_proxy(url: str = Query(..., max_length=2048)):
+    """SSRF 安全的封面图代理：校验公网地址、限制体积与类型，避免浏览器直连第三方 CDN。"""
+    from modules.network_security import read_limited, safe_get
+
+    if not _safe_artwork_url(url):
+        raise HTTPException(status_code=400, detail="封面图地址不合法或不安全")
+
+    def _fetch() -> tuple[bytes, str]:
+        response = safe_get(url, timeout=10, stream=True)
+        try:
+            response.raise_for_status()
+            content_type = (response.headers.get("Content-Type", "") or "").split(";")[0].strip().lower()
+            if content_type not in _ALLOWED_IMAGE_TYPES:
+                raise HTTPException(status_code=415, detail="不支持的封面图类型")
+            data = read_limited(response, MAX_ARTWORK_BYTES)
+            return data, _ALLOWED_IMAGE_TYPES[content_type]
+        finally:
+            response.close()
+
+    try:
+        data, media_type = await asyncio.to_thread(_fetch)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.debug("封面图代理失败: %s", exc)
+        raise HTTPException(status_code=502, detail="封面图获取失败")
+
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 def _podcast_min_duration(podcast_name: str) -> int:
     podcast_cfg = settings.get_podcast_config(podcast_name) or {}
@@ -436,7 +506,12 @@ async def add_subscription(body: AddPodcastRequest) -> Dict:
     if not is_valid:
         raise HTTPException(status_code=400, detail="RSS URL 无效或无法解析出任何期数，请检查链接是否正确。")
 
-    await _mutate_podcasts(lambda podcasts: [*podcasts, {"name": name, "rss_url": rss_url}])
+    # 封面图：优先用调用方（搜索结果）提供的，其次回退 RSS 频道封面；仅接受公网 http(s)。
+    image = _safe_artwork_url(body.image.strip() or parser.channel_image)
+    entry = {"name": name, "rss_url": rss_url}
+    if image:
+        entry["image"] = image
+    await _mutate_podcasts(lambda podcasts: [*podcasts, entry])
 
     # 新添加订阅自动预热剧集缓存
     bg_task = asyncio.create_task(refresh_episodes_cache(name, rss_url))
@@ -836,3 +911,51 @@ async def chat_with_library(body: LibraryChatRequest) -> Dict:
         "episodes_searched": len(docs),
         "context_truncated": selection.truncated,
     }
+
+
+# ── 文件连接器（把成稿推送到外部文档/群机器人）──
+
+def _frontmatter_value(text: str, key: str) -> str:
+    """从 Markdown 前置 frontmatter 里取一个标量值（找不到返回空串）。"""
+    match = re.match(r"^\s*---\s*\n(.*?)\n---\s*\n", text, flags=re.DOTALL)
+    if not match:
+        return ""
+    for line in match.group(1).splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"{key}:"):
+            return stripped[len(key) + 1 :].strip().strip("'\"")
+    return ""
+
+
+@api_router.get("/connectors")
+async def get_connectors() -> List[Dict]:
+    """可用连接器清单（不含 Webhook 地址），供前端渲染导出入口。"""
+    return available_connectors(settings.CONNECTORS)
+
+
+@api_router.post("/tasks/{task_id}/export")
+async def export_task(task_id: str, body: ExportRequest) -> Dict:
+    """把某份成稿推送到指定连接器目标。"""
+    task = await get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
+
+    connector = find_connector(settings.CONNECTORS, body.connector.strip())
+    if not connector:
+        raise HTTPException(status_code=404, detail=f"连接器 '{body.connector}' 不存在")
+
+    _output_file, content = _read_task_output_text(task)
+    source_link = _frontmatter_value(content, "source_link") or _frontmatter_value(content, "link")
+    doc = {
+        "title": task.episode_title or _output_file.stem,
+        "podcast": task.podcast_name or "",
+        "markdown": strip_leading_frontmatter(content).strip(),
+        "source_link": source_link,
+    }
+
+    try:
+        result = await asyncio.to_thread(send_document, connector, doc)
+    except ConnectorError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return {"task_id": task_id, "status": "sent", **result}
