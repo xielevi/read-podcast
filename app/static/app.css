@@ -734,12 +734,20 @@
 
     /* 文件连接器导出 */
     .control-btn.reader-export-btn { width: auto; padding: 0 12px; font-weight: 700; }
-    .export-menu { position: fixed; z-index: 62; min-width: 190px; padding: 6px; background: var(--paper-light); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow-hover, 0 12px 40px rgba(0,0,0,.18)); }
+    .export-menu { position: fixed; z-index: 62; min-width: 236px; max-width: 300px; padding: 6px; background: var(--paper-light); border: 1px solid var(--line-strong); border-radius: 12px; box-shadow: var(--shadow-hover, 0 12px 40px rgba(0,0,0,.18)); }
     .export-menu[hidden] { display: none; }
-    .export-menu-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 9px 11px; border: 0; border-radius: 8px; cursor: pointer; background: transparent; color: var(--ink); font-family: var(--sans); font-size: 13px; text-align: left; }
-    .export-menu-item:hover:not(:disabled) { color: var(--wine); background: rgba(120,31,53,.08); }
-    .export-menu-item:disabled { opacity: .55; cursor: default; }
-    .export-menu-hint { color: var(--ink-faint); font-size: 10px; }
+    .export-item { padding: 8px 9px; border-radius: 9px; }
+    .export-item + .export-item { margin-top: 2px; border-top: 1px solid var(--line); padding-top: 10px; }
+    .export-item.is-disabled { opacity: .55; }
+    .export-item-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .export-item-name { font-family: var(--sans); font-size: 13px; font-weight: 650; color: var(--ink); }
+    .export-item-badge { flex: 0 0 auto; color: var(--ink-faint); font-family: var(--sans); font-size: 10px; }
+    .export-item-hint { margin-top: 4px; color: var(--ink-faint); font-family: var(--sans); font-size: 11px; }
+    .export-item-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .export-action { padding: 5px 10px; border: 1px solid var(--wine); border-radius: 14px; cursor: pointer; color: var(--paper-light); background: var(--wine); font-family: var(--sans); font-size: 11px; font-weight: 650; }
+    .export-action:hover { background: var(--wine-dark); border-color: var(--wine-dark); }
+    .export-action.ghost { color: var(--ink-soft); border-color: var(--line-strong); background: transparent; }
+    .export-action.ghost:hover { color: var(--wine); border-color: var(--wine); background: transparent; }
     .export-menu-empty { padding: 10px 11px; color: var(--ink-faint); font-family: var(--sans); font-size: 12px; }
     html[data-theme="dark"] .export-menu { background-color: var(--paper-deep); color: var(--ink); border-color: var(--line-strong); }
     html[data-theme="green"] .export-menu { background-color: var(--paper); color: var(--ink); border-color: var(--line-strong); }

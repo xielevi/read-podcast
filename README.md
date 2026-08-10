@@ -250,21 +250,35 @@ Windows／Linux／Intel Mac 上也能转录。云端接口通常限制单文件 
 「播客订阅」页顶部会把这些封面拼成一条杂志式合集封面，点封面即可跳到对应节目。
 封面图统一经服务端代理加载（做了 SSRF 校验与体积/类型限制），浏览器不会直连第三方 CDN。
 
-### 📤 文件连接器（发送到飞书 / 钉钉 / 自建知识库）
+### 📤 文件连接器（发送到飞书 / 钉钉 / Notion / 自建知识库）
 
-读完一篇稿件，可以在阅读页点「发送到…」，把成稿推送到你配置的外部目标——
-飞书/钉钉群机器人、Slack，或你自建服务/Zapier 的 Webhook（再由它转存到飞书文档、
-Google Drive、Notion 等）。在 `config/config.yaml` 里声明连接器：
+读完一篇稿件，在阅读页点「发送到…」，把成稿推送到你配置的外部目标。每个目标都能选
+**整篇** 或 **知识摘要**（AI 先提炼核心观点/案例/知识点/延伸选题再发送，实现「把播客沉淀成知识库」），
+还能点 **测试** 预检凭据。支持两类目标：
+
+- **群机器人 Webhook**（短消息）：飞书 / 钉钉 / Slack / 通用 JSON Webhook。
+- **云文档知识库**（真正的文档）：`notion`（在数据库或页面下新建页面）、`feishu-doc`（新建一篇飞书 Docx）。
+
+在 `config/config.yaml` 里声明连接器，凭据只填在 `.env`：
 
 ```yaml
 connectors:
   - name: 飞书群
-    format: feishu        # feishu | dingtalk | slack | markdown
+    format: feishu                 # feishu | dingtalk | slack | markdown
     url_env: READ_PODCAST_CONNECTOR_FEISHU_URL
+  - name: Notion 知识库
+    format: notion                 # 在 Notion 数据库里，每期存成一页
+    token_env: READ_PODCAST_CONNECTOR_NOTION_TOKEN
+    database_id: 你的数据库ID
+  - name: 飞书文档
+    format: feishu-doc             # 新建一篇飞书 Docx 文档
+    app_id_env: READ_PODCAST_CONNECTOR_FEISHU_APP_ID
+    app_secret_env: READ_PODCAST_CONNECTOR_FEISHU_APP_SECRET
 ```
 
-Webhook 地址（通常含 token，属机密）只填在 `.env` 的对应变量里，代码不硬编码任何服务商。
-没配置连接器时，「发送到…」入口会自动隐藏。
+凭据（Webhook 地址 / Notion token / 飞书 App Secret，均属机密）只填在 `.env` 的对应变量里，
+代码不硬编码任何服务商；`/connectors` 接口也绝不回传地址或凭据。没配置连接器时，「发送到…」入口会自动隐藏。
+需要 Google Drive 等其他目标时，用通用 `markdown` Webhook 接自建服务/Zapier 转存即可。
 
 ## 🛠️ 进阶与开发
 

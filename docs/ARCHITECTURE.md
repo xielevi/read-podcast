@@ -66,7 +66,7 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 
 **D10 封面合集与封面图代理（实验分支）。** 订阅持久化可选 `image` 封面图（搜索添加取 iTunes 封面，直连 RSS 回退频道 `itunes:image`，抓取节目时零额外请求记录）。前端在订阅页拼出杂志式封面合集。所有第三方封面图统一经 `/artwork` 服务端代理加载：`validate_public_url` 做 SSRF 校验、限制 `image/*` 类型与 5MB 体积、带一天缓存，浏览器不直连第三方 CDN，符合 D6 出站边界。
 
-**D11 文件连接器（实验分支）。** `/tasks/{id}/export` 经 `modules.connectors` 把成稿推送到外部 Webhook（飞书/钉钉/Slack/通用 JSON）。与 refiner/transcriber 一致：代码不硬编码提供商，连接器只在配置声明 `name`/`format`/`url_env`，真实地址只从 `.env` 注入，`/connectors` 不暴露地址。发送前 SSRF 校验、按平台上限裁剪正文；失败（HTTP 非 2xx 或飞书/钉钉业务错误码）返回 502 并脱敏。不引入任何厂商 OAuth/SDK 依赖。
+**D11 文件连接器（实验分支）。** `/tasks/{id}/export` 经 `modules.connectors` 把成稿推送到两类目标：**群机器人 Webhook**（飞书/钉钉/Slack/通用 JSON）与**云文档知识库**（`notion` 建页、`feishu-doc` 建飞书 Docx）。与 refiner/transcriber 一致：代码不硬编码提供商，连接器只在配置声明 `name`/`format` 与凭据环境变量名，真实凭据只从 `.env` 注入，`/connectors` 只回传 `kind`/`configured`、不暴露地址或凭据。`export` 的 `mode=summary` 复用 `chat_completion` 先提炼知识条目再推送，实现「把播客沉淀成知识库」。所有出站请求 SSRF 校验、按目标上限裁剪并结构化为文档块；失败（HTTP 非 2xx 或业务错误码）返回 502 并脱敏。`/connectors/{name}/test` 做只读预检。仅用各家的简单 HTTP/JSON 接口（含飞书 tenant_access_token 换取），不引入任何厂商 OAuth 交互或 SDK 依赖。
 
 **D7 品牌与兼容标识。** 项目品牌统一为 Read Podcast，规范技术标识为 `/api/read-podcast`、`READ_PODCAST_*`、`read-podcast:` 与 `X-Read-Podcast-*`。既有 `/api/podcast2md`、`PODCAST2MD_*`、`podcast2md:`、`X-Podcast2MD-*` 和 `workspace/podcast2md.db` 只作为隐藏兼容接口继续保留，避免升级破坏现有配置、客户端与任务数据。
 

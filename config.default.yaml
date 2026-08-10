@@ -191,15 +191,19 @@ prompt_templates:
 
       可以使用 `##`、`###` 标题和简洁列表；只有在信息明确且适合对照时才使用表格。直接输出会议纪要，不要输出整理过程或额外说明。
 
-# ── 文件连接器（把成稿一键推送到外部文档/群机器人）──
-# 代码不硬编码任何提供商：这里只声明名称、格式与承载 Webhook 地址的环境变量名；
-# 真实地址（通常含 token，属机密）只放 .env。format 可选：
-#   feishu   飞书自定义机器人（text 消息）
-#   dingtalk 钉钉自定义机器人（markdown 消息）
-#   slack    Slack / 兼容 Incoming Webhook（text 消息）
-#   markdown 通用 Webhook：POST 结构化 JSON（title/podcast/markdown/source_link），
-#            可对接自建服务或 Zapier/Make 等，再转存到飞书文档 / Google Drive 等。
-# 示例（默认留空；需要时在 config/config.yaml 覆盖，并在 .env 填对应 URL）：
+# ── 文件连接器（把成稿一键推送到外部群机器人或云文档知识库）──
+# 代码不硬编码任何提供商：这里只声明名称、格式与承载凭据的环境变量名；
+# 真实凭据（Webhook 地址 / token / app secret，均属机密）只放 .env。
+# 阅读页「发送到…」可选“整篇”或“知识摘要”（AI 提炼核心观点/案例/知识点）。
+#
+# 两类目标：
+#  A) 群机器人 Webhook（短消息）：feishu / dingtalk / slack / markdown（通用 JSON）
+#       声明 url_env（Webhook 地址所在的环境变量名）
+#  B) 云文档知识库（真正的文档）：
+#       notion     在数据库或页面下新建页面；声明 token_env + database_id(+title_property) 或 page_id
+#       feishu-doc 在飞书/Lark 新建一篇 Docx；声明 app_id_env + app_secret_env（可选 folder_token / base_url）
+#
+# 示例（默认留空；需要时在 config/config.yaml 覆盖，并在 .env 填对应凭据）：
 # connectors:
 #   - name: 飞书群
 #     format: feishu
@@ -207,10 +211,20 @@ prompt_templates:
 #   - name: 钉钉群
 #     format: dingtalk
 #     url_env: READ_PODCAST_CONNECTOR_DINGTALK_URL
-#   - name: 我的知识库
+#   - name: 通用 Webhook
 #     format: markdown
 #     url_env: READ_PODCAST_CONNECTOR_WEBHOOK_URL
 #     max_chars: 40000
+#   - name: Notion 知识库
+#     format: notion
+#     token_env: READ_PODCAST_CONNECTOR_NOTION_TOKEN
+#     database_id: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#     title_property: Name        # 数据库标题属性名（默认 Name）；用页面父级时改填 page_id
+#   - name: 飞书文档
+#     format: feishu-doc
+#     app_id_env: READ_PODCAST_CONNECTOR_FEISHU_APP_ID
+#     app_secret_env: READ_PODCAST_CONNECTOR_FEISHU_APP_SECRET
+#     # folder_token: xxxx        # 可选：放到指定文件夹；base_url 可改 https://open.larksuite.com
 connectors: []
 
 # Example podcasts (manage via WebUI or override in ./config/config.yaml)

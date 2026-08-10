@@ -46,6 +46,7 @@ from modules.connectors import (
     find_connector,
     send_document,
 )
+from modules.connectors import test_connector as precheck_connector
 from modules.formatter import strip_leading_frontmatter
 from modules.library_qa import EpisodeDoc, build_library_context
 from modules.refiner import AssistantError, assistant_available, chat_completion
@@ -96,6 +97,8 @@ class LibraryChatRequest(BaseModel):
 
 class ExportRequest(BaseModel):
     connector: str = Field(min_length=1, max_length=200)
+    # manuscript：推送整篇成稿；summary：推送 AI 提炼的知识条目
+    mode: str = Field(default="manuscript", pattern="^(manuscript|summary)$")
 
 class PublicTask(BaseModel):
     id: str
@@ -946,10 +949,18 @@ async def export_task(task_id: str, body: ExportRequest) -> Dict:
 
     _output_file, content = _read_task_output_text(task)
     source_link = _frontmatter_value(content, "source_link") or _frontmatter_value(content, "link")
+    title = task.episode_title or _output_file.stem
+    transcript = strip_leading_frontmatter(content).strip()
+
+    if body.mode == "summary":
+        markdown = await _build_knowledge_entry(title, task.podcast_name or "", transcript)
+    else:
+        markdown = transcript
+
     doc = {
-        "title": task.episode_title or _output_file.stem,
+        "title": title,
         "podcast": task.podcast_name or "",
-        "markdown": strip_leading_frontmatter(content).strip(),
+        "markdown": markdown,
         "source_link": source_link,
     }
 
@@ -958,4 +969,47 @@ async def export_task(task_id: str, body: ExportRequest) -> Dict:
     except ConnectorError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
 
-    return {"task_id": task_id, "status": "sent", **result}
+    return {"task_id": task_id, "status": "sent", "mode": body.mode, **result}
+
+
+async def _build_knowledge_entry(title: str, podcast: str, transcript: str) -> str:
+    """用 AI 从文字稿提炼可沉淀的知识条目（核心观点/案例/知识点/选题）。"""
+    if not transcript:
+        raise HTTPException(status_code=422, detail="文字稿为空，无法生成知识条目")
+    context = transcript[:ASSISTANT_CONTEXT_CHAR_BUDGET]
+    truncated_note = "（文字稿较长，仅据前一部分提炼）\n\n" if len(transcript) > ASSISTANT_CONTEXT_CHAR_BUDGET else ""
+    system = (
+        "你是知识管理助手，负责把播客文字稿沉淀成可长期复用的知识条目。"
+        "只依据给定文字稿，用简体中文输出结构化 Markdown，包含这些小节："
+        "## 核心观点、## 关键案例、## 可沉淀的知识点、## 可延伸选题。"
+        "每条简明扼要、忠于原文，文字稿没有提到的不要编造；无对应内容的小节可写“（本期未涉及）”。"
+        "不要输出正文之外的说明。"
+    )
+    header = f"《{title}》" + (f"（{podcast}）" if podcast else "")
+    user = f"{truncated_note}节目：{header}\n\n文字稿：\n\"\"\"\n{context}\n\"\"\""
+    try:
+        entry = await asyncio.to_thread(
+            chat_completion,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            settings.REFINER_CONFIG,
+            max_tokens=1600,
+            temperature=0.3,
+        )
+    except AssistantError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return f"# {header} · 知识条目\n\n{entry}"
+
+
+@api_router.post("/connectors/{name}/test")
+async def test_connector_endpoint(name: str) -> Dict:
+    """预检连接器凭据/可达性，不产生正式内容。"""
+    connector = find_connector(settings.CONNECTORS, name.strip())
+    if not connector:
+        raise HTTPException(status_code=404, detail=f"连接器 '{name}' 不存在")
+    try:
+        return await asyncio.to_thread(precheck_connector, connector)
+    except ConnectorError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

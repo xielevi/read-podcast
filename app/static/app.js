@@ -1792,23 +1792,46 @@
         return;
       }
       _connectors.forEach(function (connector) {
-        var row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'export-menu-item';
-        row.setAttribute('role', 'menuitem');
-        var label = document.createElement('span');
-        label.textContent = String(connector.name || '');
-        row.appendChild(label);
+        var isDoc = connector.kind === 'doc';
+        var item = document.createElement('div');
+        item.className = 'export-item' + (connector.configured ? '' : ' is-disabled');
+
+        var head = document.createElement('div');
+        head.className = 'export-item-head';
+        var nameEl = document.createElement('span');
+        nameEl.className = 'export-item-name';
+        nameEl.textContent = String(connector.name || '');
+        var badge = document.createElement('span');
+        badge.className = 'export-item-badge';
+        badge.textContent = isDoc ? '📄 云文档' : '🤖 群消息';
+        head.append(nameEl, badge);
+        item.appendChild(head);
+
         if (!connector.configured) {
-          row.disabled = true;
-          var hint = document.createElement('span');
-          hint.className = 'export-menu-hint';
-          hint.textContent = '未配置';
-          row.appendChild(hint);
+          var hint = document.createElement('div');
+          hint.className = 'export-item-hint';
+          hint.textContent = '未配置（在 .env 填凭据）';
+          item.appendChild(hint);
         } else {
-          row.addEventListener('click', function () { exportToConnector(connector.name); });
+          var actions = document.createElement('div');
+          actions.className = 'export-item-actions';
+          var full = document.createElement('button');
+          full.type = 'button'; full.className = 'export-action';
+          full.textContent = '整篇';
+          full.addEventListener('click', function () { exportToConnector(connector, 'manuscript'); });
+          var summary = document.createElement('button');
+          summary.type = 'button'; summary.className = 'export-action';
+          summary.textContent = '知识摘要';
+          summary.title = '用 AI 提炼核心观点/案例/知识点后再发送';
+          summary.addEventListener('click', function () { exportToConnector(connector, 'summary'); });
+          var test = document.createElement('button');
+          test.type = 'button'; test.className = 'export-action ghost';
+          test.textContent = '测试';
+          test.addEventListener('click', function () { testConnector(connector); });
+          actions.append(full, summary, test);
+          item.appendChild(actions);
         }
-        menu.appendChild(row);
+        menu.appendChild(item);
       });
     }
 
@@ -1830,14 +1853,16 @@
       else closeExportMenu();
     }
 
-    function exportToConnector(name) {
+    function exportToConnector(connector, mode) {
+      var name = connector && connector.name ? connector.name : String(connector || '');
       if (!_currentReadingTaskId) { addLog('请先打开一篇稿件', 'error'); return; }
       closeExportMenu();
-      addLog('正在发送到「' + name + '」…', 'running');
+      var modeLabel = mode === 'summary' ? '知识摘要' : '整篇';
+      addLog('正在发送' + modeLabel + '到「' + name + '」…', 'running');
       fetch(safeTaskUrl(_currentReadingTaskId, '/export'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ connector: name })
+        body: JSON.stringify({ connector: name, mode: mode || 'manuscript' })
       })
         .then(function (response) {
           return response.text().then(function (raw) {
@@ -1846,9 +1871,29 @@
           });
         })
         .then(function (data) {
-          addLog('已发送到「' + name + '」' + (data && data.truncated ? '（内容较长已截断）' : ''), 'success');
+          var extra = '';
+          if (data && data.document_url) extra = ' · 已创建文档';
+          else if (data && data.document_id) extra = ' · 文档已创建';
+          if (data && data.truncated) extra += '（内容较长已截断）';
+          addLog('已发送' + modeLabel + '到「' + name + '」' + extra, 'success');
+          if (data && data.document_url) addLog('文档链接：' + data.document_url, 'info');
         })
         .catch(function (error) { addLog('发送失败：' + errorMessage(error), 'error'); });
+    }
+
+    function testConnector(connector) {
+      var name = connector && connector.name ? connector.name : String(connector || '');
+      closeExportMenu();
+      addLog('正在测试「' + name + '」…', 'running');
+      fetch(appUrl('/api/read-podcast/connectors/' + encodeURIComponent(name) + '/test'), { method: 'POST' })
+        .then(function (response) {
+          return response.text().then(function (raw) {
+            if (!response.ok) { var detail = raw; try { detail = JSON.parse(raw).detail || detail; } catch (ignore) {} throw new Error(detail || 'HTTP ' + response.status); }
+            return JSON.parse(raw);
+          });
+        })
+        .then(function (data) { addLog('「' + name + '」' + (data && data.detail ? data.detail : '连接正常'), 'success'); })
+        .catch(function (error) { addLog('测试失败：' + errorMessage(error), 'error'); });
     }
 
     function initConnectors() {

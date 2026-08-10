@@ -79,7 +79,12 @@
 
 ## connectors.py — 文件连接器
 
-把成稿推送到外部文档/群机器人的 Webhook，**代码不硬编码任何提供商**。`available_connectors(config)` 读取 `connectors` 声明并标注是否 `configured`（对应 `url_env` 环境变量是否有值），不暴露地址。`build_payload(fmt, doc, max_chars)` 按 `feishu`/`dingtalk`/`slack`/`markdown` 构造请求体并按上限裁剪正文。`send_document(connector, doc)` 从 `url_env` 取地址、`validate_public_url` 做 SSRF 校验后 POST；HTTP 非 2xx 或飞书/钉钉业务错误码非 0 时抛 `ConnectorError`（不记录地址与响应正文，避免泄露 token）。
+把成稿推送到**群机器人 Webhook** 或**云文档知识库**，**代码不硬编码任何提供商**：连接器只在配置声明 `name`/`format` 与承载凭据的环境变量名，真实凭据只从环境变量读取。
+
+- `available_connectors(config)`：返回 `name`/`format`/`kind`（webhook|doc）/`configured`，按格式判断所需环境变量（webhook 需 `url_env`；notion 需 `token_env`+`database_id`/`page_id`；feishu-doc 需 `app_id_env`+`app_secret_env`），不暴露任何地址/凭据。
+- `build_payload(fmt, doc, max_chars)`：Webhook 四种格式（feishu/dingtalk/slack/markdown）的请求体，正文按上限裁剪。
+- `send_document(connector, doc)`：按 `format` 分派。Webhook→单次 POST；`notion`→`POST /v1/pages`（markdown 结构化为标题/段落/列表块，parent 用 database 或 page）；`feishu-doc`→换取 `tenant_access_token`→建 Docx→写入文本块。所有出站地址先过 `validate_public_url`（SSRF）；HTTP 非 2xx 或飞书/Notion 业务错误码非 0 抛 `ConnectorError`（不记录地址与响应正文）。
+- `test_connector(connector)`：只读预检——Notion 打 `/v1/users/me`，飞书换 token，Webhook 只校验已配置且公网可达。
 
 ## pipeline.py — 业务流水线（核心）
 

@@ -42,8 +42,9 @@
 | POST | `/assistant/lookup` | 百科查询：解释文字稿中的概念/人物/术语（`term`≤200，可选 `context`≤4000） |
 | POST | `/tasks/{id}/chat` | 针对某份已完成文字稿的问答，回答严格基于文字稿内容（`question`≤2000，可带 `history`） |
 | POST | `/assistant/library/chat` | 跨多期播客问答：从最近最多 60 期稿件中检索相关节目后综合作答，返回 `answer` 与带编号的 `sources` |
-| GET | `/connectors` | 可用文件连接器清单（`name`/`format`/`configured`，不含 Webhook 地址） |
-| POST | `/tasks/{id}/export` | 把某份成稿推送到指定连接器目标（`connector` 名称，来自 `/connectors`） |
+| GET | `/connectors` | 可用文件连接器清单（`name`/`format`/`kind`/`configured`，不含任何地址或凭据） |
+| POST | `/tasks/{id}/export` | 把成稿推送到连接器（`connector` 名称 + `mode`：`manuscript` 整篇 / `summary` AI 知识条目） |
+| POST | `/connectors/{name}/test` | 预检连接器凭据/可达性，不产生正式内容 |
 
 订阅增删直接持久化到 `config.yaml`，重启后生效；写入逻辑与顶层/命名空间两种配置结构兼容。
 
@@ -51,7 +52,9 @@
 
 **跨节目问答（`/assistant/library/chat`）** 取最近 `LIBRARY_CORPUS_LIMIT`（默认 60）期已成功稿件，经 `modules.library_qa` 的零依赖关键词检索（ASCII 词 + 中文二元组打分、新近意图回退）挑出最相关的若干期，从每期抽取有界相关片段拼成带编号来源的上下文，再交给模型综合作答（要求标注各观点来自哪一期、点出共识与分歧、片段外内容不编造）。返回的 `sources` 含 `index`/`task_id`/`title`/`podcast`，前端渲染为可点击跳转到对应稿件的来源标签。稿件库为空时返回 404。
 
-**文件连接器（`/connectors` 与 `/tasks/{id}/export`）** 复用 `modules.connectors`，把成稿一键推送到外部文档/群机器人。连接器在 `connectors` 配置里声明 `name`、`format`（feishu/dingtalk/slack/markdown）与承载 Webhook 地址的环境变量名 `url_env`；真实地址（含 token）只从 `.env` 读取，`/connectors` 只回传是否 `configured`，绝不暴露地址。导出前 `validate_public_url` 做 SSRF 校验，正文按平台上限裁剪并剥离 frontmatter，飞书/钉钉的业务错误码（`code`/`errcode`≠0）视为失败。目标返回失败时端点返回 502 并附脱敏原因。
+**文件连接器（`/connectors`、`/tasks/{id}/export`、`/connectors/{name}/test`）** 复用 `modules.connectors`，把成稿推送到两类目标：**群机器人 Webhook**（`feishu`/`dingtalk`/`slack`/`markdown`，声明 `url_env`）与**云文档知识库**（`notion` 在数据库/页面下建页，声明 `token_env`+`database_id`/`page_id`；`feishu-doc` 新建飞书 Docx，声明 `app_id_env`+`app_secret_env`）。所有凭据只从 `.env` 读取，`/connectors` 只回传 `format`/`kind`/`configured`，绝不暴露地址或凭据。
+
+`export` 支持 `mode`：`manuscript` 推送整篇成稿；`summary` 先用 `chat_completion` 从文字稿提炼「核心观点/关键案例/知识点/延伸选题」的知识条目再推送（AI 未配置时 503）。所有出站请求经 `validate_public_url` 做 SSRF 校验，正文按目标上限裁剪、云文档结构化为标题/段落/列表块；飞书/钉钉/Notion 的业务错误码或非 2xx 视为失败并返回 502（脱敏）。`test` 端点对 Notion（`GET /v1/users/me`）与飞书（换取 `tenant_access_token`）做只读预检，Webhook 无只读预检口则只校验已配置且地址公网可达。
 
 ## app/tasks.py — 任务编排
 
