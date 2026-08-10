@@ -216,6 +216,7 @@
             <button class="theme-btn theme-green" id="theme-green-btn" type="button" title="护眼绿" style="background:#eaf2e8;border:1px solid var(--line)"></button>
             <button class="theme-btn theme-dark" id="theme-dark-btn" type="button" title="极夜黑" style="background:#1e1e1e;border:1px solid #444"></button>
           </div>
+          <button class="control-btn assistant-toggle" id="assistant-toggle-btn" type="button" title="AI 阅读助手" aria-pressed="false" hidden>AI 助手</button>
           <a class="reader-download" id="reader-download" href="#" download>下载</a>
           <button class="close-btn" id="reader-close-btn" type="button" aria-label="关闭阅读">×</button>
         </div>
@@ -227,9 +228,30 @@
       <div class="reader-layout">
         <aside class="reader-toc" id="reader-toc" aria-label="大纲目录" hidden></aside>
         <div class="manuscript-body" id="manuscript-body"><div class="reader-state">选择一份已完成稿件开始阅读。</div></div>
+        <aside class="reader-assistant" id="reader-assistant" aria-label="AI 阅读助手" hidden>
+          <div class="assistant-head">
+            <div><span class="overline">AI 助手</span><h3 id="assistant-title">和这篇稿子聊聊</h3></div>
+            <button class="close-btn" id="assistant-close-btn" type="button" aria-label="收起助手">×</button>
+          </div>
+          <div class="assistant-messages" id="assistant-messages" aria-live="polite">
+            <div class="assistant-hint">基于本篇文字稿提问，例如「这期的核心观点是什么？」「嘉宾举了哪些案例？」<br>选中正文里的词，还能一键查百科。</div>
+          </div>
+          <form class="assistant-input" id="assistant-form">
+            <textarea id="assistant-question" rows="2" placeholder="问点什么…（Enter 发送，Shift+Enter 换行）"></textarea>
+            <button class="solid-btn" id="assistant-send-btn" type="submit">发送</button>
+          </form>
+        </aside>
       </div>
     </article>
   </section>
+
+  <div class="lookup-popover" id="lookup-popover" hidden>
+    <button class="lookup-trigger" id="lookup-trigger" type="button">📖 解释「<span id="lookup-term-label"></span>」</button>
+  </div>
+  <div class="lookup-card" id="lookup-card" hidden aria-live="polite">
+    <div class="lookup-card-head"><strong id="lookup-card-term"></strong><button class="close-btn" id="lookup-card-close" type="button" aria-label="关闭">×</button></div>
+    <div class="lookup-card-body" id="lookup-card-body"></div>
+  </div>
 
   <script>
     (function () {

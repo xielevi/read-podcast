@@ -12,10 +12,13 @@
   ▼
 Read Podcast Web :28000（原生）或 Docker :8080 → :28000
   ├─ FastAPI WebUI / API（可选 Basic Auth）
-  ├─ 分阶段调度：下载 / Whisper / 精修
+  ├─ 分阶段调度：下载 / 转录 / 精修
   ├─ RSS / 音频下载 / SQLite / workspace / output
-  ├─ 共享路径或 HTTP ──────▶ macOS 原生 MLX Backend :21567
-  └─ Chat Completions ─────▶ OpenAI 兼容 Refiner
+  ├─ 转录后端（可插拔）
+  │    ├─ mlx-api ────────▶ macOS 原生 MLX Backend :21567（仅 Apple Silicon）
+  │    └─ openai-api ─────▶ OpenAI 兼容 /audio/transcriptions（跨平台，无需本机进程）
+  ├─ Chat Completions ─────▶ OpenAI 兼容 Refiner（精修）
+  └─ AI 阅读助手 ──────────▶ 复用 Refiner 服务商（百科查询 / 文字稿问答）
 ```
 
 ## 运行边界
@@ -52,6 +55,10 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 **D5 本机原生部署为个人用户首选路径。** 面向非技术用户，`scripts/install.sh` 与 `scripts/start.sh` 在 macOS 上同时托管 MLX 后端与网页应用。Docker 保留为进阶备选，其网页应用镜像默认从 GHCR 拉取。两种路径下 MLX 均原生运行。启动入口通过环境覆盖确定模式：原生使用 `127.0.0.1:21567` 并关闭共享路径，Docker 使用 `host.docker.internal:21567` 与 `/app/workspace`；不会因持久化配置残留而串用地址。
 
 **D6 出站网络与资源边界。** 用户提供的 RSS 和媒体 URL 仅允许 HTTP(S)，并在请求及重定向前解析 DNS、拒绝回环、私网、保留和链路本地地址。RSS、直接音频下载、yt-dlp 和 MLX 上传均有大小或超时限制。日志去除 URL 凭据、query 和供应商响应正文，避免签名参数与转录片段落盘。
+
+**D8 可插拔转录后端（实验分支）。** `transcription.backend` 在 `mlx-api`（默认，保持原行为）与 `openai-api` 之间选择。`openai-api` 通过 `BaseTranscriber` 统一契约调用任意 OpenAI 兼容的 `/audio/transcriptions` 服务（OpenAI、Groq、自建 faster-whisper-server 等），从而在 Windows / Linux / Intel Mac 上运行、无需本机 MLX 进程，直接改善平台依赖与自包含性。与 D1 不冲突：仍不在应用内捆绑 Faster-Whisper 或推理运行时，只新增一个 HTTP 客户端后端；后端地址与模型只从配置读取，Key 只从 `READ_PODCAST_TRANSCRIPTION_API_KEY` 注入。云端接口的体积限制由 `openai.max_upload_bytes` 明确失败提示，超大节目建议指向自建服务。
+
+**D9 AI 阅读助手复用精修服务商（实验分支）。** 百科查询（`/assistant/lookup`）与文字稿问答（`/tasks/{id}/chat`）复用 refiner 段的 OpenAI 兼容配置与 `REFINER_API_KEY`，不引入新凭据来源。问答严格以文字稿为上下文（沿用 `/content` 的路径与类型校验，剥离 frontmatter 后按字符预算截断），指令要求“稿中无则如实说明、不得编造”。未配置 AI 时端点返回 503 并附可读原因，前端据 `/assistant/status` 隐藏入口，保持核心转录流程不受影响。
 
 **D7 品牌与兼容标识。** 项目品牌统一为 Read Podcast，规范技术标识为 `/api/read-podcast`、`READ_PODCAST_*`、`read-podcast:` 与 `X-Read-Podcast-*`。既有 `/api/podcast2md`、`PODCAST2MD_*`、`podcast2md:`、`X-Podcast2MD-*` 和 `workspace/podcast2md.db` 只作为隐藏兼容接口继续保留，避免升级破坏现有配置、客户端与任务数据。
 

@@ -11,8 +11,11 @@ Read Podcast 是一个在你自己电脑上运行的小工具：给它一个播�
 这个工具有三个硬性前提，缺一不可。**先确认你都满足，再往下装**，否则会白忙一场：
 
 1. **你的电脑是 Apple 芯片的 Mac（M1／M2／M3／M4）。**
-   语音转文字用的是苹果芯片专属的加速能力，Windows、Intel 老款 Mac、Linux 都用不了。
+   一键脚本默认的语音转文字用的是苹果芯片专属的加速能力，Windows、Intel 老款 Mac、Linux 用不了这条默认路径。
    *怎么查：* 点左上角  →「关于本机」，芯片一行写着 “Apple M…” 就对了。
+   > 不是 Apple 芯片也别急：本分支新增了**跨平台转录后端**，可改用任意 OpenAI 兼容的
+   > 转录服务（云端或自建），在 Windows／Linux／Intel Mac 上也能跑。见下方
+   > [「跨平台转录（实验特性）」](#-跨平台转录实验特性)。
 
 2. **你愿意准备一个 AI 服务的 Key。**
    把粗糙的语音稿整理成漂亮文章，需要调用一个 AI 服务，**这一步要花钱**（通常很便宜，几毛到几块钱一篇）。怎么申请见下面 [「申请 AI Key」](#-申请-ai-key)。
@@ -184,6 +187,40 @@ git pull
 不会授予任何播客音频、节目文字或第三方内容的使用权。
 
 ---
+
+## 🧪 实验特性（本分支）
+
+> 以下为实验分支新增能力，用来降低平台依赖、补齐“读完还能用起来”的环节。默认配置不变，需要时再开启。
+
+### 🌍 跨平台转录（实验特性）
+
+不想被“只能 Apple 芯片”限制，或想省去本机 MLX 进程时，可把转录换成任意 **OpenAI 兼容** 的
+`/audio/transcriptions` 服务。在 `config/config.yaml` 里：
+
+```yaml
+transcription:
+  backend: openai-api
+  openai:
+    api_base: https://api.groq.com/openai/v1   # 或 OpenAI、自建 faster-whisper-server
+    model: whisper-large-v3                     # OpenAI 用 whisper-1；自建用其模型名
+    language: ""                                # 留空自动检测；可填 zh、en
+    max_upload_bytes: 0                          # 0 不限制；云端一般限制 25MB（26214400）
+```
+
+并在 `.env` 里填 `READ_PODCAST_TRANSCRIPTION_API_KEY=你的key`。这样在
+Windows／Linux／Intel Mac 上也能转录。云端接口通常限制单文件 25MB，处理一两个小时的长节目
+建议指向**自建 faster-whisper-server**（无云端体积限制）。默认 `backend: mlx-api` 行为不变。
+
+### 🤖 AI 阅读助手（百科查询 + 文字稿问答）
+
+阅读稿件时，右上角的「AI 助手」可以：
+
+- **文字稿问答**：基于当前这篇稿子提问（“这期核心观点是什么？”“嘉宾举了哪些案例？”），
+  回答严格来自文字稿，稿中没有会如实说明。
+- **划词百科查询**：在正文里选中一个概念/人物/术语，点浮现的「解释」即可看到通俗解释。
+
+它复用你已经配置好的精修服务商（`refiner.api_base` / `refiner.model` 与 `REFINER_API_KEY`），
+无需另配 Key。没配置 AI 时，助手入口会自动隐藏，不影响转录主流程。
 
 ## 🛠️ 进阶与开发
 

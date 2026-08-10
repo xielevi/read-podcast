@@ -33,6 +33,8 @@ from app.tasks import (
 )
 from app.sse import notifier
 from modules.config import settings
+from modules.formatter import strip_leading_frontmatter
+from modules.refiner import AssistantError, assistant_available, chat_completion
 from modules.rss_parser import RSSParser
 from modules.network_security import UnsafeUrlError, validate_public_url
 
@@ -60,6 +62,18 @@ class CreateTaskRequest(BaseModel):
 class CustomTaskRequest(BaseModel):
     audio_filename: str = Field(min_length=1, max_length=255)
     custom_prompt: str = Field(min_length=1, max_length=100_000)
+
+class LookupRequest(BaseModel):
+    term: str = Field(min_length=1, max_length=200)
+    context: str = Field(default="", max_length=4000)
+
+class ChatMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(min_length=1, max_length=4000)
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    history: List[ChatMessage] = Field(default_factory=list)
 
 class PublicTask(BaseModel):
     id: str
@@ -89,6 +103,11 @@ EPISODE_PREVIEW_LIMIT = 10
 UPLOAD_DIR = READ_PODCAST_ROOT / "workspace" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".aac", ".opus", ".wma"}
+ALLOWED_TEXT_OUTPUT_EXTS = {".md", ".markdown", ".txt"}
+# AI 助手灌入模型的文字稿上下文预算（字符）；超长稿件截断以控制延迟与成本。
+ASSISTANT_CONTEXT_CHAR_BUDGET = 24000
+# 每次对话最多回带的历史轮数，防止 prompt 无限膨胀。
+ASSISTANT_MAX_HISTORY = 8
 MAX_UPLOAD_BYTES = max(
     1,
     int(settings.RUNTIME_CONFIG.get("max_upload_bytes", 2 * 1024 * 1024 * 1024)),
@@ -555,25 +574,28 @@ async def stream_task_logs(task_id: str):
     )
 
 
+def _read_task_output_text(task: Task) -> tuple[Path, str]:
+    """读取任务输出文本文件；沿用与 content 接口一致的路径与类型校验。"""
+    if not task.output_path:
+        raise HTTPException(status_code=404, detail="输出文件尚未生成或已被删除")
+    output_file = Path(task.output_path)
+    if not output_file.exists():
+        raise HTTPException(status_code=404, detail="输出文件尚未生成或已被删除")
+    if output_file.suffix.lower() not in ALLOWED_TEXT_OUTPUT_EXTS:
+        raise HTTPException(status_code=415, detail="不支持读取非文本输出文件")
+    try:
+        return output_file, output_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise HTTPException(status_code=500, detail="读取输出文件失败") from exc
+
+
 @api_router.get("/tasks/{task_id}/content")
 async def get_task_content(task_id: str) -> Dict[str, str]:
     task = await get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
 
-    if not task.output_path:
-        raise HTTPException(status_code=404, detail="输出文件尚未生成或已被删除")
-
-    output_file = Path(task.output_path)
-    if not output_file.exists():
-        raise HTTPException(status_code=404, detail="输出文件尚未生成或已被删除")
-    if output_file.suffix.lower() not in {".md", ".markdown", ".txt"}:
-        raise HTTPException(status_code=415, detail="不支持读取非文本输出文件")
-
-    try:
-        content = output_file.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        raise HTTPException(status_code=500, detail="读取输出文件失败") from exc
+    output_file, content = _read_task_output_text(task)
 
     return {
         "task_id": task_id,
@@ -637,3 +659,89 @@ async def upload_audio(file: UploadFile = File(...)) -> Dict:
 @api_router.get("/prompt-templates")
 async def get_prompt_templates() -> List[Dict]:
     return settings.PROMPT_TEMPLATES or []
+
+
+# ── AI 阅读助手（百科查询 + 文字稿问答）──
+# 复用 refiner 段的 OpenAI 兼容服务商配置与 REFINER_API_KEY，不引入新的凭据来源。
+
+@api_router.get("/assistant/status")
+async def assistant_status() -> Dict:
+    """助手是否可用，供前端优雅降级（未配置 AI 时隐藏入口）。"""
+    return {"available": assistant_available(settings.REFINER_CONFIG)}
+
+
+@api_router.post("/assistant/lookup")
+async def assistant_lookup(body: LookupRequest) -> Dict[str, str]:
+    """百科查询：解释文字稿中出现的概念、人物、机构、术语或事件。"""
+    term = body.term.strip()
+    if not term:
+        raise HTTPException(status_code=400, detail="term 不能为空")
+
+    system = (
+        "你是一位百科式讲解助手，为正在阅读播客文字稿的读者解释其中出现的概念、人物、"
+        "机构、术语或事件。用简体中文，给出准确、克制、通俗的解释，控制在 120 字以内。"
+        "若为多义词，结合读者提供的上下文选择最贴切的义项。不要编造不确定的事实，"
+        "不确定时明确说明。直接输出解释，不要寒暄或复述问题。"
+    )
+    user = f"需要解释的词条：{term}"
+    context = body.context.strip()
+    if context:
+        user += f"\n\n它出现的上下文（节选）：\n{context[:2000]}"
+
+    try:
+        explanation = await asyncio.to_thread(
+            chat_completion,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            settings.REFINER_CONFIG,
+            max_tokens=400,
+            temperature=0.3,
+        )
+    except AssistantError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {"term": term, "explanation": explanation}
+
+
+@api_router.post("/tasks/{task_id}/chat")
+async def chat_with_transcript(task_id: str, body: ChatRequest) -> Dict:
+    """针对某份已完成文字稿的问答，回答严格基于文字稿内容。"""
+    task = await get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
+
+    _output_file, content = _read_task_output_text(task)
+    transcript = strip_leading_frontmatter(content).strip()
+    if not transcript:
+        raise HTTPException(status_code=422, detail="文字稿为空，无法问答")
+
+    truncated = len(transcript) > ASSISTANT_CONTEXT_CHAR_BUDGET
+    context_text = transcript[:ASSISTANT_CONTEXT_CHAR_BUDGET]
+    title = task.episode_title or "本期节目"
+
+    system = (
+        f"你是这份播客文字稿的阅读助手。下面三引号内是《{title}》的文字稿"
+        + ("（因过长已截断，仅含前一部分）" if truncated else "")
+        + "。请仅依据文字稿内容回答读者问题，用简体中文，准确、简洁、有条理。"
+        "文字稿中找不到答案时如实说明“文字稿里没有提到”，不要编造或引入外部信息。\n\n"
+        f'"""\n{context_text}\n"""'
+    )
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+    for msg in body.history[-ASSISTANT_MAX_HISTORY:]:
+        messages.append({"role": msg.role, "content": msg.content.strip()})
+    messages.append({"role": "user", "content": body.question.strip()})
+
+    try:
+        answer = await asyncio.to_thread(
+            chat_completion,
+            messages,
+            settings.REFINER_CONFIG,
+            max_tokens=1200,
+            temperature=0.4,
+        )
+    except AssistantError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {"task_id": task_id, "answer": answer, "context_truncated": truncated}

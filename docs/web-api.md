@@ -18,7 +18,7 @@
 | 方法 | 路径 | 功能 |
 | :--- | :--- | :--- |
 | GET | `/health` | 健康检查，免认证 |
-| GET | `/transcription/status` | 转录引擎安全元数据（不含 URL/Token/路径） |
+| GET | `/transcription/status` | 转录引擎安全元数据（含 `backend`/`self_contained`，不含 URL/Token/路径） |
 | GET | `/subscriptions` | 当前播客订阅列表 |
 | GET | `/episodes` | 剧集列表（SWR 缓存，`X-Read-Podcast-Cache-State` 头标识 complete/stale/warming） |
 | GET | `/search/podcast` | iTunes 检索 + 直连 RSS 解析 |
@@ -37,8 +37,13 @@
 | GET | `/tasks/{id}/download` | 下载输出文件 |
 | POST | `/upload/audio` | 上传音频（扩展名白名单，`runtime.max_upload_bytes` 默认 2GiB；只返回文件名，不泄露绝对路径） |
 | GET | `/prompt-templates` | 预设 Prompt 模板列表 |
+| GET | `/assistant/status` | AI 助手是否可用（需配置 refiner 服务商与 `REFINER_API_KEY`），供前端优雅降级 |
+| POST | `/assistant/lookup` | 百科查询：解释文字稿中的概念/人物/术语（`term`≤200，可选 `context`≤4000） |
+| POST | `/tasks/{id}/chat` | 针对某份已完成文字稿的问答，回答严格基于文字稿内容（`question`≤2000，可带 `history`） |
 
 订阅增删直接持久化到 `config.yaml`，重启后生效；写入逻辑与顶层/命名空间两种配置结构兼容。
+
+**AI 阅读助手（`/assistant/*` 与 `/tasks/{id}/chat`）** 复用 refiner 段的 OpenAI 兼容服务商配置与 `REFINER_API_KEY`，不引入新的凭据来源。`chat` 端点读取任务输出文本（沿用与 `/content` 一致的路径与类型校验），剥离 frontmatter 后按 `ASSISTANT_CONTEXT_CHAR_BUDGET`（默认 24000 字符）截断灌入模型，只保留最近 `ASSISTANT_MAX_HISTORY`（默认 8）轮历史。未配置 AI 时返回 503 并附可读原因，前端据 `/assistant/status` 隐藏入口。
 
 ## app/tasks.py — 任务编排
 

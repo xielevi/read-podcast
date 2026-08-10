@@ -30,16 +30,20 @@
 
 `Downloader(download_dir).download_audio(url, filename_base)`：优先直链 HTTP 流式下载（写 `.part` 后原子重命名），失败回退 `yt-dlp`；已存在且大于 100KB 时跳过。保留源音频格式，不强制转码。出站 URL 与每次重定向必须解析到公网地址，下载大小和执行时长受 `runtime.max_download_bytes` / `runtime.download_timeout_seconds` 限制。
 
-## transcriber.py — Whisper HTTP 客户端
+## transcriber.py — 可插拔转录后端
 
-`WhisperApiTranscriber` 调用原生 MLX Whisper 服务，`get_transcriber(config)` 为工厂。
+`BaseTranscriber` 抽象基类统一 `transcribe(audio_file, cache_path, progress_callback)` 契约，返回统一的 `TranscriptionResult`。缓存命中/原子写入由模块级 `_read_cached_result` / `_write_cache` 共用。后端由 `transcription.backend` 选择，`get_transcriber(config)` 为工厂：
 
-- `transcribe(audio_file, cache_path, progress_callback)`：命中 `cache_path` 则跳过；否则按共享路径优先提交。
-- 共享路径模式（`transcription.shared_audio_root`）：POST `/transcribe-path` 传相对路径；服务端不支持或拒绝共享路径（403/404/405/501）时自动回退 multipart `/transcribe` 上传。
-- 转录请求带有短期 request ID，并轮询 MLX `/progress/{request_id}`；当后端按分片处理时，`progress_callback` 会收到已完成分片数和百分比，进度接口不可用时不影响主请求。
-- MLX 返回的非有限浮点指标会由服务端转换为 `null`，不影响文本结果和缓存写入。
-- Bearer Token 鉴权；转录结果原子写入缓存。
-- `describe_transcriber(config)` 只返回安全元数据（backend/engine/device/model），不含 URL、路径或凭据，供状态接口使用。
+- **`mlx-api`（默认）—— `WhisperApiTranscriber`**：调用原生 MLX Whisper 服务，仅 Apple Silicon。
+  - 共享路径模式（`transcription.shared_audio_root`）：POST `/transcribe-path` 传相对路径；服务端不支持或拒绝共享路径（403/404/405/501）时自动回退 multipart `/transcribe` 上传。
+  - 转录请求带短期 request ID，并轮询 MLX `/progress/{request_id}`；后端按分片处理时 `progress_callback` 收到分片进度，进度接口不可用时不影响主请求。
+  - Bearer Token（`READ_PODCAST_WHISPER_API_TOKEN`）鉴权。
+- **`openai-api` —— `OpenAITranscriber`**：调用任意 OpenAI 兼容的 `/audio/transcriptions` 接口（OpenAI、Groq、自建 faster-whisper-server 等），**与平台无关**，可在 Windows / Linux / Intel Mac 运行，无需本机 MLX 进程。
+  - 地址与模型来自 `transcription.openai.{api_base,model,language,timeout,max_upload_bytes}`；Key 只从 `READ_PODCAST_TRANSCRIPTION_API_KEY` 注入。
+  - `max_upload_bytes>0` 时对超限文件明确失败并提示改用自建服务；云端接口通常限制 25MB。
+  - 支持 `response_format=json`（取 `text`）与纯文本响应两种返回。
+
+`describe_transcriber(config)` 只返回安全元数据（`backend`/`engine`/`device`/`model`/`self_contained`），不含 URL、路径或凭据，供状态接口使用；`openai-api` 后端 `self_contained=True`。未知 `backend` 会明确报错。
 
 ## refiner.py — AI 精修（OpenAI 兼容）
 
@@ -51,6 +55,11 @@
 - `extract_markdown` 从返回中提取 Markdown 代码块。
 - 针对 deepseek thinking 模型禁用 reasoning 以直接获取 content。
 - 更换提供商只需在 `config/config.yaml` 覆盖 `refiner.api_base` / `refiner.model`；Key 仍放 `.env`。
+
+同一模块还提供 AI 阅读助手复用的通用能力（同样只依赖 refiner 配置与 `REFINER_API_KEY`）：
+
+- `chat_completion(messages, config, *, max_tokens, temperature)`：通用 OpenAI 兼容对话补全，返回纯文本；失败抛 `AssistantError`（401/400 不重试，429 退避）。供百科查询与文字稿问答复用。
+- `assistant_available(config)`：判断助手是否可用（需 `api_base`、`model` 与 `REFINER_API_KEY` 齐备），供状态接口与前端优雅降级。
 
 ## formatter.py — Markdown 格式化
 

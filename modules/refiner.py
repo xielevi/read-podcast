@@ -255,6 +255,97 @@ def get_refiner(config: dict) -> BaseRefiner:
     return OpenaiCompatRefiner(config)
 
 
+class AssistantError(RuntimeError):
+    """AI 助手（问答/百科查询）调用失败。"""
+
+
+def assistant_available(config: dict | None) -> bool:
+    """助手是否可用：需要配置 api_base、model 与 REFINER_API_KEY。"""
+    config = config or {}
+    has_provider = bool(str(config.get("api_base", "")).strip()) and bool(
+        str(config.get("model", "")).strip()
+    )
+    return has_provider and bool(os.environ.get("REFINER_API_KEY", ""))
+
+
+def chat_completion(
+    messages: list[dict],
+    config: dict,
+    *,
+    max_tokens: int = 1500,
+    temperature: float = 0.4,
+) -> str:
+    """通用 OpenAI 兼容对话补全，供 AI 助手（转录问答、百科查询）复用。
+
+    复用 refiner 的服务商配置（``api_base`` / ``model``）与 ``REFINER_API_KEY``，
+    返回纯文本回答。任何失败都抛出 :class:`AssistantError`，由上层转成 HTTP 错误。
+    """
+    import httpx
+
+    api_base = str((config or {}).get("api_base", "")).strip().rstrip("/")
+    model = str((config or {}).get("model", "")).strip()
+    if not api_base or not model:
+        raise AssistantError(
+            "未配置 AI 服务商：请在 config.yaml 的 refiner 段填写 api_base 和 model。"
+        )
+    api_key = os.environ.get("REFINER_API_KEY", "")
+    if not api_key:
+        raise AssistantError("未设置 REFINER_API_KEY，请在 .env 中填写后重试。")
+
+    timeout = int((config or {}).get("timeout", 120))
+    max_retries = max(1, int((config or {}).get("max_retries", 3)))
+    body = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": int(max_tokens),
+        "temperature": float(temperature),
+    }
+    model_lower = model.lower()
+    if "deepseek" in model_lower and ("v4" in model_lower or "reasoner" in model_lower):
+        body["thinking"] = {"type": "disabled"}
+
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {api_key}",
+    }
+    chat_url = f"{api_base}/chat/completions"
+
+    last_error = "未知错误"
+    for attempt in range(max_retries):
+        try:
+            resp = httpx.post(chat_url, headers=headers, json=body, timeout=timeout)
+        except httpx.TimeoutException:
+            last_error = "请求超时"
+            continue
+        except httpx.HTTPError as exc:
+            last_error = f"网络错误: {exc}"
+            continue
+
+        if resp.status_code == 200:
+            content = (
+                resp.json()
+                .get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+                .strip()
+            )
+            if content:
+                return content
+            last_error = "API 返回空内容"
+            continue
+        if resp.status_code == 401:
+            raise AssistantError("AI 鉴权失败，请检查 REFINER_API_KEY。")
+        if resp.status_code == 400:
+            raise AssistantError("AI 请求参数错误（400）。")
+        if resp.status_code == 429 and attempt < max_retries - 1:
+            time.sleep(2 ** attempt)
+            last_error = "触发频率限制（429）"
+            continue
+        last_error = f"AI 返回 {resp.status_code}"
+
+    raise AssistantError(f"AI 调用失败：{last_error}")
+
+
 def build_refine_prompt(summary: str, refiner_config: dict | None = None) -> str:
     """构建 RSS 单集精修 prompt。
 
