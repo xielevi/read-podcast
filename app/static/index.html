@@ -137,6 +137,16 @@
               <input id="library-search" type="search" placeholder="搜索标题">
             </label>
           </div>
+          <section class="library-ask" id="library-ask" aria-label="跨节目提问" hidden>
+            <div class="library-ask-head">
+              <div><span class="overline">跨节目提问</span><p>基于整个稿件库综合作答，例如「最近几期主要讲了什么」「大家如何评价 AI Agent」「不同嘉宾有哪些共识和分歧」。</p></div>
+            </div>
+            <div class="library-ask-messages" id="library-ask-messages" aria-live="polite"></div>
+            <form class="library-ask-input" id="library-ask-form">
+              <input id="library-ask-question" type="text" placeholder="向整个稿件库提问…" autocomplete="off">
+              <button class="solid-btn" id="library-ask-send" type="submit">提问</button>
+            </form>
+          </section>
           <div class="library-list" id="library-list" aria-live="polite"></div>
         </div>
       </section>

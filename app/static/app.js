@@ -1473,7 +1473,7 @@
 
     function appendAssistantMessage(role, text, options) {
       var opts = options || {};
-      var container = byId('assistant-messages');
+      var container = opts.container || byId('assistant-messages');
       var hint = container.querySelector('.assistant-hint');
       if (hint) hint.remove();
       var bubble = document.createElement('div');
@@ -1619,14 +1619,90 @@
         .catch(function (error) { byId('lookup-card-body').innerHTML = '<span class="lookup-error">查询失败：' + escapeHtml(errorMessage(error)) + '</span>'; });
     }
 
+    // ── 跨节目提问（稿件库） ──
+    var _libraryHistory = [];
+    var _libraryBusy = false;
+
+    function renderLibrarySources(bubble, sources) {
+      if (!sources || !sources.length) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'assistant-sources';
+      var label = document.createElement('span');
+      label.className = 'assistant-sources-label';
+      label.textContent = '来源：';
+      wrap.appendChild(label);
+      sources.forEach(function (src) {
+        var chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'source-chip';
+        chip.textContent = '【' + src.index + '】' + String(src.title || '未命名');
+        chip.title = '打开这篇稿件';
+        chip.addEventListener('click', function () { openManuscript(src.task_id); });
+        wrap.appendChild(chip);
+      });
+      bubble.appendChild(wrap);
+    }
+
+    function sendLibraryQuestion() {
+      if (_libraryBusy) return;
+      var input = byId('library-ask-question');
+      var question = String(input.value || '').trim();
+      if (!question) return;
+      input.value = '';
+      _libraryBusy = true;
+      byId('library-ask-send').disabled = true;
+      var container = byId('library-ask-messages');
+      appendAssistantMessage('user', question, { container: container });
+      var pending = appendAssistantMessage('assistant', '', { container: container, pending: true });
+
+      fetch(appUrl('/api/read-podcast/assistant/library/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: question, history: _libraryHistory.slice(-8) })
+      })
+        .then(function (response) {
+          return response.text().then(function (raw) {
+            if (!response.ok) { var detail = raw; try { detail = JSON.parse(raw).detail || detail; } catch (ignore) {} throw new Error(detail || 'HTTP ' + response.status); }
+            return JSON.parse(raw);
+          });
+        })
+        .then(function (data) {
+          var answer = String(data.answer || '');
+          pending.classList.remove('is-pending');
+          pending.innerHTML = formatAssistantText(answer);
+          renderLibrarySources(pending, data.sources);
+          if (data.context_truncated) {
+            var note = document.createElement('div');
+            note.className = 'assistant-note';
+            note.textContent = '（稿件较多，回答基于最相关的部分节目）';
+            pending.appendChild(note);
+          }
+          _libraryHistory.push({ role: 'user', content: question });
+          _libraryHistory.push({ role: 'assistant', content: answer });
+          container.scrollTop = container.scrollHeight;
+        })
+        .catch(function (error) {
+          pending.classList.remove('is-pending');
+          pending.classList.add('is-error');
+          pending.textContent = '提问出错了：' + errorMessage(error);
+        })
+        .finally(function () {
+          _libraryBusy = false;
+          byId('library-ask-send').disabled = false;
+        });
+    }
+
     function initAssistant() {
       fetch(appUrl('/api/read-podcast/assistant/status'))
         .then(function (r) { return r.ok ? r.json() : { available: false }; })
         .then(function (data) {
           _assistantAvailable = !!(data && data.available);
           setHidden(byId('assistant-toggle-btn'), !_assistantAvailable);
+          setHidden(byId('library-ask'), !_assistantAvailable);
         })
         .catch(function () { _assistantAvailable = false; });
+
+      byId('library-ask-form').addEventListener('submit', function (event) { event.preventDefault(); sendLibraryQuestion(); });
 
       byId('assistant-toggle-btn').addEventListener('click', toggleAssistantPanel);
       byId('assistant-close-btn').addEventListener('click', closeAssistantPanel);

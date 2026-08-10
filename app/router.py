@@ -22,7 +22,13 @@ from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from app.models.task import Task, TaskStatus
-from app.database import delete_task, get_task, list_completed_keys, list_tasks
+from app.database import (
+    delete_task,
+    get_task,
+    list_completed_keys,
+    list_successful_tasks,
+    list_tasks,
+)
 from app.tasks import (
     AlreadyProcessedError,
     DuplicateTaskError,
@@ -34,6 +40,7 @@ from app.tasks import (
 from app.sse import notifier
 from modules.config import settings
 from modules.formatter import strip_leading_frontmatter
+from modules.library_qa import EpisodeDoc, build_library_context
 from modules.refiner import AssistantError, assistant_available, chat_completion
 from modules.rss_parser import RSSParser
 from modules.network_security import UnsafeUrlError, validate_public_url
@@ -75,6 +82,10 @@ class ChatRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     history: List[ChatMessage] = Field(default_factory=list)
 
+class LibraryChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    history: List[ChatMessage] = Field(default_factory=list)
+
 class PublicTask(BaseModel):
     id: str
     podcast_name: str
@@ -108,6 +119,10 @@ ALLOWED_TEXT_OUTPUT_EXTS = {".md", ".markdown", ".txt"}
 ASSISTANT_CONTEXT_CHAR_BUDGET = 24000
 # 每次对话最多回带的历史轮数，防止 prompt 无限膨胀。
 ASSISTANT_MAX_HISTORY = 8
+# 跨节目问答检索的语料上限：最多纳入多少期已完成稿件。
+LIBRARY_CORPUS_LIMIT = 60
+# 单期稿件读入的字符上限，避免超长稿件拖慢检索。
+LIBRARY_DOC_CHAR_CAP = 40000
 MAX_UPLOAD_BYTES = max(
     1,
     int(settings.RUNTIME_CONFIG.get("max_upload_bytes", 2 * 1024 * 1024 * 1024)),
@@ -745,3 +760,79 @@ async def chat_with_transcript(task_id: str, body: ChatRequest) -> Dict:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     return {"task_id": task_id, "answer": answer, "context_truncated": truncated}
+
+
+def _collect_library_docs(tasks: List[Task]) -> List[EpisodeDoc]:
+    """读取已完成稿件文本，构建跨节目问答的语料（有界，跳过缺失/非文本文件）。"""
+    docs: List[EpisodeDoc] = []
+    for task in tasks:
+        if not task.output_path:
+            continue
+        output_file = Path(task.output_path)
+        if not output_file.exists() or output_file.suffix.lower() not in ALLOWED_TEXT_OUTPUT_EXTS:
+            continue
+        try:
+            raw = output_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        text = strip_leading_frontmatter(raw).strip()
+        if not text:
+            continue
+        docs.append(
+            EpisodeDoc(
+                task_id=task.id,
+                title=task.episode_title or output_file.stem,
+                podcast=task.podcast_name or "",
+                text=text[:LIBRARY_DOC_CHAR_CAP],
+                created_at=task.created_at.isoformat() if task.created_at else "",
+            )
+        )
+    return docs
+
+
+@api_router.post("/assistant/library/chat")
+async def chat_with_library(body: LibraryChatRequest) -> Dict:
+    """跨多期播客问答：在整个稿件库中检索相关节目后综合作答，并标注来源。"""
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question 不能为空")
+
+    tasks = await list_successful_tasks(LIBRARY_CORPUS_LIMIT)
+    docs = await asyncio.to_thread(_collect_library_docs, tasks)
+    if not docs:
+        raise HTTPException(status_code=404, detail="稿件库还没有已完成的稿件，先转录几期再来提问吧。")
+
+    selection = await asyncio.to_thread(build_library_context, question, docs)
+    if not selection.context:
+        raise HTTPException(status_code=422, detail="没有检索到可用于回答的稿件内容")
+
+    system = (
+        "你是一位跨多期播客的知识助手。下面用【序号】分隔的是从用户稿件库中检索到的若干期"
+        "节目的相关片段。请综合这些片段回答问题，用简体中文，条理清晰。"
+        "涉及不同节目的观点时，注明它们各自来自哪一期（用节目标题指代），"
+        "并在合适时点出不同嘉宾/节目之间的共识与分歧。"
+        "只依据给定片段作答，片段中没有的内容如实说明“稿件库里没有相关内容”，不要编造或引入外部信息。\n\n"
+        f"{selection.context}"
+    )
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+    for msg in body.history[-ASSISTANT_MAX_HISTORY:]:
+        messages.append({"role": msg.role, "content": msg.content.strip()})
+    messages.append({"role": "user", "content": question})
+
+    try:
+        answer = await asyncio.to_thread(
+            chat_completion,
+            messages,
+            settings.REFINER_CONFIG,
+            max_tokens=1500,
+            temperature=0.4,
+        )
+    except AssistantError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {
+        "answer": answer,
+        "sources": selection.sources,
+        "episodes_searched": len(docs),
+        "context_truncated": selection.truncated,
+    }

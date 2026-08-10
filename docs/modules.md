@@ -61,6 +61,10 @@
 - `chat_completion(messages, config, *, max_tokens, temperature)`：通用 OpenAI 兼容对话补全，返回纯文本；失败抛 `AssistantError`（401/400 不重试，429 退避）。供百科查询与文字稿问答复用。
 - `assistant_available(config)`：判断助手是否可用（需 `api_base`、`model` 与 `REFINER_API_KEY` 齐备），供状态接口与前端优雅降级。
 
+## library_qa.py — 跨节目问答检索
+
+零依赖的关键词检索，支撑“跨多期播客提问”。`question_tokens` 把问题拆成 ASCII 词 + 过滤停用字后的中文二元组；`score_episode` 按标题（高权重）与正文中 token 命中数打分（有界扫描与计数上限）；`wants_recency` 识别“最近/近期/最新”等新近意图。`build_library_context(question, episodes, ...)` 在相关度排序与新近排序（问题过泛或强新近意图时）之间选择，挑出至多 `max_episodes` 期，从每期抽取包含命中 token 的窗口片段（无命中回退开头），拼成带 `【序号】` 来源标注的上下文，返回 `LibraryContext`（`context`/`sources`/`truncated`/`used_count`）。不使用向量库或外部服务，确定性、可测试。
+
 ## formatter.py — Markdown 格式化
 
 `Formatter(markdown_dirs)`：`format_markdown(episode, transcript_text, tags, processing)` 生成 YAML frontmatter（含 `refinement_success`、`transcript_source`）+ 正文；`save_note(content, filename, target_dir)` 写入目标目录，权限失败时降级到 `workspace/<podcast>/markdown`。`strip_leading_frontmatter` 防止精修稿自带 frontmatter 冲突。

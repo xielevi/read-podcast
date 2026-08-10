@@ -58,7 +58,7 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 
 **D8 可插拔转录后端（实验分支）。** `transcription.backend` 在 `mlx-api`（默认，保持原行为）与 `openai-api` 之间选择。`openai-api` 通过 `BaseTranscriber` 统一契约调用任意 OpenAI 兼容的 `/audio/transcriptions` 服务（OpenAI、Groq、自建 faster-whisper-server 等），从而在 Windows / Linux / Intel Mac 上运行、无需本机 MLX 进程，直接改善平台依赖与自包含性。与 D1 不冲突：仍不在应用内捆绑 Faster-Whisper 或推理运行时，只新增一个 HTTP 客户端后端；后端地址与模型只从配置读取，Key 只从 `READ_PODCAST_TRANSCRIPTION_API_KEY` 注入。云端接口的体积限制由 `openai.max_upload_bytes` 明确失败提示，超大节目建议指向自建服务。
 
-**D9 AI 阅读助手复用精修服务商（实验分支）。** 百科查询（`/assistant/lookup`）与文字稿问答（`/tasks/{id}/chat`）复用 refiner 段的 OpenAI 兼容配置与 `REFINER_API_KEY`，不引入新凭据来源。问答严格以文字稿为上下文（沿用 `/content` 的路径与类型校验，剥离 frontmatter 后按字符预算截断），指令要求“稿中无则如实说明、不得编造”。未配置 AI 时端点返回 503 并附可读原因，前端据 `/assistant/status` 隐藏入口，保持核心转录流程不受影响。
+**D9 AI 阅读助手复用精修服务商（实验分支）。** 百科查询（`/assistant/lookup`）、单篇文字稿问答（`/tasks/{id}/chat`）与跨节目问答（`/assistant/library/chat`）复用 refiner 段的 OpenAI 兼容配置与 `REFINER_API_KEY`，不引入新凭据来源。问答严格以文字稿为上下文（沿用 `/content` 的路径与类型校验，剥离 frontmatter 后按字符预算截断），指令要求“稿中无则如实说明、不得编造”。跨节目问答用 `modules.library_qa` 的零依赖关键词检索（不引入向量库或外部检索服务）从稿件库挑选相关节目、拼装带来源编号的上下文，答案标注来源并可点击跳转。未配置 AI 时端点返回 503 并附可读原因，前端据 `/assistant/status` 隐藏入口，保持核心转录流程不受影响。
 
 **D7 品牌与兼容标识。** 项目品牌统一为 Read Podcast，规范技术标识为 `/api/read-podcast`、`READ_PODCAST_*`、`read-podcast:` 与 `X-Read-Podcast-*`。既有 `/api/podcast2md`、`PODCAST2MD_*`、`podcast2md:`、`X-Podcast2MD-*` 和 `workspace/podcast2md.db` 只作为隐藏兼容接口继续保留，避免升级破坏现有配置、客户端与任务数据。
 

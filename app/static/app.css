@@ -716,6 +716,22 @@
     html[data-theme="dark"] .assistant-msg-assistant, html[data-theme="green"] .assistant-msg-assistant { color: var(--ink); }
     html[data-theme="dark"] .lookup-card-body, html[data-theme="green"] .lookup-card-body, html[data-theme="dark"] .assistant-head h3, html[data-theme="green"] .assistant-head h3 { color: var(--ink); }
 
+    /* 跨节目提问（稿件库） */
+    .library-ask { margin: 4px 0 18px; padding: 16px 18px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255,255,255,.5); }
+    .library-ask[hidden] { display: none; }
+    .library-ask-head p { margin: 4px 0 0; color: var(--ink-soft); font-family: var(--sans); font-size: 12px; line-height: 1.6; }
+    .library-ask-messages { display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; margin: 12px 0 0; }
+    .library-ask-messages:empty { display: none; }
+    .library-ask-input { display: flex; gap: 8px; margin-top: 12px; }
+    .library-ask-input input { flex: 1; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 10px; outline: 0; background: var(--paper-light); color: var(--ink); font-family: var(--sans); font-size: 13px; }
+    .library-ask-input input:focus { border-color: var(--wine); }
+    .library-ask-input .solid-btn { flex: 0 0 auto; border-radius: 10px; }
+    .library-ask-input .solid-btn:disabled { opacity: .5; cursor: default; }
+    .assistant-sources { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; padding-top: 8px; border-top: 1px dashed var(--line); }
+    .assistant-sources-label { color: var(--ink-faint); font-family: var(--sans); font-size: 11px; }
+    .source-chip { padding: 4px 9px; border: 1px solid var(--line-strong); border-radius: 14px; cursor: pointer; color: var(--wine); background: var(--paper-light); font-family: var(--sans); font-size: 11px; }
+    .source-chip:hover { color: var(--paper-light); background: var(--wine); border-color: var(--wine); }
+
     @media (max-width: 768px) {
       .reader-assistant { width: 100%; }
       .lookup-card { right: 12px; left: 12px; bottom: 12px; width: auto; }

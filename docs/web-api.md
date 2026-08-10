@@ -40,10 +40,13 @@
 | GET | `/assistant/status` | AI 助手是否可用（需配置 refiner 服务商与 `REFINER_API_KEY`），供前端优雅降级 |
 | POST | `/assistant/lookup` | 百科查询：解释文字稿中的概念/人物/术语（`term`≤200，可选 `context`≤4000） |
 | POST | `/tasks/{id}/chat` | 针对某份已完成文字稿的问答，回答严格基于文字稿内容（`question`≤2000，可带 `history`） |
+| POST | `/assistant/library/chat` | 跨多期播客问答：在整个稿件库中检索相关节目后综合作答，返回 `answer` 与带编号的 `sources` |
 
 订阅增删直接持久化到 `config.yaml`，重启后生效；写入逻辑与顶层/命名空间两种配置结构兼容。
 
 **AI 阅读助手（`/assistant/*` 与 `/tasks/{id}/chat`）** 复用 refiner 段的 OpenAI 兼容服务商配置与 `REFINER_API_KEY`，不引入新的凭据来源。`chat` 端点读取任务输出文本（沿用与 `/content` 一致的路径与类型校验），剥离 frontmatter 后按 `ASSISTANT_CONTEXT_CHAR_BUDGET`（默认 24000 字符）截断灌入模型，只保留最近 `ASSISTANT_MAX_HISTORY`（默认 8）轮历史。未配置 AI 时返回 503 并附可读原因，前端据 `/assistant/status` 隐藏入口。
+
+**跨节目问答（`/assistant/library/chat`）** 面向整个稿件库：取最近 `LIBRARY_CORPUS_LIMIT`（默认 60）期已成功稿件，经 `modules.library_qa` 的零依赖关键词检索（ASCII 词 + 中文二元组打分、新近意图回退）挑出最相关的若干期，从每期抽取有界相关片段拼成带编号来源的上下文，再交给模型综合作答（要求标注各观点来自哪一期、点出共识与分歧、片段外内容不编造）。返回的 `sources` 含 `index`/`task_id`/`title`/`podcast`，前端渲染为可点击跳转到对应稿件的来源标签。稿件库为空时返回 404。
 
 ## app/tasks.py — 任务编排
 

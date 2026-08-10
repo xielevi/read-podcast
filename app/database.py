@@ -140,6 +140,18 @@ async def list_tasks(limit: int = 20) -> List[Task]:
         return [Task(**dict(row)) for row in rows]
 
 
+async def list_successful_tasks(limit: int = 60) -> List[Task]:
+    """按时间倒序返回已成功且带输出路径的任务，供跨节目问答检索使用。"""
+    db = await _connection()
+    async with db.execute(
+        "SELECT * FROM tasks WHERE status = 'success' AND output_path IS NOT NULL "
+        "AND output_path != '' ORDER BY created_at DESC LIMIT ?",
+        (limit,),
+    ) as cursor:
+        rows = await cursor.fetchall()
+        return [Task(**dict(row)) for row in rows]
+
+
 async def delete_task(task_id: str) -> bool:
     """只删除任务记录；音频、缓存和输出文件均不在此处处理。"""
     db = await _connection()
