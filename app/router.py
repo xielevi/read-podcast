@@ -867,7 +867,7 @@ def _collect_library_docs(tasks: List[Task]) -> List[EpisodeDoc]:
 
 @api_router.post("/assistant/library/chat")
 async def chat_with_library(body: LibraryChatRequest) -> Dict:
-    """跨多期播客问答：在整个稿件库中检索相关节目后综合作答，并标注来源。"""
+    """跨多期播客问答：从最近有界稿件集中检索相关节目并标注来源。"""
     question = body.question.strip()
     if not question:
         raise HTTPException(status_code=400, detail="question 不能为空")

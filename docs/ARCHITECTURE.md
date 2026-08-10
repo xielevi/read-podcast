@@ -15,8 +15,10 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
   ├─ 分阶段调度：下载 / 转录 / 精修
   ├─ RSS / 音频下载 / SQLite / workspace / output
   ├─ 转录后端（可插拔）
-  │    ├─ mlx-api ────────▶ macOS 原生 MLX Backend :21567（仅 Apple Silicon）
-  │    └─ openai-api ─────▶ OpenAI 兼容 /audio/transcriptions（跨平台，无需本机进程）
+  │    ├─ mlx-api ────────▶ macOS 原生 MLX Backend :21567（Apple Silicon 默认）
+  │    └─ openai-api ─────▶ OpenAI 兼容 /audio/transcriptions
+  │         ├─ 仓库内置 Faster-Whisper 容器（CPU，可选自包含模式）
+  │         └─ 用户自选云端 / 自建兼容服务
   ├─ Chat Completions ─────▶ OpenAI 兼容 Refiner（精修）
   ├─ AI 阅读助手 ──────────▶ 复用 Refiner 服务商（百科查询 / 单篇及跨节目问答）
   ├─ 封面图代理 ───────────▶ 第三方封面 CDN（SSRF 校验 + 体积/类型限制）
@@ -46,7 +48,7 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 
 > 以下为已采纳的架构决策摘要。
 
-**D1 Docker 应用 + 原生 MLX 后端分离。** Linux 容器无法访问 macOS Metal，故 MLX 在 Apple Silicon 主机上原生运行，应用通过 HTTP 调用。原生服务实现以本仓库 `scripts/mlx_backend.py` 为唯一事实源；主机基础设施仓库只保存 LaunchAgent 等部署配置，不复制服务代码。GitHub 只发布不含模型与推理运行时的应用镜像。不引入 Faster-Whisper、自包含 CPU 镜像或宿主硬件自动选型。
+**D1 Apple Silicon 默认路径与推理进程隔离。** Linux 容器无法访问 macOS Metal，故 Mac mini 默认仍由 Apple Silicon 主机原生运行 MLX，应用通过 HTTP 调用。原生服务实现以本仓库 `scripts/mlx_backend.py` 为唯一事实源；主机基础设施仓库只保存 LaunchAgent 等部署配置，不复制服务代码。实验分支可额外提供独立的 CPU 转录容器，但推理运行时不进入 Web 应用镜像、不进入 Web 进程，也不自动探测或改写宿主硬件配置。
 
 **D2 WebUI-only 与反向代理访问。** WebUI 是唯一正式入口，CLI 仅保留为维护包装层。Compose 默认只绑定回环地址。WebUI 按浏览器可见路径生成 API/SSE/上传/下载 URL，根路径与任意子路径共用同一镜像；保留前缀的代理用 `web.base_path`。默认无鉴权，可选 Basic Auth（用户名与密码同时设置），健康检查免认证，不开放跨域。
 
@@ -58,7 +60,7 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 
 **D6 出站网络与资源边界。** 用户提供的 RSS 和媒体 URL 仅允许 HTTP(S)，并在请求及重定向前解析 DNS、拒绝回环、私网、保留和链路本地地址。RSS、直接音频下载、yt-dlp 和 MLX 上传均有大小或超时限制。日志去除 URL 凭据、query 和供应商响应正文，避免签名参数与转录片段落盘。
 
-**D8 可插拔转录后端（实验分支）。** `transcription.backend` 在 `mlx-api`（默认，保持原行为）与 `openai-api` 之间选择。`openai-api` 通过 `BaseTranscriber` 统一契约调用任意 OpenAI 兼容的 `/audio/transcriptions` 服务（OpenAI、Groq、自建 faster-whisper-server 等），从而在 Windows / Linux / Intel Mac 上运行、无需本机 MLX 进程，直接改善平台依赖与自包含性。与 D1 不冲突：仍不在应用内捆绑 Faster-Whisper 或推理运行时，只新增一个 HTTP 客户端后端；后端地址与模型只从配置读取，Key 只从 `READ_PODCAST_TRANSCRIPTION_API_KEY` 注入。云端接口的体积限制由 `openai.max_upload_bytes` 明确失败提示，超大节目建议指向自建服务。
+**D8 可插拔转录后端与可选自包含模式（实验分支）。** `transcription.backend` 在 `mlx-api`（默认，保持原行为）与 `openai-api` 之间选择。`openai-api` 通过 `BaseTranscriber` 统一契约调用 OpenAI 兼容的 `/audio/transcriptions` 服务。该服务既可是 OpenAI、Groq 或用户自建服务，也可由仓库内的 `docker-compose.self-contained.yml` 启动 `services/builtin_transcription` CPU 容器提供。后者在 Linux x86-64 与 AArch64/ARM64 上使用 Faster-Whisper/CTranslate2，模型首次运行下载后持久化到独立 volume，不需要第三方转录 API Key。Web 应用与转录容器仍以 HTTP 分离，可独立替换、限流和回滚。后端地址、模型与是否自包含只从配置/部署环境读取，Key 只从 `READ_PODCAST_TRANSCRIPTION_API_KEY` 注入。`/transcription/status` 只返回不含 URL、Token 和路径的安全元数据，不再把任意外部 `openai-api` 误报为自包含。
 
 **D9 AI 阅读助手复用精修服务商（实验分支）。** 百科查询（`/assistant/lookup`）、单篇文字稿问答（`/tasks/{id}/chat`）与跨节目问答（`/assistant/library/chat`）复用 refiner 段的 OpenAI 兼容配置与 `REFINER_API_KEY`，不引入新凭据来源。问答严格以文字稿为上下文（沿用 `/content` 的路径与类型校验，剥离 frontmatter 后按字符预算截断），指令要求“稿中无则如实说明、不得编造”。跨节目问答用 `modules.library_qa` 的零依赖关键词检索（不引入向量库或外部检索服务）从稿件库挑选相关节目、拼装带来源编号的上下文，答案标注来源并可点击跳转。未配置 AI 时端点返回 503 并附可读原因，前端据 `/assistant/status` 隐藏入口，保持核心转录流程不受影响。
 

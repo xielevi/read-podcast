@@ -761,6 +761,12 @@
     .source-chip:hover { color: var(--paper-light); background: var(--wine); border-color: var(--wine); }
 
     @media (max-width: 768px) {
+      .reader-actions { flex-wrap: wrap; justify-content: flex-start; }
+      .reader-controls { width: 100%; flex: 1 0 100%; overflow-x: auto; scrollbar-width: none; }
+      .reader-controls::-webkit-scrollbar { display: none; }
+      .reader-actions > .control-btn,
+      .reader-actions > .reader-download { flex: 0 0 auto; white-space: nowrap; word-break: keep-all; }
+      .reader-actions > .close-btn { flex: 0 0 44px; margin-left: auto; }
       .reader-assistant { width: 100%; }
       .lookup-card { right: 12px; left: 12px; bottom: 12px; width: auto; }
     }

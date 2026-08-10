@@ -77,8 +77,26 @@ def test_describe_transcriber_reports_backend_metadata():
         {"backend": "openai-api", "openai": {"api_base": "https://x/v1", "model": "whisper-1"}}
     )
     assert openai["backend"] == "openai-api"
-    assert openai["self_contained"] is True
+    assert openai["self_contained"] is False
     assert openai["model"] == "whisper-1"
+
+    bundled = describe_transcriber(
+        {
+            "backend": "openai-api",
+            "openai": {
+                "api_base": "http://transcription:8000/v1",
+                "model": "small",
+                "self_contained": True,
+            },
+        }
+    )
+    assert bundled == {
+        "backend": "openai-api",
+        "engine": "faster-whisper",
+        "device": "container-cpu",
+        "model": "small",
+        "self_contained": True,
+    }
 
 
 # ── OpenAI 后端行为 ──

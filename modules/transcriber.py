@@ -404,6 +404,12 @@ def _env(*names: str, default: str = "") -> str:
     return default
 
 
+def _as_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _transcription_settings(config: dict | None) -> dict:
     """读取普通配置；后端地址只从配置读取，凭据只从环境变量注入。"""
     config = config or {}
@@ -425,6 +431,7 @@ def _transcription_settings(config: dict | None) -> dict:
         "openai_language": str(openai_cfg.get("language", "")).strip(),
         "openai_timeout": int(openai_cfg.get("timeout", config.get("timeout", 1800))),
         "openai_max_upload_bytes": int(openai_cfg.get("max_upload_bytes", 0)),
+        "openai_self_contained": _as_bool(openai_cfg.get("self_contained", False)),
         "openai_api_key": _env(
             "READ_PODCAST_TRANSCRIPTION_API_KEY",
             "PODCAST2MD_TRANSCRIPTION_API_KEY",
@@ -477,12 +484,13 @@ def describe_transcriber(config: dict | None = None) -> dict:
     s = _transcription_settings(_resolve_config(config))
     backend = s["backend"]
     if backend == "openai-api":
+        self_contained = s["openai_self_contained"]
         return {
             "backend": "openai-api",
-            "engine": "openai-compatible",
-            "device": "remote-or-self-hosted",
+            "engine": "faster-whisper" if self_contained else "openai-compatible",
+            "device": "container-cpu" if self_contained else "remote-or-self-hosted",
             "model": s["openai_model"] or "unset",
-            "self_contained": True,
+            "self_contained": self_contained,
         }
     return {
         "backend": "mlx-api",

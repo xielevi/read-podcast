@@ -146,6 +146,7 @@ transcription:
   openai:
     api_base: ""
     model: ""
+    self_contained: false    # 仅内置 Faster-Whisper Compose 模式设为 true
     language: ""              # 留空自动检测；可填 zh、en 等提升准确率
     timeout: 1800
     max_upload_bytes: 0       # 0 表示不限制；云端接口一般限制 26214400（25MB）

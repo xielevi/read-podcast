@@ -28,6 +28,7 @@ def test_search_podcast_with_direct_rss_url(monkeypatch):
             "id": "1",
         }
     ]
+    monkeypatch.setattr(router_module, "validate_public_url", lambda url: url)
 
     with patch("app.router.RSSParser") as MockRSSParser:
         instance = MockRSSParser.return_value

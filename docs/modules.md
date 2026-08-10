@@ -39,11 +39,12 @@
   - 转录请求带短期 request ID，并轮询 MLX `/progress/{request_id}`；后端按分片处理时 `progress_callback` 收到分片进度，进度接口不可用时不影响主请求。
   - Bearer Token（`READ_PODCAST_WHISPER_API_TOKEN`）鉴权。
 - **`openai-api` —— `OpenAITranscriber`**：调用任意 OpenAI 兼容的 `/audio/transcriptions` 接口（OpenAI、Groq、自建 faster-whisper-server 等），**与平台无关**，可在 Windows / Linux / Intel Mac 运行，无需本机 MLX 进程。
-  - 地址与模型来自 `transcription.openai.{api_base,model,language,timeout,max_upload_bytes}`；Key 只从 `READ_PODCAST_TRANSCRIPTION_API_KEY` 注入。
+  - 地址与模型来自 `transcription.openai.{api_base,model,language,timeout,max_upload_bytes,self_contained}`；Key 只从 `READ_PODCAST_TRANSCRIPTION_API_KEY` 注入。
+  - `docker-compose.self-contained.yml` 会把该客户端指向仓库内 `services/builtin_transcription` 的 Faster-Whisper CPU 服务。转录运行时与 Web 应用镜像/进程隔离，模型缓存持久化到独立 volume。
   - `max_upload_bytes>0` 时对超限文件明确失败并提示改用自建服务；云端接口通常限制 25MB。
   - 支持 `response_format=json`（取 `text`）与纯文本响应两种返回。
 
-`describe_transcriber(config)` 只返回安全元数据（`backend`/`engine`/`device`/`model`/`self_contained`），不含 URL、路径或凭据，供状态接口使用；`openai-api` 后端 `self_contained=True`。未知 `backend` 会明确报错。
+`describe_transcriber(config)` 只返回安全元数据（`backend`/`engine`/`device`/`model`/`self_contained`），不含 URL、路径或凭据，供状态接口使用；外部 `openai-api` 默认 `self_contained=False`，只有内置 Compose 模式明确设为 `True`。未知 `backend` 会明确报错。
 
 ## refiner.py — AI 精修（OpenAI 兼容）
 

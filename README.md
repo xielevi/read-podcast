@@ -194,8 +194,27 @@ git pull
 
 ### 🌍 跨平台转录（实验特性）
 
-不想被“只能 Apple 芯片”限制，或想省去本机 MLX 进程时，可把转录换成任意 **OpenAI 兼容** 的
-`/audio/transcriptions` 服务。在 `config/config.yaml` 里：
+不想被“只能 Apple 芯片”限制时，有两条实验路径。Mac mini 自用仍推荐默认 MLX，
+速度和能效都明显优于 Docker CPU 转录。
+
+#### 方案 A：仓库内置转录服务（自包含）
+
+适合 Linux、Windows + Docker Desktop、Intel Mac，也可在 Apple Silicon Docker 中以 CPU 运行。
+它会从当前实验分支构建 Web 应用和独立 Faster-Whisper 服务：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.self-contained.yml up -d --build
+```
+
+默认模型是 `small`，首次转录时下载到持久化 volume；后续重建容器不会重复下载。
+需要其他模型时，在执行 Compose 前设置环境变量
+`READ_PODCAST_BUILTIN_WHISPER_MODEL=large-v3-turbo`。模型越大，
+首次下载、内存和 CPU 转录时间也越大。转录服务不暴露宿主端口，只在 Compose 内部网络可见。
+
+#### 方案 B：外部 OpenAI 兼容转录 API
+
+可把转录换成任意 **OpenAI 兼容** 的 `/audio/transcriptions` 服务。
+在 `config/config.yaml` 里：
 
 ```yaml
 transcription:
@@ -209,7 +228,7 @@ transcription:
 
 并在 `.env` 里填 `READ_PODCAST_TRANSCRIPTION_API_KEY=你的key`。这样在
 Windows／Linux／Intel Mac 上也能转录。云端接口通常限制单文件 25MB，处理一两个小时的长节目
-建议指向**自建 faster-whisper-server**（无云端体积限制）。默认 `backend: mlx-api` 行为不变。
+建议改用方案 A 或指向你自建的服务。默认 `backend: mlx-api` 行为不变。
 
 ### 🤖 AI 阅读助手（百科查询 + 文字稿问答）
 
@@ -218,7 +237,7 @@ Windows／Linux／Intel Mac 上也能转录。云端接口通常限制单文件 
 - **文字稿问答**：基于当前这篇稿子提问（“这期核心观点是什么？”“嘉宾举了哪些案例？”），
   回答严格来自文字稿，稿中没有会如实说明。
 - **划词百科查询**：在正文里选中一个概念/人物/术语，点浮现的「解释」即可看到通俗解释。
-- **跨节目提问**：在「稿件库」顶部的提问框里，基于整个稿件库综合作答，例如
+- **跨节目提问**：在「稿件库」顶部的提问框里，从最近最多 60 期稿件中检索后综合作答，例如
   “最近几期主要讲了什么”“大家如何评价 AI Agent”“不同嘉宾有哪些共识和分歧”。
   回答会标注来源节目，点一下即可跳到对应稿件。检索为零依赖的关键词匹配，无需向量库。
 
