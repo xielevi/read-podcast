@@ -123,12 +123,33 @@ refiner:
     除正文外，不要输出任何解释。
 
 # ── 转录引擎（音频→原始文本）──
+# backend 选择转录后端：
+#   mlx-api（默认）：调用宿主机原生 MLX Whisper 服务，仅 Apple Silicon Mac。
+#   openai-api：调用任意 OpenAI 兼容的 /audio/transcriptions 接口，与平台无关，
+#               可在 Windows / Linux / Intel Mac 上运行，无需本机 MLX 进程。
 transcription:
+  backend: mlx-api
+
+  # —— mlx-api 后端（Apple Silicon 本机 MLX 服务）——
   api_url: http://127.0.0.1:21567/transcribe
   shared_audio_root: ""
   # 转录模型由原生 MLX 后端管理，应用端只展示安全元数据。
   model: mlx-community/whisper-large-v3-turbo
   timeout: 1800
+
+  # —— openai-api 后端（跨平台，OpenAI 兼容转录服务）——
+  # 把 backend 改成 openai-api 后，填写下面的 api_base 与 model，
+  # 并在 .env 里填 READ_PODCAST_TRANSCRIPTION_API_KEY。常见选择：
+  #   Groq：      api_base https://api.groq.com/openai/v1   model whisper-large-v3
+  #   OpenAI：    api_base https://api.openai.com/v1        model whisper-1（单文件≤25MB）
+  #   自建服务：  api_base http://127.0.0.1:8000/v1         model Systran/faster-whisper-large-v3
+  openai:
+    api_base: ""
+    model: ""
+    self_contained: false    # 仅内置 Faster-Whisper Compose 模式设为 true
+    language: ""              # 留空自动检测；可填 zh、en 等提升准确率
+    timeout: 1800
+    max_upload_bytes: 0       # 0 表示不限制；云端接口一般限制 26214400（25MB）
 
 # Prompt templates for WebUI
 prompt_templates:
@@ -169,6 +190,42 @@ prompt_templates:
       清理口头填充词、无意义重复和跑题闲聊，但保留影响决策的理由、分歧、风险、前提条件和未解决意见。严格区分“已决定”“建议/方案”“待确认”和“个人意见”，不要把讨论中的设想写成最终决定，也不要把没有结论的内容强行总结成结论。
 
       可以使用 `##`、`###` 标题和简洁列表；只有在信息明确且适合对照时才使用表格。直接输出会议纪要，不要输出整理过程或额外说明。
+
+# ── 文件连接器（把成稿一键推送到外部群机器人或云文档知识库）──
+# 代码不硬编码任何提供商：这里只声明名称、格式与承载凭据的环境变量名；
+# 真实凭据（Webhook 地址 / token / app secret，均属机密）只放 .env。
+# 阅读页「发送到…」可选“整篇”或“知识摘要”（AI 提炼核心观点/案例/知识点）。
+#
+# 两类目标：
+#  A) 群机器人 Webhook（短消息）：feishu / dingtalk / slack / markdown（通用 JSON）
+#       声明 url_env（Webhook 地址所在的环境变量名）
+#  B) 云文档知识库（真正的文档）：
+#       notion     在数据库或页面下新建页面；声明 token_env + database_id(+title_property) 或 page_id
+#       feishu-doc 在飞书/Lark 新建一篇 Docx；声明 app_id_env + app_secret_env（可选 folder_token / base_url）
+#
+# 示例（默认留空；需要时在 config/config.yaml 覆盖，并在 .env 填对应凭据）：
+# connectors:
+#   - name: 飞书群
+#     format: feishu
+#     url_env: READ_PODCAST_CONNECTOR_FEISHU_URL
+#   - name: 钉钉群
+#     format: dingtalk
+#     url_env: READ_PODCAST_CONNECTOR_DINGTALK_URL
+#   - name: 通用 Webhook
+#     format: markdown
+#     url_env: READ_PODCAST_CONNECTOR_WEBHOOK_URL
+#     max_chars: 40000
+#   - name: Notion 知识库
+#     format: notion
+#     token_env: READ_PODCAST_CONNECTOR_NOTION_TOKEN
+#     database_id: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#     title_property: Name        # 数据库标题属性名（默认 Name）；用页面父级时改填 page_id
+#   - name: 飞书文档
+#     format: feishu-doc
+#     app_id_env: READ_PODCAST_CONNECTOR_FEISHU_APP_ID
+#     app_secret_env: READ_PODCAST_CONNECTOR_FEISHU_APP_SECRET
+#     # folder_token: xxxx        # 可选：放到指定文件夹；base_url 可改 https://open.larksuite.com
+connectors: []
 
 # Example podcasts (manage via WebUI or override in ./config/config.yaml)
 podcasts: []

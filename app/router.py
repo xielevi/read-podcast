@@ -7,6 +7,7 @@ Read Podcast API Router
 from __future__ import annotations
 
 import json
+import re
 import uuid as _uuid
 import asyncio
 import time
@@ -22,7 +23,13 @@ from fastapi.responses import StreamingResponse, FileResponse
 from pydantic import BaseModel, Field
 
 from app.models.task import Task, TaskStatus
-from app.database import delete_task, get_task, list_completed_keys, list_tasks
+from app.database import (
+    delete_task,
+    get_task,
+    list_completed_keys,
+    list_successful_tasks,
+    list_tasks,
+)
 from app.tasks import (
     AlreadyProcessedError,
     DuplicateTaskError,
@@ -33,6 +40,16 @@ from app.tasks import (
 )
 from app.sse import notifier
 from modules.config import settings
+from modules.connectors import (
+    ConnectorError,
+    available_connectors,
+    find_connector,
+    send_document,
+)
+from modules.connectors import test_connector as precheck_connector
+from modules.formatter import strip_leading_frontmatter
+from modules.library_qa import EpisodeDoc, build_library_context
+from modules.refiner import AssistantError, assistant_available, chat_completion
 from modules.rss_parser import RSSParser
 from modules.network_security import UnsafeUrlError, validate_public_url
 
@@ -51,6 +68,7 @@ api_router = router
 class AddPodcastRequest(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     rss_url: str = Field(min_length=1, max_length=2048)
+    image: str = Field(default="", max_length=2048)
 
 class CreateTaskRequest(BaseModel):
     podcast_name: str = Field(min_length=1, max_length=200)
@@ -60,6 +78,27 @@ class CreateTaskRequest(BaseModel):
 class CustomTaskRequest(BaseModel):
     audio_filename: str = Field(min_length=1, max_length=255)
     custom_prompt: str = Field(min_length=1, max_length=100_000)
+
+class LookupRequest(BaseModel):
+    term: str = Field(min_length=1, max_length=200)
+    context: str = Field(default="", max_length=4000)
+
+class ChatMessage(BaseModel):
+    role: str = Field(pattern="^(user|assistant)$")
+    content: str = Field(min_length=1, max_length=4000)
+
+class ChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    history: List[ChatMessage] = Field(default_factory=list)
+
+class LibraryChatRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+    history: List[ChatMessage] = Field(default_factory=list)
+
+class ExportRequest(BaseModel):
+    connector: str = Field(min_length=1, max_length=200)
+    # manuscript：推送整篇成稿；summary：推送 AI 提炼的知识条目
+    mode: str = Field(default="manuscript", pattern="^(manuscript|summary)$")
 
 class PublicTask(BaseModel):
     id: str
@@ -89,6 +128,15 @@ EPISODE_PREVIEW_LIMIT = 10
 UPLOAD_DIR = READ_PODCAST_ROOT / "workspace" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".aac", ".opus", ".wma"}
+ALLOWED_TEXT_OUTPUT_EXTS = {".md", ".markdown", ".txt"}
+# AI 助手灌入模型的文字稿上下文预算（字符）；超长稿件截断以控制延迟与成本。
+ASSISTANT_CONTEXT_CHAR_BUDGET = 24000
+# 每次对话最多回带的历史轮数，防止 prompt 无限膨胀。
+ASSISTANT_MAX_HISTORY = 8
+# 跨节目问答检索的语料上限：最多纳入多少期已完成稿件。
+LIBRARY_CORPUS_LIMIT = 60
+# 单期稿件读入的字符上限，避免超长稿件拖慢检索。
+LIBRARY_DOC_CHAR_CAP = 40000
 MAX_UPLOAD_BYTES = max(
     1,
     int(settings.RUNTIME_CONFIG.get("max_upload_bytes", 2 * 1024 * 1024 * 1024)),
@@ -133,6 +181,65 @@ async def transcription_status() -> Dict:
 @api_router.get("/subscriptions")
 async def get_subscriptions() -> List[Dict]:
     return settings.PODCASTS
+
+
+# 允许代理的封面图类型；上游返回其他类型时拒绝，防止把代理当成任意抓取器。
+_ALLOWED_IMAGE_TYPES = {
+    "image/jpeg": "image/jpeg",
+    "image/jpg": "image/jpeg",
+    "image/png": "image/png",
+    "image/webp": "image/webp",
+    "image/gif": "image/gif",
+    "image/avif": "image/avif",
+}
+MAX_ARTWORK_BYTES = 5 * 1024 * 1024
+
+
+def _safe_artwork_url(url: str) -> str:
+    """仅接受解析到公网地址的 http(s) 封面图 URL，否则返回空串。"""
+    candidate = str(url or "").strip()
+    if not candidate:
+        return ""
+    try:
+        validate_public_url(candidate)
+    except UnsafeUrlError:
+        return ""
+    return candidate
+
+
+@api_router.get("/artwork")
+async def artwork_proxy(url: str = Query(..., max_length=2048)):
+    """SSRF 安全的封面图代理：校验公网地址、限制体积与类型，避免浏览器直连第三方 CDN。"""
+    from modules.network_security import read_limited, safe_get
+
+    if not _safe_artwork_url(url):
+        raise HTTPException(status_code=400, detail="封面图地址不合法或不安全")
+
+    def _fetch() -> tuple[bytes, str]:
+        response = safe_get(url, timeout=10, stream=True)
+        try:
+            response.raise_for_status()
+            content_type = (response.headers.get("Content-Type", "") or "").split(";")[0].strip().lower()
+            if content_type not in _ALLOWED_IMAGE_TYPES:
+                raise HTTPException(status_code=415, detail="不支持的封面图类型")
+            data = read_limited(response, MAX_ARTWORK_BYTES)
+            return data, _ALLOWED_IMAGE_TYPES[content_type]
+        finally:
+            response.close()
+
+    try:
+        data, media_type = await asyncio.to_thread(_fetch)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.debug("封面图代理失败: %s", exc)
+        raise HTTPException(status_code=502, detail="封面图获取失败")
+
+    return Response(
+        content=data,
+        media_type=media_type,
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
 
 def _podcast_min_duration(podcast_name: str) -> int:
     podcast_cfg = settings.get_podcast_config(podcast_name) or {}
@@ -402,7 +509,12 @@ async def add_subscription(body: AddPodcastRequest) -> Dict:
     if not is_valid:
         raise HTTPException(status_code=400, detail="RSS URL 无效或无法解析出任何期数，请检查链接是否正确。")
 
-    await _mutate_podcasts(lambda podcasts: [*podcasts, {"name": name, "rss_url": rss_url}])
+    # 封面图：优先用调用方（搜索结果）提供的，其次回退 RSS 频道封面；仅接受公网 http(s)。
+    image = _safe_artwork_url(body.image.strip() or parser.channel_image)
+    entry = {"name": name, "rss_url": rss_url}
+    if image:
+        entry["image"] = image
+    await _mutate_podcasts(lambda podcasts: [*podcasts, entry])
 
     # 新添加订阅自动预热剧集缓存
     bg_task = asyncio.create_task(refresh_episodes_cache(name, rss_url))
@@ -555,25 +667,28 @@ async def stream_task_logs(task_id: str):
     )
 
 
+def _read_task_output_text(task: Task) -> tuple[Path, str]:
+    """读取任务输出文本文件；沿用与 content 接口一致的路径与类型校验。"""
+    if not task.output_path:
+        raise HTTPException(status_code=404, detail="输出文件尚未生成或已被删除")
+    output_file = Path(task.output_path)
+    if not output_file.exists():
+        raise HTTPException(status_code=404, detail="输出文件尚未生成或已被删除")
+    if output_file.suffix.lower() not in ALLOWED_TEXT_OUTPUT_EXTS:
+        raise HTTPException(status_code=415, detail="不支持读取非文本输出文件")
+    try:
+        return output_file, output_file.read_text(encoding="utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise HTTPException(status_code=500, detail="读取输出文件失败") from exc
+
+
 @api_router.get("/tasks/{task_id}/content")
 async def get_task_content(task_id: str) -> Dict[str, str]:
     task = await get_task(task_id)
     if not task:
         raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
 
-    if not task.output_path:
-        raise HTTPException(status_code=404, detail="输出文件尚未生成或已被删除")
-
-    output_file = Path(task.output_path)
-    if not output_file.exists():
-        raise HTTPException(status_code=404, detail="输出文件尚未生成或已被删除")
-    if output_file.suffix.lower() not in {".md", ".markdown", ".txt"}:
-        raise HTTPException(status_code=415, detail="不支持读取非文本输出文件")
-
-    try:
-        content = output_file.read_text(encoding="utf-8")
-    except (OSError, UnicodeError) as exc:
-        raise HTTPException(status_code=500, detail="读取输出文件失败") from exc
+    output_file, content = _read_task_output_text(task)
 
     return {
         "task_id": task_id,
@@ -637,3 +752,264 @@ async def upload_audio(file: UploadFile = File(...)) -> Dict:
 @api_router.get("/prompt-templates")
 async def get_prompt_templates() -> List[Dict]:
     return settings.PROMPT_TEMPLATES or []
+
+
+# ── AI 阅读助手（百科查询 + 文字稿问答）──
+# 复用 refiner 段的 OpenAI 兼容服务商配置与 REFINER_API_KEY，不引入新的凭据来源。
+
+@api_router.get("/assistant/status")
+async def assistant_status() -> Dict:
+    """助手是否可用，供前端优雅降级（未配置 AI 时隐藏入口）。"""
+    return {"available": assistant_available(settings.REFINER_CONFIG)}
+
+
+@api_router.post("/assistant/lookup")
+async def assistant_lookup(body: LookupRequest) -> Dict[str, str]:
+    """百科查询：解释文字稿中出现的概念、人物、机构、术语或事件。"""
+    term = body.term.strip()
+    if not term:
+        raise HTTPException(status_code=400, detail="term 不能为空")
+
+    system = (
+        "你是一位百科式讲解助手，为正在阅读播客文字稿的读者解释其中出现的概念、人物、"
+        "机构、术语或事件。用简体中文，给出准确、克制、通俗的解释，控制在 120 字以内。"
+        "若为多义词，结合读者提供的上下文选择最贴切的义项。不要编造不确定的事实，"
+        "不确定时明确说明。直接输出解释，不要寒暄或复述问题。"
+    )
+    user = f"需要解释的词条：{term}"
+    context = body.context.strip()
+    if context:
+        user += f"\n\n它出现的上下文（节选）：\n{context[:2000]}"
+
+    try:
+        explanation = await asyncio.to_thread(
+            chat_completion,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            settings.REFINER_CONFIG,
+            max_tokens=400,
+            temperature=0.3,
+        )
+    except AssistantError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {"term": term, "explanation": explanation}
+
+
+@api_router.post("/tasks/{task_id}/chat")
+async def chat_with_transcript(task_id: str, body: ChatRequest) -> Dict:
+    """针对某份已完成文字稿的问答，回答严格基于文字稿内容。"""
+    task = await get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
+
+    _output_file, content = _read_task_output_text(task)
+    transcript = strip_leading_frontmatter(content).strip()
+    if not transcript:
+        raise HTTPException(status_code=422, detail="文字稿为空，无法问答")
+
+    truncated = len(transcript) > ASSISTANT_CONTEXT_CHAR_BUDGET
+    context_text = transcript[:ASSISTANT_CONTEXT_CHAR_BUDGET]
+    title = task.episode_title or "本期节目"
+
+    system = (
+        f"你是这份播客文字稿的阅读助手。下面三引号内是《{title}》的文字稿"
+        + ("（因过长已截断，仅含前一部分）" if truncated else "")
+        + "。请仅依据文字稿内容回答读者问题，用简体中文，准确、简洁、有条理。"
+        "文字稿中找不到答案时如实说明“文字稿里没有提到”，不要编造或引入外部信息。\n\n"
+        f'"""\n{context_text}\n"""'
+    )
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+    for msg in body.history[-ASSISTANT_MAX_HISTORY:]:
+        messages.append({"role": msg.role, "content": msg.content.strip()})
+    messages.append({"role": "user", "content": body.question.strip()})
+
+    try:
+        answer = await asyncio.to_thread(
+            chat_completion,
+            messages,
+            settings.REFINER_CONFIG,
+            max_tokens=1200,
+            temperature=0.4,
+        )
+    except AssistantError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {"task_id": task_id, "answer": answer, "context_truncated": truncated}
+
+
+def _collect_library_docs(tasks: List[Task]) -> List[EpisodeDoc]:
+    """读取已完成稿件文本，构建跨节目问答的语料（有界，跳过缺失/非文本文件）。"""
+    docs: List[EpisodeDoc] = []
+    for task in tasks:
+        if not task.output_path:
+            continue
+        output_file = Path(task.output_path)
+        if not output_file.exists() or output_file.suffix.lower() not in ALLOWED_TEXT_OUTPUT_EXTS:
+            continue
+        try:
+            raw = output_file.read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
+            continue
+        text = strip_leading_frontmatter(raw).strip()
+        if not text:
+            continue
+        docs.append(
+            EpisodeDoc(
+                task_id=task.id,
+                title=task.episode_title or output_file.stem,
+                podcast=task.podcast_name or "",
+                text=text[:LIBRARY_DOC_CHAR_CAP],
+                created_at=task.created_at.isoformat() if task.created_at else "",
+            )
+        )
+    return docs
+
+
+@api_router.post("/assistant/library/chat")
+async def chat_with_library(body: LibraryChatRequest) -> Dict:
+    """跨多期播客问答：从最近有界稿件集中检索相关节目并标注来源。"""
+    question = body.question.strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="question 不能为空")
+
+    tasks = await list_successful_tasks(LIBRARY_CORPUS_LIMIT)
+    docs = await asyncio.to_thread(_collect_library_docs, tasks)
+    if not docs:
+        raise HTTPException(status_code=404, detail="稿件库还没有已完成的稿件，先转录几期再来提问吧。")
+
+    selection = await asyncio.to_thread(build_library_context, question, docs)
+    if not selection.context:
+        raise HTTPException(status_code=422, detail="没有检索到可用于回答的稿件内容")
+
+    system = (
+        "你是一位跨多期播客的知识助手。下面用【序号】分隔的是从用户稿件库中检索到的若干期"
+        "节目的相关片段。请综合这些片段回答问题，用简体中文，条理清晰。"
+        "涉及不同节目的观点时，注明它们各自来自哪一期（用节目标题指代），"
+        "并在合适时点出不同嘉宾/节目之间的共识与分歧。"
+        "只依据给定片段作答，片段中没有的内容如实说明“稿件库里没有相关内容”，不要编造或引入外部信息。\n\n"
+        f"{selection.context}"
+    )
+    messages: List[Dict[str, str]] = [{"role": "system", "content": system}]
+    for msg in body.history[-ASSISTANT_MAX_HISTORY:]:
+        messages.append({"role": msg.role, "content": msg.content.strip()})
+    messages.append({"role": "user", "content": question})
+
+    try:
+        answer = await asyncio.to_thread(
+            chat_completion,
+            messages,
+            settings.REFINER_CONFIG,
+            max_tokens=1500,
+            temperature=0.4,
+        )
+    except AssistantError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    return {
+        "answer": answer,
+        "sources": selection.sources,
+        "episodes_searched": len(docs),
+        "context_truncated": selection.truncated,
+    }
+
+
+# ── 文件连接器（把成稿推送到外部文档/群机器人）──
+
+def _frontmatter_value(text: str, key: str) -> str:
+    """从 Markdown 前置 frontmatter 里取一个标量值（找不到返回空串）。"""
+    match = re.match(r"^\s*---\s*\n(.*?)\n---\s*\n", text, flags=re.DOTALL)
+    if not match:
+        return ""
+    for line in match.group(1).splitlines():
+        stripped = line.strip()
+        if stripped.startswith(f"{key}:"):
+            return stripped[len(key) + 1 :].strip().strip("'\"")
+    return ""
+
+
+@api_router.get("/connectors")
+async def get_connectors() -> List[Dict]:
+    """可用连接器清单（不含 Webhook 地址），供前端渲染导出入口。"""
+    return available_connectors(settings.CONNECTORS)
+
+
+@api_router.post("/tasks/{task_id}/export")
+async def export_task(task_id: str, body: ExportRequest) -> Dict:
+    """把某份成稿推送到指定连接器目标。"""
+    task = await get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
+
+    connector = find_connector(settings.CONNECTORS, body.connector.strip())
+    if not connector:
+        raise HTTPException(status_code=404, detail=f"连接器 '{body.connector}' 不存在")
+
+    _output_file, content = _read_task_output_text(task)
+    source_link = _frontmatter_value(content, "source_link") or _frontmatter_value(content, "link")
+    title = task.episode_title or _output_file.stem
+    transcript = strip_leading_frontmatter(content).strip()
+
+    if body.mode == "summary":
+        markdown = await _build_knowledge_entry(title, task.podcast_name or "", transcript)
+    else:
+        markdown = transcript
+
+    doc = {
+        "title": title,
+        "podcast": task.podcast_name or "",
+        "markdown": markdown,
+        "source_link": source_link,
+    }
+
+    try:
+        result = await asyncio.to_thread(send_document, connector, doc)
+    except ConnectorError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return {"task_id": task_id, "status": "sent", "mode": body.mode, **result}
+
+
+async def _build_knowledge_entry(title: str, podcast: str, transcript: str) -> str:
+    """用 AI 从文字稿提炼可沉淀的知识条目（核心观点/案例/知识点/选题）。"""
+    if not transcript:
+        raise HTTPException(status_code=422, detail="文字稿为空，无法生成知识条目")
+    context = transcript[:ASSISTANT_CONTEXT_CHAR_BUDGET]
+    truncated_note = "（文字稿较长，仅据前一部分提炼）\n\n" if len(transcript) > ASSISTANT_CONTEXT_CHAR_BUDGET else ""
+    system = (
+        "你是知识管理助手，负责把播客文字稿沉淀成可长期复用的知识条目。"
+        "只依据给定文字稿，用简体中文输出结构化 Markdown，包含这些小节："
+        "## 核心观点、## 关键案例、## 可沉淀的知识点、## 可延伸选题。"
+        "每条简明扼要、忠于原文，文字稿没有提到的不要编造；无对应内容的小节可写“（本期未涉及）”。"
+        "不要输出正文之外的说明。"
+    )
+    header = f"《{title}》" + (f"（{podcast}）" if podcast else "")
+    user = f"{truncated_note}节目：{header}\n\n文字稿：\n\"\"\"\n{context}\n\"\"\""
+    try:
+        entry = await asyncio.to_thread(
+            chat_completion,
+            [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            settings.REFINER_CONFIG,
+            max_tokens=1600,
+            temperature=0.3,
+        )
+    except AssistantError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return f"# {header} · 知识条目\n\n{entry}"
+
+
+@api_router.post("/connectors/{name}/test")
+async def test_connector_endpoint(name: str) -> Dict:
+    """预检连接器凭据/可达性，不产生正式内容。"""
+    connector = find_connector(settings.CONNECTORS, name.strip())
+    if not connector:
+        raise HTTPException(status_code=404, detail=f"连接器 '{name}' 不存在")
+    try:
+        return await asyncio.to_thread(precheck_connector, connector)
+    except ConnectorError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc

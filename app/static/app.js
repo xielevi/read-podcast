@@ -254,11 +254,60 @@
       list.appendChild(fragment);
     }
 
+    // 封面图统一走服务端代理（SSRF 校验 + 体积/类型限制），避免浏览器直连第三方 CDN。
+    function artworkUrl(image) {
+      return image ? appUrl('/api/read-podcast/artwork?url=' + encodeURIComponent(image)) : '';
+    }
+
+    function makeArtworkTile(image, fallbackText, className) {
+      var wrap = document.createElement('span');
+      wrap.className = className;
+      var mono = document.createElement('span');
+      mono.className = 'art-monogram';
+      mono.textContent = String(fallbackText || '播').trim().slice(0, 1) || '播';
+      wrap.appendChild(mono);
+      if (image) {
+        var img = document.createElement('img');
+        img.loading = 'lazy';
+        img.alt = '';
+        img.decoding = 'async';
+        img.addEventListener('load', function () { wrap.classList.add('has-art'); });
+        img.addEventListener('error', function () { img.remove(); });
+        img.src = artworkUrl(image);
+        wrap.appendChild(img);
+      }
+      return wrap;
+    }
+
+    function renderCoverCollage(podcasts) {
+      var section = byId('cover-collage');
+      var strip = byId('cover-strip');
+      if (!section || !strip) return;
+      var withArt = (Array.isArray(podcasts) ? podcasts : []).filter(function (p) { return p && p.image; });
+      if (withArt.length < 2) { section.hidden = true; strip.replaceChildren(); return; }
+      strip.replaceChildren();
+      withArt.slice(0, 8).forEach(function (podcast) {
+        var tile = document.createElement('button');
+        tile.type = 'button';
+        tile.className = 'cover-tile';
+        tile.title = String(podcast.name || '');
+        tile.appendChild(makeArtworkTile(podcast.image, podcast.name, 'cover-art'));
+        tile.addEventListener('click', function () { selectPodcast(String(podcast.name || '')); });
+        strip.appendChild(tile);
+      });
+      var edition = byId('cover-edition');
+      if (edition) {
+        edition.textContent = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) + ' · 订阅合集';
+      }
+      section.hidden = false;
+    }
+
     function loadSubscriptions() {
       return fetch(appUrl('/api/read-podcast/subscriptions'))
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (podcasts) {
           renderPodcastList(podcasts);
+          renderCoverCollage(podcasts);
           prefetchEpisodePages(podcasts);
           return podcasts;
         })
@@ -1012,24 +1061,24 @@
       }
       items.forEach(function (podcast, index) {
         var item = document.createElement('button'); item.type = 'button'; item.className = 'search-result'; item.style.setProperty('--item-index', index);
-        var monogram = document.createElement('span'); monogram.className = 'result-monogram'; monogram.textContent = String(podcast.name || '播').trim().slice(0, 1) || '播';
+        var monogram = makeArtworkTile(podcast.image, podcast.name, 'result-monogram');
         var copy = document.createElement('span'); copy.style.minWidth = '0';
         var name = document.createElement('span'); name.className = 'result-name'; name.style.display = 'block'; name.textContent = String(podcast.name || '未命名播客');
         var meta = document.createElement('span'); meta.className = 'result-meta'; meta.style.display = 'block'; meta.textContent = [podcast.artist, podcast.genre, podcast.track_count ? podcast.track_count + ' 集' : ''].filter(Boolean).join(' · ');
         copy.append(name, meta);
         var arrow = document.createElement('span'); arrow.textContent = '›'; arrow.setAttribute('aria-hidden', 'true');
-        item.append(monogram, copy, arrow); item.addEventListener('click', function () { selectDrawerCandidate(String(podcast.name || ''), String(podcast.rss_url || '')); }); results.appendChild(item);
+        item.append(monogram, copy, arrow); item.addEventListener('click', function () { selectDrawerCandidate(String(podcast.name || ''), String(podcast.rss_url || ''), String(podcast.image || '')); }); results.appendChild(item);
       });
     }
-    function selectDrawerCandidate(name, rssUrl) { _drawerSelected = { name: name, rss_url: rssUrl }; byId('drawer-selected-name').textContent = name; byId('drawer-selected-rss').textContent = rssUrl; setHidden(byId('drawer-confirm-footer'), false); }
+    function selectDrawerCandidate(name, rssUrl, image) { _drawerSelected = { name: name, rss_url: rssUrl, image: image || '' }; byId('drawer-selected-name').textContent = name; byId('drawer-selected-rss').textContent = rssUrl; setHidden(byId('drawer-confirm-footer'), false); }
     function clearDrawerSelection() { _drawerSelected = null; setHidden(byId('drawer-confirm-footer'), true); }
-    function confirmSelectedPodcast() { if (_drawerSelected) confirmAddPodcast(_drawerSelected.name, _drawerSelected.rss_url); }
-    function confirmAddPodcast(name, rssUrl) {
+    function confirmSelectedPodcast() { if (_drawerSelected) confirmAddPodcast(_drawerSelected.name, _drawerSelected.rss_url, _drawerSelected.image); }
+    function confirmAddPodcast(name, rssUrl, image) {
       var cleanName = String(name || '').trim(); var cleanUrl = String(rssUrl || '').trim();
       if (!cleanName || !cleanUrl) { addLog('错误：节目名称和 RSS URL 均不能为空', 'error'); return; }
       var buttons = [byId('confirm-add-btn'), byId('manual-add-btn')]; buttons.forEach(function (button) { button.disabled = true; });
       addLog('正在验证 RSS：' + cleanName, 'running');
-      fetch(appUrl('/api/read-podcast/subscriptions'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cleanName, rss_url: cleanUrl }) })
+      fetch(appUrl('/api/read-podcast/subscriptions'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cleanName, rss_url: cleanUrl, image: String(image || '') }) })
         .then(function (response) { return response.json().then(function (data) { if (!response.ok) throw new Error(data.detail || 'HTTP ' + response.status); return data; }); })
         .then(function () { addLog('节目「' + cleanName + '」已成功订阅', 'success'); closeDrawer(); loadSubscriptions(); })
         .catch(function (error) { addLog('添加失败：' + errorMessage(error), 'error'); })
@@ -1238,6 +1287,7 @@
       if (!cleanId) return;
       closeEpisodeSummary();
       _currentReadingTaskId = cleanId;
+      resetAssistant();
       var task = _taskHistory.find(function (item) { return String(item.id) === cleanId; });
       byId('reader-title').textContent = task && task.episode_title ? String(task.episode_title) : '阅读';
       byId('reader-download').href = safeTaskUrl(cleanId, '/download');
@@ -1347,6 +1397,10 @@
 
     function closeManuscript() {
       _currentReadingTaskId = null;
+      closeAssistantPanel();
+      hideLookupPopover();
+      hideLookupCard();
+      closeExportMenu();
       if (_tocObserver) {
         _tocObserver.disconnect();
         _tocObserver = null;
@@ -1453,5 +1507,416 @@
       else if (byId('episode-summary-drawer').classList.contains('is-open')) closeEpisodeSummary();
     });
 
+    // ── AI 阅读助手（百科查询 + 文字稿问答）──────────────────
+    var _assistantAvailable = false;
+    var _assistantHistory = [];
+    var _assistantBusy = false;
+    var _lookupTerm = '';
+    var _lookupContext = '';
+
+    function formatAssistantText(text) {
+      // 轻量渲染：转义后处理 **加粗** 与换行，避免引入完整 Markdown 解析。
+      var safe = escapeHtml(text);
+      safe = safe.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+      return safe.replace(/\n/g, '<br>');
+    }
+
+    function appendAssistantMessage(role, text, options) {
+      var opts = options || {};
+      var container = opts.container || byId('assistant-messages');
+      var hint = container.querySelector('.assistant-hint');
+      if (hint) hint.remove();
+      var bubble = document.createElement('div');
+      bubble.className = 'assistant-msg assistant-msg-' + role + (opts.pending ? ' is-pending' : '') + (opts.error ? ' is-error' : '');
+      bubble.innerHTML = opts.pending ? '<span class="assistant-dots"><i></i><i></i><i></i></span>' : formatAssistantText(text);
+      container.appendChild(bubble);
+      container.scrollTop = container.scrollHeight;
+      return bubble;
+    }
+
+    function resetAssistant() {
+      _assistantHistory = [];
+      _assistantBusy = false;
+      var container = byId('assistant-messages');
+      if (container) {
+        container.innerHTML = '<div class="assistant-hint">基于本篇文字稿提问，例如「这期的核心观点是什么？」「嘉宾举了哪些案例？」<br>选中正文里的词，还能一键查百科。</div>';
+      }
+      var question = byId('assistant-question');
+      if (question) question.value = '';
+    }
+
+    function openAssistantPanel() {
+      if (!_assistantAvailable) return;
+      byId('reader-assistant').hidden = false;
+      document.querySelector('.reader-layout').classList.add('assistant-open');
+      var toggle = byId('assistant-toggle-btn');
+      toggle.classList.add('active');
+      toggle.setAttribute('aria-pressed', 'true');
+      var question = byId('assistant-question');
+      if (question) setTimeout(function () { question.focus(); }, 60);
+    }
+
+    function closeAssistantPanel() {
+      var panel = byId('reader-assistant');
+      if (panel) panel.hidden = true;
+      var layout = document.querySelector('.reader-layout');
+      if (layout) layout.classList.remove('assistant-open');
+      var toggle = byId('assistant-toggle-btn');
+      if (toggle) { toggle.classList.remove('active'); toggle.setAttribute('aria-pressed', 'false'); }
+    }
+
+    function toggleAssistantPanel() {
+      if (byId('reader-assistant').hidden) openAssistantPanel();
+      else closeAssistantPanel();
+    }
+
+    function sendAssistantQuestion() {
+      if (_assistantBusy) return;
+      var input = byId('assistant-question');
+      var question = String(input.value || '').trim();
+      if (!question) return;
+      if (!_currentReadingTaskId) { addLog('请先打开一篇稿件', 'error'); return; }
+      input.value = '';
+      _assistantBusy = true;
+      byId('assistant-send-btn').disabled = true;
+      appendAssistantMessage('user', question);
+      var pending = appendAssistantMessage('assistant', '', { pending: true });
+
+      fetch(safeTaskUrl(_currentReadingTaskId, '/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: question, history: _assistantHistory.slice(-8) })
+      })
+        .then(function (response) {
+          return response.text().then(function (raw) {
+            if (!response.ok) { var detail = raw; try { detail = JSON.parse(raw).detail || detail; } catch (ignore) {} throw new Error(detail || 'HTTP ' + response.status); }
+            return JSON.parse(raw);
+          });
+        })
+        .then(function (data) {
+          var answer = String(data.answer || '');
+          pending.classList.remove('is-pending');
+          pending.innerHTML = formatAssistantText(answer);
+          if (data.context_truncated) {
+            var note = document.createElement('div');
+            note.className = 'assistant-note';
+            note.textContent = '（稿件较长，回答基于文字稿前一部分）';
+            pending.appendChild(note);
+          }
+          _assistantHistory.push({ role: 'user', content: question });
+          _assistantHistory.push({ role: 'assistant', content: answer });
+          byId('assistant-messages').scrollTop = byId('assistant-messages').scrollHeight;
+        })
+        .catch(function (error) {
+          pending.classList.remove('is-pending');
+          pending.classList.add('is-error');
+          pending.textContent = '助手出错了：' + errorMessage(error);
+        })
+        .finally(function () {
+          _assistantBusy = false;
+          byId('assistant-send-btn').disabled = false;
+        });
+    }
+
+    // ── 划词百科查询 ──
+    function hideLookupPopover() { var el = byId('lookup-popover'); if (el) el.hidden = true; }
+    function hideLookupCard() { var el = byId('lookup-card'); if (el) el.hidden = true; }
+
+    function onManuscriptSelection() {
+      if (!_assistantAvailable) return;
+      var selection = window.getSelection();
+      var term = selection ? String(selection.toString()).trim() : '';
+      var body = byId('manuscript-body');
+      if (!term || term.length > 60 || !selection.rangeCount) { hideLookupPopover(); return; }
+      var range = selection.getRangeAt(0);
+      if (!body.contains(range.commonAncestorContainer)) { hideLookupPopover(); return; }
+      _lookupTerm = term;
+      var block = range.startContainer.parentElement ? range.startContainer.parentElement.closest('p, li, h1, h2, h3, blockquote') : null;
+      _lookupContext = block ? String(block.textContent || '').trim().slice(0, 600) : '';
+      byId('lookup-term-label').textContent = term.length > 12 ? term.slice(0, 12) + '…' : term;
+      var rect = range.getBoundingClientRect();
+      var popover = byId('lookup-popover');
+      popover.hidden = false;
+      var top = rect.top - popover.offsetHeight - 8;
+      if (top < 8) top = rect.bottom + 8;
+      var left = rect.left + rect.width / 2 - popover.offsetWidth / 2;
+      left = Math.max(8, Math.min(left, window.innerWidth - popover.offsetWidth - 8));
+      popover.style.top = top + 'px';
+      popover.style.left = left + 'px';
+    }
+
+    function runLookup() {
+      var term = _lookupTerm;
+      if (!term) return;
+      hideLookupPopover();
+      var card = byId('lookup-card');
+      byId('lookup-card-term').textContent = term;
+      byId('lookup-card-body').innerHTML = '<span class="assistant-dots"><i></i><i></i><i></i></span>';
+      card.hidden = false;
+
+      fetch(appUrl('/api/read-podcast/assistant/lookup'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ term: term, context: _lookupContext })
+      })
+        .then(function (response) {
+          return response.text().then(function (raw) {
+            if (!response.ok) { var detail = raw; try { detail = JSON.parse(raw).detail || detail; } catch (ignore) {} throw new Error(detail || 'HTTP ' + response.status); }
+            return JSON.parse(raw);
+          });
+        })
+        .then(function (data) { byId('lookup-card-body').innerHTML = formatAssistantText(String(data.explanation || '暂无解释')); })
+        .catch(function (error) { byId('lookup-card-body').innerHTML = '<span class="lookup-error">查询失败：' + escapeHtml(errorMessage(error)) + '</span>'; });
+    }
+
+    // ── 跨节目提问（稿件库） ──
+    var _libraryHistory = [];
+    var _libraryBusy = false;
+
+    function renderLibrarySources(bubble, sources) {
+      if (!sources || !sources.length) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'assistant-sources';
+      var label = document.createElement('span');
+      label.className = 'assistant-sources-label';
+      label.textContent = '来源：';
+      wrap.appendChild(label);
+      sources.forEach(function (src) {
+        var chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'source-chip';
+        chip.textContent = '【' + src.index + '】' + String(src.title || '未命名');
+        chip.title = '打开这篇稿件';
+        chip.addEventListener('click', function () { openManuscript(src.task_id); });
+        wrap.appendChild(chip);
+      });
+      bubble.appendChild(wrap);
+    }
+
+    function sendLibraryQuestion() {
+      if (_libraryBusy) return;
+      var input = byId('library-ask-question');
+      var question = String(input.value || '').trim();
+      if (!question) return;
+      input.value = '';
+      _libraryBusy = true;
+      byId('library-ask-send').disabled = true;
+      var container = byId('library-ask-messages');
+      appendAssistantMessage('user', question, { container: container });
+      var pending = appendAssistantMessage('assistant', '', { container: container, pending: true });
+
+      fetch(appUrl('/api/read-podcast/assistant/library/chat'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: question, history: _libraryHistory.slice(-8) })
+      })
+        .then(function (response) {
+          return response.text().then(function (raw) {
+            if (!response.ok) { var detail = raw; try { detail = JSON.parse(raw).detail || detail; } catch (ignore) {} throw new Error(detail || 'HTTP ' + response.status); }
+            return JSON.parse(raw);
+          });
+        })
+        .then(function (data) {
+          var answer = String(data.answer || '');
+          pending.classList.remove('is-pending');
+          pending.innerHTML = formatAssistantText(answer);
+          renderLibrarySources(pending, data.sources);
+          if (data.context_truncated) {
+            var note = document.createElement('div');
+            note.className = 'assistant-note';
+            note.textContent = '（稿件较多，回答基于最相关的部分节目）';
+            pending.appendChild(note);
+          }
+          _libraryHistory.push({ role: 'user', content: question });
+          _libraryHistory.push({ role: 'assistant', content: answer });
+          container.scrollTop = container.scrollHeight;
+        })
+        .catch(function (error) {
+          pending.classList.remove('is-pending');
+          pending.classList.add('is-error');
+          pending.textContent = '提问出错了：' + errorMessage(error);
+        })
+        .finally(function () {
+          _libraryBusy = false;
+          byId('library-ask-send').disabled = false;
+        });
+    }
+
+    function initAssistant() {
+      fetch(appUrl('/api/read-podcast/assistant/status'))
+        .then(function (r) { return r.ok ? r.json() : { available: false }; })
+        .then(function (data) {
+          _assistantAvailable = !!(data && data.available);
+          setHidden(byId('assistant-toggle-btn'), !_assistantAvailable);
+          setHidden(byId('library-ask'), !_assistantAvailable);
+        })
+        .catch(function () { _assistantAvailable = false; });
+
+      byId('library-ask-form').addEventListener('submit', function (event) { event.preventDefault(); sendLibraryQuestion(); });
+
+      byId('assistant-toggle-btn').addEventListener('click', toggleAssistantPanel);
+      byId('assistant-close-btn').addEventListener('click', closeAssistantPanel);
+      byId('assistant-form').addEventListener('submit', function (event) { event.preventDefault(); sendAssistantQuestion(); });
+      byId('assistant-question').addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendAssistantQuestion(); }
+      });
+      byId('lookup-trigger').addEventListener('click', runLookup);
+      byId('lookup-card-close').addEventListener('click', hideLookupCard);
+      byId('manuscript-body').addEventListener('mouseup', function () { setTimeout(onManuscriptSelection, 10); });
+      byId('manuscript-body').addEventListener('scroll', function () { hideLookupPopover(); });
+      document.addEventListener('mousedown', function (event) {
+        if (!byId('lookup-popover').contains(event.target)) hideLookupPopover();
+        var card = byId('lookup-card');
+        if (!card.hidden && !card.contains(event.target)) hideLookupCard();
+      });
+    }
+
+    // ── 文件连接器（把成稿发送到外部文档/群机器人） ──
+    var _connectors = [];
+
+    function closeExportMenu() {
+      var menu = byId('export-menu');
+      if (menu) menu.hidden = true;
+      var btn = byId('reader-export-btn');
+      if (btn) btn.setAttribute('aria-expanded', 'false');
+    }
+
+    function renderExportMenu() {
+      var menu = byId('export-menu');
+      menu.replaceChildren();
+      if (!_connectors.length) {
+        var none = document.createElement('div');
+        none.className = 'export-menu-empty';
+        none.textContent = '未配置连接器';
+        menu.appendChild(none);
+        return;
+      }
+      _connectors.forEach(function (connector) {
+        var isDoc = connector.kind === 'doc';
+        var item = document.createElement('div');
+        item.className = 'export-item' + (connector.configured ? '' : ' is-disabled');
+
+        var head = document.createElement('div');
+        head.className = 'export-item-head';
+        var nameEl = document.createElement('span');
+        nameEl.className = 'export-item-name';
+        nameEl.textContent = String(connector.name || '');
+        var badge = document.createElement('span');
+        badge.className = 'export-item-badge';
+        badge.textContent = isDoc ? '📄 云文档' : '🤖 群消息';
+        head.append(nameEl, badge);
+        item.appendChild(head);
+
+        if (!connector.configured) {
+          var hint = document.createElement('div');
+          hint.className = 'export-item-hint';
+          hint.textContent = '未配置（在 .env 填凭据）';
+          item.appendChild(hint);
+        } else {
+          var actions = document.createElement('div');
+          actions.className = 'export-item-actions';
+          var full = document.createElement('button');
+          full.type = 'button'; full.className = 'export-action';
+          full.textContent = '整篇';
+          full.addEventListener('click', function () { exportToConnector(connector, 'manuscript'); });
+          var summary = document.createElement('button');
+          summary.type = 'button'; summary.className = 'export-action';
+          summary.textContent = '知识摘要';
+          summary.title = '用 AI 提炼核心观点/案例/知识点后再发送';
+          summary.addEventListener('click', function () { exportToConnector(connector, 'summary'); });
+          var test = document.createElement('button');
+          test.type = 'button'; test.className = 'export-action ghost';
+          test.textContent = '测试';
+          test.addEventListener('click', function () { testConnector(connector); });
+          actions.append(full, summary, test);
+          item.appendChild(actions);
+        }
+        menu.appendChild(item);
+      });
+    }
+
+    function openExportMenu() {
+      renderExportMenu();
+      var btn = byId('reader-export-btn');
+      var menu = byId('export-menu');
+      menu.hidden = false;
+      btn.setAttribute('aria-expanded', 'true');
+      var rect = btn.getBoundingClientRect();
+      var top = rect.bottom + 6;
+      var left = Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8));
+      menu.style.top = top + 'px';
+      menu.style.left = left + 'px';
+    }
+
+    function toggleExportMenu() {
+      if (byId('export-menu').hidden) openExportMenu();
+      else closeExportMenu();
+    }
+
+    function exportToConnector(connector, mode) {
+      var name = connector && connector.name ? connector.name : String(connector || '');
+      if (!_currentReadingTaskId) { addLog('请先打开一篇稿件', 'error'); return; }
+      closeExportMenu();
+      var modeLabel = mode === 'summary' ? '知识摘要' : '整篇';
+      addLog('正在发送' + modeLabel + '到「' + name + '」…', 'running');
+      fetch(safeTaskUrl(_currentReadingTaskId, '/export'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ connector: name, mode: mode || 'manuscript' })
+      })
+        .then(function (response) {
+          return response.text().then(function (raw) {
+            if (!response.ok) { var detail = raw; try { detail = JSON.parse(raw).detail || detail; } catch (ignore) {} throw new Error(detail || 'HTTP ' + response.status); }
+            return JSON.parse(raw);
+          });
+        })
+        .then(function (data) {
+          var extra = '';
+          if (data && data.document_url) extra = ' · 已创建文档';
+          else if (data && data.document_id) extra = ' · 文档已创建';
+          if (data && data.truncated) extra += '（内容较长已截断）';
+          addLog('已发送' + modeLabel + '到「' + name + '」' + extra, 'success');
+          if (data && data.document_url) addLog('文档链接：' + data.document_url, 'info');
+        })
+        .catch(function (error) { addLog('发送失败：' + errorMessage(error), 'error'); });
+    }
+
+    function testConnector(connector) {
+      var name = connector && connector.name ? connector.name : String(connector || '');
+      closeExportMenu();
+      addLog('正在测试「' + name + '」…', 'running');
+      fetch(appUrl('/api/read-podcast/connectors/' + encodeURIComponent(name) + '/test'), { method: 'POST' })
+        .then(function (response) {
+          return response.text().then(function (raw) {
+            if (!response.ok) { var detail = raw; try { detail = JSON.parse(raw).detail || detail; } catch (ignore) {} throw new Error(detail || 'HTTP ' + response.status); }
+            return JSON.parse(raw);
+          });
+        })
+        .then(function (data) { addLog('「' + name + '」' + (data && data.detail ? data.detail : '连接正常'), 'success'); })
+        .catch(function (error) { addLog('测试失败：' + errorMessage(error), 'error'); });
+    }
+
+    function initConnectors() {
+      fetch(appUrl('/api/read-podcast/connectors'))
+        .then(function (r) { return r.ok ? r.json() : []; })
+        .then(function (data) {
+          _connectors = Array.isArray(data) ? data : [];
+          // 至少配置好一个连接器时才显示导出入口。
+          var anyConfigured = _connectors.some(function (c) { return c.configured; });
+          setHidden(byId('reader-export-btn'), !anyConfigured);
+        })
+        .catch(function () { _connectors = []; });
+
+      byId('reader-export-btn').addEventListener('click', function (event) { event.stopPropagation(); toggleExportMenu(); });
+      document.addEventListener('mousedown', function (event) {
+        var menu = byId('export-menu');
+        if (menu.hidden) return;
+        if (!menu.contains(event.target) && event.target !== byId('reader-export-btn')) closeExportMenu();
+      });
+      window.addEventListener('resize', closeExportMenu);
+    }
+
+    initAssistant();
+    initConnectors();
     loadSubscriptions();
     loadHistory();

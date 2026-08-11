@@ -3,9 +3,9 @@
 ## 架构约束
 
 - 应用支持两种部署：macOS 本机原生运行（`scripts/start.sh` 一键脚本，面向个人用户的首选）与 Docker。二者共用同一套代码与配置分层。
-- Whisper 只通过 macOS Apple Silicon 原生 MLX HTTP 服务提供。
-- 应用通过 `transcription.api_url` 访问 MLX 服务；本机原生默认 `127.0.0.1:21567`，Docker 默认 `host.docker.internal:21567`。
-- 不重新引入 Faster-Whisper、自包含推理镜像、宿主硬件自动选型或进程内 MLX。
+- 转录后端通过 `transcription.backend` 选择：默认 `mlx-api`（macOS Apple Silicon 原生 MLX HTTP 服务，行为不变）；实验分支新增 `openai-api`，作为 OpenAI 兼容 `/audio/transcriptions` 的跨平台 HTTP 客户端，并可通过单独 Compose 覆盖文件启动仓库内置 Faster-Whisper CPU 服务（见 `docs/ARCHITECTURE.md` D8）。
+- `mlx-api` 后端通过 `transcription.api_url` 访问 MLX 服务；本机原生默认 `127.0.0.1:21567`，Docker 默认 `host.docker.internal:21567`。
+- Faster-Whisper 只能存在实验分支的独立转录服务镜像中；不进入 Web 应用镜像或 Web 进程。不加入宿主硬件自动选型或进程内 MLX。
 - 架构变更必须先更新 `docs/ARCHITECTURE.md` 的设计决策小节。
 
 ## 运行边界

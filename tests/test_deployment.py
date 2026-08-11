@@ -80,6 +80,24 @@ def test_transcription_environment_overrides_persisted_deployment_mode(tmp_path,
     assert loaded.TRANSCRIPTION_CONFIG["shared_audio_root"] == ""
 
 
+def test_self_contained_transcription_environment_builds_openai_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("READ_PODCAST_TRANSCRIPTION_BACKEND", "openai-api")
+    monkeypatch.setenv(
+        "READ_PODCAST_TRANSCRIPTION_OPENAI_API_BASE",
+        "http://transcription:8000/v1",
+    )
+    monkeypatch.setenv("READ_PODCAST_TRANSCRIPTION_OPENAI_MODEL", "small")
+    monkeypatch.setenv("READ_PODCAST_TRANSCRIPTION_OPENAI_SELF_CONTAINED", "true")
+
+    loaded = Settings(tmp_path / "missing.yaml")
+
+    assert loaded.TRANSCRIPTION_CONFIG["backend"] == "openai-api"
+    openai_config = loaded.TRANSCRIPTION_CONFIG["openai"]
+    assert openai_config["api_base"] == "http://transcription:8000/v1"
+    assert openai_config["model"] == "small"
+    assert openai_config["self_contained"] is True
+
+
 def test_settings_deep_merges_user_overrides_with_defaults(tmp_path: Path):
     config_path = tmp_path / "config.yaml"
     config_path.write_text(

@@ -18,11 +18,12 @@
 | 方法 | 路径 | 功能 |
 | :--- | :--- | :--- |
 | GET | `/health` | 健康检查，免认证 |
-| GET | `/transcription/status` | 转录引擎安全元数据（不含 URL/Token/路径） |
-| GET | `/subscriptions` | 当前播客订阅列表 |
+| GET | `/transcription/status` | 转录引擎安全元数据（含 `backend`/`self_contained`，不含 URL/Token/路径） |
+| GET | `/subscriptions` | 当前播客订阅列表（含持久化的 `image` 封面图，若有） |
+| GET | `/artwork` | SSRF 安全的封面图代理（`url` 参数；校验公网地址、限制类型 image/* 与体积 5MB，`Cache-Control` 一天） |
 | GET | `/episodes` | 剧集列表（SWR 缓存，`X-Read-Podcast-Cache-State` 头标识 complete/stale/warming） |
 | GET | `/search/podcast` | iTunes 检索 + 直连 RSS 解析 |
-| POST | `/subscriptions` | 添加订阅（校验 RSS 可达，写入 `config.yaml` 顶层 `podcasts`，预热缓存） |
+| POST | `/subscriptions` | 添加订阅（校验 RSS 可达，写入 `config.yaml` 顶层 `podcasts`，预热缓存；可选 `image` 封面图，缺省回退 RSS 频道封面） |
 | DELETE | `/subscriptions/{name}` | 删除订阅（同步清理缓存） |
 | POST | `/tasks` | 创建 RSS 单集任务 |
 | POST | `/tasks/custom` | 创建自定义音频任务（prompt 必须来自预设模板，音频须在 uploads 内） |
@@ -37,8 +38,23 @@
 | GET | `/tasks/{id}/download` | 下载输出文件 |
 | POST | `/upload/audio` | 上传音频（扩展名白名单，`runtime.max_upload_bytes` 默认 2GiB；只返回文件名，不泄露绝对路径） |
 | GET | `/prompt-templates` | 预设 Prompt 模板列表 |
+| GET | `/assistant/status` | AI 助手是否可用（需配置 refiner 服务商与 `REFINER_API_KEY`），供前端优雅降级 |
+| POST | `/assistant/lookup` | 百科查询：解释文字稿中的概念/人物/术语（`term`≤200，可选 `context`≤4000） |
+| POST | `/tasks/{id}/chat` | 针对某份已完成文字稿的问答，回答严格基于文字稿内容（`question`≤2000，可带 `history`） |
+| POST | `/assistant/library/chat` | 跨多期播客问答：从最近最多 60 期稿件中检索相关节目后综合作答，返回 `answer` 与带编号的 `sources` |
+| GET | `/connectors` | 可用文件连接器清单（`name`/`format`/`kind`/`configured`，不含任何地址或凭据） |
+| POST | `/tasks/{id}/export` | 把成稿推送到连接器（`connector` 名称 + `mode`：`manuscript` 整篇 / `summary` AI 知识条目） |
+| POST | `/connectors/{name}/test` | 预检连接器凭据/可达性，不产生正式内容 |
 
 订阅增删直接持久化到 `config.yaml`，重启后生效；写入逻辑与顶层/命名空间两种配置结构兼容。
+
+**AI 阅读助手（`/assistant/*` 与 `/tasks/{id}/chat`）** 复用 refiner 段的 OpenAI 兼容服务商配置与 `REFINER_API_KEY`，不引入新的凭据来源。`chat` 端点读取任务输出文本（沿用与 `/content` 一致的路径与类型校验），剥离 frontmatter 后按 `ASSISTANT_CONTEXT_CHAR_BUDGET`（默认 24000 字符）截断灌入模型，只保留最近 `ASSISTANT_MAX_HISTORY`（默认 8）轮历史。未配置 AI 时返回 503 并附可读原因，前端据 `/assistant/status` 隐藏入口。
+
+**跨节目问答（`/assistant/library/chat`）** 取最近 `LIBRARY_CORPUS_LIMIT`（默认 60）期已成功稿件，经 `modules.library_qa` 的零依赖关键词检索（ASCII 词 + 中文二元组打分、新近意图回退）挑出最相关的若干期，从每期抽取有界相关片段拼成带编号来源的上下文，再交给模型综合作答（要求标注各观点来自哪一期、点出共识与分歧、片段外内容不编造）。返回的 `sources` 含 `index`/`task_id`/`title`/`podcast`，前端渲染为可点击跳转到对应稿件的来源标签。稿件库为空时返回 404。
+
+**文件连接器（`/connectors`、`/tasks/{id}/export`、`/connectors/{name}/test`）** 复用 `modules.connectors`，把成稿推送到两类目标：**群机器人 Webhook**（`feishu`/`dingtalk`/`slack`/`markdown`，声明 `url_env`）与**云文档知识库**（`notion` 在数据库/页面下建页，声明 `token_env`+`database_id`/`page_id`；`feishu-doc` 新建飞书 Docx，声明 `app_id_env`+`app_secret_env`）。所有凭据只从 `.env` 读取，`/connectors` 只回传 `format`/`kind`/`configured`，绝不暴露地址或凭据。
+
+`export` 支持 `mode`：`manuscript` 推送整篇成稿；`summary` 先用 `chat_completion` 从文字稿提炼「核心观点/关键案例/知识点/延伸选题」的知识条目再推送（AI 未配置时 503）。所有出站请求经 `validate_public_url` 做 SSRF 校验，正文按目标上限裁剪、云文档结构化为标题/段落/列表块；飞书/钉钉/Notion 的业务错误码或非 2xx 视为失败并返回 502（脱敏）。`test` 端点对 Notion（`GET /v1/users/me`）与飞书（换取 `tenant_access_token`）做只读预检，Webhook 无只读预检口则只校验已配置且地址公网可达。
 
 ## app/tasks.py — 任务编排
 
@@ -74,6 +90,16 @@
 - 单把 `_transcription_lock` 保证一次只跑一个完整转录请求；任务结束后按 `mlx.model_idle_seconds`（默认 300s，`0` 立即释放）保温模型，超时释放模型与 Metal cache；连续任务复用已加载模型。
 
 普通参数来自 `mlx.*`；环境变量只保留 `READ_PODCAST_WHISPER_API_TOKEN`。
+
+## services/builtin_transcription — 可选自包含转录服务
+
+`docker-compose.self-contained.yml` 才会启动的独立 CPU 服务，不进入默认 Mac mini / MLX 路径。
+
+- `GET /health`：返回引擎、模型、CPU 设备与是否已加载模型，不预加载模型。
+- `GET /v1/models`：OpenAI 兼容模型列表；配置 Token 时要求 Bearer 鉴权。
+- `POST /v1/audio/transcriptions`：OpenAI 兼容 multipart 接口，支持 `json` / `verbose_json` / `text`，文件流式落盘并受大小上限约束，转录后删除临时文件。
+- 完整转录用单请求锁串行；Faster-Whisper 模型懒加载并在进程内复用。
+- 模型文件保存在 `read-podcast-models` volume，容器重建不会丢失。服务不映射宿主端口。
 
 ## scripts/ 下的维护脚本
 

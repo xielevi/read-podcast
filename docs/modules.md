@@ -24,22 +24,27 @@
 
 ## rss_parser.py — RSS 解析
 
-`RSSParser(rss_url, name, insecure_tls=False).fetch_episodes(limit, min_duration_seconds, reverse, filter_id, filter_title)` 默认校验 TLS；仅订阅显式开启 `insecure_tls` 时，证书错误才会降级重试。其余行为基于 `feedparser` 抓取并清洗节目：剥离 HTML 的简介、提取 enclosure 音频链接、解析 `itunes:duration`。
+`RSSParser(rss_url, name, insecure_tls=False).fetch_episodes(limit, min_duration_seconds, reverse, filter_id, filter_title)` 默认校验 TLS；仅订阅显式开启 `insecure_tls` 时，证书错误才会降级重试。其余行为基于 `feedparser` 抓取并清洗节目：剥离 HTML 的简介、提取 enclosure 音频链接、解析 `itunes:duration`。抓取时顺带记录频道封面到 `channel_image`（`itunes:image` 优先，零额外网络请求），供添加订阅时作为封面图回退。
 
 ## downloader.py — 音频下载
 
 `Downloader(download_dir).download_audio(url, filename_base)`：优先直链 HTTP 流式下载（写 `.part` 后原子重命名），失败回退 `yt-dlp`；已存在且大于 100KB 时跳过。保留源音频格式，不强制转码。出站 URL 与每次重定向必须解析到公网地址，下载大小和执行时长受 `runtime.max_download_bytes` / `runtime.download_timeout_seconds` 限制。
 
-## transcriber.py — Whisper HTTP 客户端
+## transcriber.py — 可插拔转录后端
 
-`WhisperApiTranscriber` 调用原生 MLX Whisper 服务，`get_transcriber(config)` 为工厂。
+`BaseTranscriber` 抽象基类统一 `transcribe(audio_file, cache_path, progress_callback)` 契约，返回统一的 `TranscriptionResult`。缓存命中/原子写入由模块级 `_read_cached_result` / `_write_cache` 共用。后端由 `transcription.backend` 选择，`get_transcriber(config)` 为工厂：
 
-- `transcribe(audio_file, cache_path, progress_callback)`：命中 `cache_path` 则跳过；否则按共享路径优先提交。
-- 共享路径模式（`transcription.shared_audio_root`）：POST `/transcribe-path` 传相对路径；服务端不支持或拒绝共享路径（403/404/405/501）时自动回退 multipart `/transcribe` 上传。
-- 转录请求带有短期 request ID，并轮询 MLX `/progress/{request_id}`；当后端按分片处理时，`progress_callback` 会收到已完成分片数和百分比，进度接口不可用时不影响主请求。
-- MLX 返回的非有限浮点指标会由服务端转换为 `null`，不影响文本结果和缓存写入。
-- Bearer Token 鉴权；转录结果原子写入缓存。
-- `describe_transcriber(config)` 只返回安全元数据（backend/engine/device/model），不含 URL、路径或凭据，供状态接口使用。
+- **`mlx-api`（默认）—— `WhisperApiTranscriber`**：调用原生 MLX Whisper 服务，仅 Apple Silicon。
+  - 共享路径模式（`transcription.shared_audio_root`）：POST `/transcribe-path` 传相对路径；服务端不支持或拒绝共享路径（403/404/405/501）时自动回退 multipart `/transcribe` 上传。
+  - 转录请求带短期 request ID，并轮询 MLX `/progress/{request_id}`；后端按分片处理时 `progress_callback` 收到分片进度，进度接口不可用时不影响主请求。
+  - Bearer Token（`READ_PODCAST_WHISPER_API_TOKEN`）鉴权。
+- **`openai-api` —— `OpenAITranscriber`**：调用任意 OpenAI 兼容的 `/audio/transcriptions` 接口（OpenAI、Groq、自建 faster-whisper-server 等），**与平台无关**，可在 Windows / Linux / Intel Mac 运行，无需本机 MLX 进程。
+  - 地址与模型来自 `transcription.openai.{api_base,model,language,timeout,max_upload_bytes,self_contained}`；Key 只从 `READ_PODCAST_TRANSCRIPTION_API_KEY` 注入。
+  - `docker-compose.self-contained.yml` 会把该客户端指向仓库内 `services/builtin_transcription` 的 Faster-Whisper CPU 服务。转录运行时与 Web 应用镜像/进程隔离，模型缓存持久化到独立 volume。
+  - `max_upload_bytes>0` 时对超限文件明确失败并提示改用自建服务；云端接口通常限制 25MB。
+  - 支持 `response_format=json`（取 `text`）与纯文本响应两种返回。
+
+`describe_transcriber(config)` 只返回安全元数据（`backend`/`engine`/`device`/`model`/`self_contained`），不含 URL、路径或凭据，供状态接口使用；外部 `openai-api` 默认 `self_contained=False`，只有内置 Compose 模式明确设为 `True`。未知 `backend` 会明确报错。
 
 ## refiner.py — AI 精修（OpenAI 兼容）
 
@@ -52,6 +57,15 @@
 - 针对 deepseek thinking 模型禁用 reasoning 以直接获取 content。
 - 更换提供商只需在 `config/config.yaml` 覆盖 `refiner.api_base` / `refiner.model`；Key 仍放 `.env`。
 
+同一模块还提供 AI 阅读助手复用的通用能力（同样只依赖 refiner 配置与 `REFINER_API_KEY`）：
+
+- `chat_completion(messages, config, *, max_tokens, temperature)`：通用 OpenAI 兼容对话补全，返回纯文本；失败抛 `AssistantError`（401/400 不重试，429 退避）。供百科查询与文字稿问答复用。
+- `assistant_available(config)`：判断助手是否可用（需 `api_base`、`model` 与 `REFINER_API_KEY` 齐备），供状态接口与前端优雅降级。
+
+## library_qa.py — 跨节目问答检索
+
+零依赖的关键词检索，支撑“跨多期播客提问”。`question_tokens` 把问题拆成 ASCII 词 + 过滤停用字后的中文二元组；`score_episode` 按标题（高权重）与正文中 token 命中数打分（有界扫描与计数上限）；`wants_recency` 识别“最近/近期/最新”等新近意图。`build_library_context(question, episodes, ...)` 在相关度排序与新近排序（问题过泛或强新近意图时）之间选择，挑出至多 `max_episodes` 期，从每期抽取包含命中 token 的窗口片段（无命中回退开头），拼成带 `【序号】` 来源标注的上下文，返回 `LibraryContext`（`context`/`sources`/`truncated`/`used_count`）。不使用向量库或外部服务，确定性、可测试。
+
 ## formatter.py — Markdown 格式化
 
 `Formatter(markdown_dirs)`：`format_markdown(episode, transcript_text, tags, processing)` 生成 YAML frontmatter（含 `refinement_success`、`transcript_source`）+ 正文；`save_note(content, filename, target_dir)` 写入目标目录，权限失败时降级到 `workspace/<podcast>/markdown`。`strip_leading_frontmatter` 防止精修稿自带 frontmatter 冲突。
@@ -62,6 +76,15 @@
 - `state.py`：`StateManager`（已处理节目 ID 集合，文件锁 + 原子写）与 `acquire_lock`。
 - `quality.py`：`verify_refinement_quality(md, raw_text, min_output_ratio=0.9)`、`count_meaningful_chars` 与质量特征。
 - `metadata.py`：`extract_metadata_from_text`（识别主播/嘉宾）与 `extract_frontmatter`；`utils/__init__.py` 保留兼容导出。
+
+## connectors.py — 文件连接器
+
+把成稿推送到**群机器人 Webhook** 或**云文档知识库**，**代码不硬编码任何提供商**：连接器只在配置声明 `name`/`format` 与承载凭据的环境变量名，真实凭据只从环境变量读取。
+
+- `available_connectors(config)`：返回 `name`/`format`/`kind`（webhook|doc）/`configured`，按格式判断所需环境变量（webhook 需 `url_env`；notion 需 `token_env`+`database_id`/`page_id`；feishu-doc 需 `app_id_env`+`app_secret_env`），不暴露任何地址/凭据。
+- `build_payload(fmt, doc, max_chars)`：Webhook 四种格式（feishu/dingtalk/slack/markdown）的请求体，正文按上限裁剪。
+- `send_document(connector, doc)`：按 `format` 分派。Webhook→单次 POST；`notion`→`POST /v1/pages`（markdown 结构化为标题/段落/列表块，parent 用 database 或 page）；`feishu-doc`→换取 `tenant_access_token`→建 Docx→写入文本块。所有出站地址先过 `validate_public_url`（SSRF）；HTTP 非 2xx 或飞书/Notion 业务错误码非 0 抛 `ConnectorError`（不记录地址与响应正文）。
+- `test_connector(connector)`：只读预检——Notion 打 `/v1/users/me`，飞书换 token，Webhook 只校验已配置且公网可达。
 
 ## pipeline.py — 业务流水线（核心）
 

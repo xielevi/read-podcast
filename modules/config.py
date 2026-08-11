@@ -118,6 +118,9 @@ class Settings:
 
         # --- [2. 转录与精修] ---
         transcription = dict(self._raw_config.get('transcription', {}))
+        backend = os.getenv("READ_PODCAST_TRANSCRIPTION_BACKEND")
+        if backend:
+            transcription["backend"] = backend
         api_url = os.getenv(
             "READ_PODCAST_TRANSCRIPTION_API_URL",
             os.getenv("PODCAST2MD_TRANSCRIPTION_API_URL"),
@@ -131,6 +134,27 @@ class Settings:
         )
         if shared_root_key in os.environ:
             transcription["shared_audio_root"] = os.environ[shared_root_key]
+
+        openai_config = dict(transcription.get("openai", {}) or {})
+        openai_env = {
+            "api_base": "READ_PODCAST_TRANSCRIPTION_OPENAI_API_BASE",
+            "model": "READ_PODCAST_TRANSCRIPTION_OPENAI_MODEL",
+            "language": "READ_PODCAST_TRANSCRIPTION_OPENAI_LANGUAGE",
+            "timeout": "READ_PODCAST_TRANSCRIPTION_OPENAI_TIMEOUT",
+            "max_upload_bytes": "READ_PODCAST_TRANSCRIPTION_OPENAI_MAX_UPLOAD_BYTES",
+        }
+        for config_key, env_name in openai_env.items():
+            if env_name in os.environ:
+                value = os.environ[env_name]
+                openai_config[config_key] = (
+                    int(value) if config_key in {"timeout", "max_upload_bytes"} else value
+                )
+        self_contained_env = "READ_PODCAST_TRANSCRIPTION_OPENAI_SELF_CONTAINED"
+        if self_contained_env in os.environ:
+            openai_config["self_contained"] = os.environ[self_contained_env].strip().lower() in {
+                "1", "true", "yes", "on"
+            }
+        transcription["openai"] = openai_config
         self.TRANSCRIPTION_CONFIG = transcription
         self.REFINER_CONFIG = self._raw_config.get('refiner', {})
         self.RUNTIME_CONFIG = self._raw_config.get('runtime', {})
@@ -142,6 +166,9 @@ class Settings:
 
         # --- [4. Prompt 模板列表] ---
         self.PROMPT_TEMPLATES = self._raw_config.get('prompt_templates', [])
+
+        # --- [5. 文件连接器] ---
+        self.CONNECTORS = self._raw_config.get('connectors', [])
 
     def get_podcast_dir(self, podcast_name, sub_type='markdown'):
         mapping = {

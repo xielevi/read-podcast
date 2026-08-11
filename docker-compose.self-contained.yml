@@ -1,0 +1,43 @@
+# Experimental, opt-in deployment: run the web app with a bundled CPU
+# Faster-Whisper service. The normal docker-compose.yml and macOS start.sh paths
+# remain unchanged.
+services:
+  read-podcast:
+    environment:
+      READ_PODCAST_TRANSCRIPTION_BACKEND: openai-api
+      READ_PODCAST_TRANSCRIPTION_OPENAI_API_BASE: http://transcription:8000/v1
+      READ_PODCAST_TRANSCRIPTION_OPENAI_MODEL: ${READ_PODCAST_BUILTIN_WHISPER_MODEL:-small}
+      READ_PODCAST_TRANSCRIPTION_OPENAI_SELF_CONTAINED: "true"
+      READ_PODCAST_TRANSCRIPTION_API_KEY: ${READ_PODCAST_BUILTIN_TRANSCRIPTION_TOKEN:-}
+      READ_PODCAST_TRANSCRIPTION_API_URL: ""
+      READ_PODCAST_TRANSCRIPTION_SHARED_AUDIO_ROOT: ""
+    depends_on:
+      transcription:
+        condition: service_healthy
+
+  transcription:
+    build:
+      context: ./services/builtin_transcription
+    image: read-podcast-transcription:local
+    container_name: read-podcast-transcription
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    environment:
+      READ_PODCAST_FASTER_WHISPER_MODEL: ${READ_PODCAST_BUILTIN_WHISPER_MODEL:-small}
+      READ_PODCAST_FASTER_WHISPER_DEVICE: cpu
+      READ_PODCAST_FASTER_WHISPER_COMPUTE_TYPE: ${READ_PODCAST_BUILTIN_WHISPER_COMPUTE_TYPE:-int8}
+      READ_PODCAST_FASTER_WHISPER_CPU_THREADS: ${READ_PODCAST_BUILTIN_WHISPER_CPU_THREADS:-0}
+      READ_PODCAST_FASTER_WHISPER_API_TOKEN: ${READ_PODCAST_BUILTIN_TRANSCRIPTION_TOKEN:-}
+    volumes:
+      - read-podcast-models:/models
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 4096M
+
+volumes:
+  read-podcast-models:
