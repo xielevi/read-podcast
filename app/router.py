@@ -7,7 +7,6 @@ Read Podcast API Router
 from __future__ import annotations
 
 import json
-import re
 import uuid as _uuid
 import asyncio
 import time
@@ -52,6 +51,7 @@ from modules.library_qa import EpisodeDoc, build_library_context
 from modules.refiner import AssistantError, assistant_available, chat_completion
 from modules.rss_parser import RSSParser
 from modules.network_security import UnsafeUrlError, validate_public_url
+from modules.utils import extract_frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -918,18 +918,6 @@ async def chat_with_library(body: LibraryChatRequest) -> Dict:
 
 # ── 文件连接器（把成稿推送到外部文档/群机器人）──
 
-def _frontmatter_value(text: str, key: str) -> str:
-    """从 Markdown 前置 frontmatter 里取一个标量值（找不到返回空串）。"""
-    match = re.match(r"^\s*---\s*\n(.*?)\n---\s*\n", text, flags=re.DOTALL)
-    if not match:
-        return ""
-    for line in match.group(1).splitlines():
-        stripped = line.strip()
-        if stripped.startswith(f"{key}:"):
-            return stripped[len(key) + 1 :].strip().strip("'\"")
-    return ""
-
-
 @api_router.get("/connectors")
 async def get_connectors() -> List[Dict]:
     """可用连接器清单（不含 Webhook 地址），供前端渲染导出入口。"""
@@ -948,7 +936,9 @@ async def export_task(task_id: str, body: ExportRequest) -> Dict:
         raise HTTPException(status_code=404, detail=f"连接器 '{body.connector}' 不存在")
 
     _output_file, content = _read_task_output_text(task)
-    source_link = _frontmatter_value(content, "source_link") or _frontmatter_value(content, "link")
+    parsed_frontmatter = extract_frontmatter(content.lstrip())[0]
+    frontmatter = parsed_frontmatter if isinstance(parsed_frontmatter, dict) else {}
+    source_link = str(frontmatter.get("source_link") or frontmatter.get("link") or "")
     title = task.episode_title or _output_file.stem
     transcript = strip_leading_frontmatter(content).strip()
 

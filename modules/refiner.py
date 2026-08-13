@@ -33,6 +33,21 @@ def extract_markdown(text: str) -> str:
     return text.strip()
 
 
+def build_chat_request(model: str, api_key: str, messages: list[dict], *, max_tokens: int, temperature: float) -> tuple[dict, dict]:
+    """构造 OpenAI 兼容 Chat Completions 的 headers 与 body（含 deepseek 关闭 reasoning）。"""
+    body = {
+        "model": model,
+        "messages": messages,
+        "max_tokens": int(max_tokens),
+        "temperature": float(temperature),
+    }
+    model_lower = (model or "").lower()
+    if "deepseek" in model_lower and ("v4" in model_lower or "reasoner" in model_lower):
+        body["thinking"] = {"type": "disabled"}
+    headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
+    return headers, body
+
+
 # ── 抽象基类 ──────────────────────────────────────────────
 
 
@@ -111,28 +126,16 @@ class OpenaiCompatRefiner(BaseRefiner):
         full_content = f"{prompt}\n\n{text_content}"
 
         # ── 构造 OpenAI 标准请求 ──
-        headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self.api_key}",
-        }
-
-        body = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "你是一位专业的播客文字整理者。严格按照用户指令处理文本。",
-                },
+        headers, body = build_chat_request(
+            self.model,
+            self.api_key,
+            [
+                {"role": "system", "content": "你是一位专业的播客文字整理者。严格按照用户指令处理文本。"},
                 {"role": "user", "content": full_content},
             ],
-            "max_tokens": self.max_tokens,
-            "temperature": self.temperature,
-        }
-
-        # 针对 deepseek thinking 模型：禁用 reasoning 以直接获取 content
-        model_lower = (self.model or "").lower()
-        if "deepseek" in model_lower and ("v4" in model_lower or "reasoner" in model_lower):
-            body["thinking"] = {"type": "disabled"}
+            max_tokens=self.max_tokens,
+            temperature=self.temperature,
+        )
 
         # ── 重试循环（指数退避）──
         last_error: str | None = None
@@ -294,20 +297,9 @@ def chat_completion(
 
     timeout = int((config or {}).get("timeout", 120))
     max_retries = max(1, int((config or {}).get("max_retries", 3)))
-    body = {
-        "model": model,
-        "messages": messages,
-        "max_tokens": int(max_tokens),
-        "temperature": float(temperature),
-    }
-    model_lower = model.lower()
-    if "deepseek" in model_lower and ("v4" in model_lower or "reasoner" in model_lower):
-        body["thinking"] = {"type": "disabled"}
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {api_key}",
-    }
+    headers, body = build_chat_request(
+        model, api_key, messages, max_tokens=max_tokens, temperature=temperature
+    )
     chat_url = f"{api_base}/chat/completions"
 
     last_error = "未知错误"
