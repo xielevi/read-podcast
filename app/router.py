@@ -936,7 +936,8 @@ async def export_task(task_id: str, body: ExportRequest) -> Dict:
         raise HTTPException(status_code=404, detail=f"连接器 '{body.connector}' 不存在")
 
     _output_file, content = _read_task_output_text(task)
-    frontmatter = extract_frontmatter(content)[0] or {}
+    parsed_frontmatter = extract_frontmatter(content.lstrip())[0]
+    frontmatter = parsed_frontmatter if isinstance(parsed_frontmatter, dict) else {}
     source_link = str(frontmatter.get("source_link") or frontmatter.get("link") or "")
     title = task.episode_title or _output_file.stem
     transcript = strip_leading_frontmatter(content).strip()

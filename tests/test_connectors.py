@@ -78,6 +78,18 @@ def test_send_document_requires_configured_url(monkeypatch):
         send_document(connector, {"title": "t", "markdown": "m"})
 
 
+def test_send_document_rejects_invalid_max_chars(monkeypatch):
+    monkeypatch.setenv("READ_PODCAST_CONNECTOR_X", "https://open.feishu.cn/hook/x")
+    connector = {
+        "name": "X",
+        "format": "feishu",
+        "url_env": "READ_PODCAST_CONNECTOR_X",
+        "max_chars": "invalid",
+    }
+    with pytest.raises(ConnectorError, match="max_chars 必须是整数"):
+        send_document(connector, {"title": "t", "markdown": "m"})
+
+
 def test_send_document_posts_and_checks_business_code(monkeypatch):
     monkeypatch.setenv("READ_PODCAST_CONNECTOR_X", "https://open.feishu.cn/hook/x")
     monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
@@ -333,6 +345,50 @@ def test_export_task_sends(tmp_path, monkeypatch):
     # frontmatter 已剥离
     assert "title: 测试" not in captured["doc"]["markdown"]
     assert "## 正文" in captured["doc"]["markdown"]
+
+
+def test_export_task_handles_indented_or_non_mapping_frontmatter(tmp_path, monkeypatch):
+    from app.models.task import Task, TaskStatus
+
+    output = tmp_path / "note.md"
+    task = Task(
+        id="t-frontmatter",
+        podcast_name="示例播客",
+        episode_title="第一期",
+        status=TaskStatus.SUCCESS,
+        output_path=str(output),
+    )
+    monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=task))
+    monkeypatch.setattr(
+        settings,
+        "CONNECTORS",
+        [{"name": "飞书群", "format": "feishu", "url_env": "READ_PODCAST_CONNECTOR_FEISHU_URL"}],
+    )
+    captured = {}
+
+    def fake_send(connector, doc, **kwargs):
+        captured["source_link"] = doc["source_link"]
+        return {"connector": connector["name"], "format": "feishu", "truncated": False, "ok": True}
+
+    monkeypatch.setattr(router_module, "send_document", fake_send)
+
+    with TestClient(app) as client:
+        output.write_text(
+            "  ---\nsource_link: https://example.com/ep1\n---\n正文",
+            encoding="utf-8",
+        )
+        assert client.post(
+            "/api/read-podcast/tasks/t-frontmatter/export",
+            json={"connector": "飞书群"},
+        ).status_code == 200
+        assert captured["source_link"] == "https://example.com/ep1"
+
+        output.write_text("---\nscalar\n---\n正文", encoding="utf-8")
+        assert client.post(
+            "/api/read-podcast/tasks/t-frontmatter/export",
+            json={"connector": "飞书群"},
+        ).status_code == 200
+        assert captured["source_link"] == ""
 
 
 def test_export_task_unknown_connector(monkeypatch):

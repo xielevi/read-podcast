@@ -97,7 +97,11 @@ def _connector_configured(connector: dict) -> bool:
 
 def _connector_max_chars(connector: dict) -> int:
     default = _DEFAULT_MAX_CHARS.get(_cfg(connector, "format"), 20000)
-    override = int(connector.get("max_chars", 0) or 0)
+    try:
+        override = int(connector.get("max_chars", 0) or 0)
+    except (TypeError, ValueError) as exc:
+        name = _cfg(connector, "name") or "未命名"
+        raise ConnectorError(f"连接器「{name}」的 max_chars 必须是整数。") from exc
     return override if override > 0 else default
 
 
