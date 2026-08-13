@@ -17,6 +17,9 @@ class Notifier:
             self.global_queues.append(queue)
         
         try:
+            # 立即提交响应头；浏览器会忽略 SSE 注释。否则客户端在首个
+            # 15 秒 keepalive 前离开页面时，Starlette 会记录 No response returned。
+            yield ": connected\n\n"
             while True:
                 try:
                     message = await asyncio.wait_for(queue.get(), timeout=15)
