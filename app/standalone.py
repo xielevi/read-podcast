@@ -163,22 +163,35 @@ app.include_router(router, prefix=API_PREFIX)
 app.include_router(router, prefix=LEGACY_API_PREFIX, include_in_schema=False)
 
 
+# The frontend assets are served from stable, unhashed URLs, so tell browsers to
+# revalidate on every load. The ETag/Last-Modified still yield cheap 304s when the
+# files are unchanged, but a fresh pull is picked up immediately instead of being
+# shadowed by a heuristically-cached old copy.
+FRONTEND_CACHE_HEADERS = {"Cache-Control": "no-cache"}
+
+
 @app.get("/")
 async def workspace():
     if FRONTEND_FILE.exists():
-        return FileResponse(FRONTEND_FILE)
+        return FileResponse(FRONTEND_FILE, headers=FRONTEND_CACHE_HEADERS)
     raise HTTPException(status_code=404, detail="Read Podcast workspace page not found")
 
 
 @app.get("/app.css")
 async def frontend_css():
     if FRONTEND_CSS_FILE.exists():
-        return FileResponse(FRONTEND_CSS_FILE, media_type="text/css")
+        return FileResponse(
+            FRONTEND_CSS_FILE, media_type="text/css", headers=FRONTEND_CACHE_HEADERS
+        )
     raise HTTPException(status_code=404, detail="Read Podcast stylesheet not found")
 
 
 @app.get("/app.js")
 async def frontend_js():
     if FRONTEND_JS_FILE.exists():
-        return FileResponse(FRONTEND_JS_FILE, media_type="application/javascript")
+        return FileResponse(
+            FRONTEND_JS_FILE,
+            media_type="application/javascript",
+            headers=FRONTEND_CACHE_HEADERS,
+        )
     raise HTTPException(status_code=404, detail="Read Podcast script not found")
