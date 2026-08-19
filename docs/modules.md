@@ -8,6 +8,8 @@
 
 - 配置文件路径：`READ_PODCAST_CONFIG` 环境变量，否则 `PROJECT_ROOT/config/config.yaml`；容器内固定为 `/config/config.yaml`。覆盖文件可以为空，只需写偏离默认值的字段与 WebUI 订阅。
 - YAML 规范命名空间为 `read-podcast:`，同时兼容顶层结构和旧 `podcast2md:` 命名空间。
+- 机密文件：与 `config.yaml` 同目录的 `secrets.env`（WebUI 设置面板写入，权限 0600）在启动时补进环境变量；已存在的非空环境变量（Compose / `.env`）优先级更高，不会被覆盖。被补进来的变量名记在 `settings.MANAGED_SECRET_KEYS`，只有它们允许被面板改写。
+- `settings.reload()` 重新读取持久化配置并刷新进程内设置，`settings.get_value('a.b.c')` 按点号路径读取合并后的值，供设置面板回显。
 
 环境变量仅保留：
 
@@ -21,6 +23,15 @@
 
 配置主要字段：`paths.*`、`runtime.*`、`web.*`、`mlx.*`、`transcription`、`refiner`、`podcasts[]`、`prompt_templates[]`。
 `get_podcast_dir(name, sub_type)` 自动创建目录；Obsidian 目录权限不足时降级回 `workspace/<podcast>/markdown`。
+
+## user_settings.py — WebUI 个人配置面板
+
+`/settings` 系列接口的读写逻辑，供用户在网页里改服务商地址、模型、密钥与文件位置。
+
+- `FIELDS` 是显式白名单（三组：`refiner` / `transcription` / `paths`），每个字段声明类型、范围、提示与「哪些环境变量会接管它」；不开放任意 YAML 编辑。
+- `describe_settings()` 回传字段、当前值与 `locked` 状态；机密只回传 `configured` 布尔值，**任何时候都不回传内容**。
+- `apply_settings(values, secrets)` 逐字段校验（URL 必须 http(s)、数值范围、下拉可选项、目录可创建可写），普通配置原子写入 `config.yaml`（空值＝删除覆盖项，回落内置默认值），机密原子写入 `config/secrets.env`（0600）并同步注入 `os.environ`，最后 `settings.reload()` 热生效。被环境变量接管的字段直接拒绝并返回可读原因。
+- `probe_refiner()` / `probe_transcription()` 做只读预检：前者发一次 16 token 的对话请求，后者按后端请求 `/health` 或 `/models`；失败信息经 `_redact()` 剥离服务地址后抛出。
 
 ## rss_parser.py — RSS 解析
 

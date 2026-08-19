@@ -34,6 +34,7 @@
       </div>
       <div class="mast-actions">
         <span class="server-state"><span class="dot dot-accent" id="server-dot"></span><span id="server-status">可使用</span></span>
+        <button class="icon-btn" id="settings-btn" type="button" title="个人配置" aria-label="打开个人配置" aria-haspopup="dialog">设置</button>
         <span class="clock" id="clock"></span>
       </div>
     </header>
@@ -214,6 +215,22 @@
       <div class="selected-name" id="drawer-selected-name"></div>
       <div class="selected-rss" id="drawer-selected-rss"></div>
       <div class="button-row"><button class="ghost-btn" id="clear-selection-btn" type="button">取消</button><button class="solid-btn" id="confirm-add-btn" type="button">添加节目</button></div>
+    </div>
+  </aside>
+
+  <div class="overlay" id="settings-overlay"></div>
+  <aside class="drawer settings-drawer" id="settings-drawer" role="dialog" aria-hidden="true" aria-labelledby="settings-title">
+    <div class="drawer-head">
+      <div><span class="overline">个人配置</span><h2 id="settings-title">配置这台机器</h2><p>服务商地址、模型、密钥与文件位置。保存后立即生效，无需重启。</p></div>
+      <button class="close-btn" id="settings-close-btn" type="button" aria-label="关闭个人配置">×</button>
+    </div>
+    <div class="settings-body" id="settings-body"><p class="settings-state">正在读取配置…</p></div>
+    <div class="settings-footer">
+      <p class="settings-note" id="settings-note">密钥只保存在这台机器上，页面不会回显内容。</p>
+      <div class="button-row">
+        <button class="ghost-btn" id="settings-reload-btn" type="button">重新读取</button>
+        <button class="solid-btn" id="settings-save-btn" type="button">保存配置</button>
+      </div>
     </div>
   </aside>
 

@@ -778,3 +778,32 @@
       .reader-assistant { width: 100%; }
       .lookup-card { right: 12px; left: 12px; bottom: 12px; width: auto; }
     }
+
+    /* ── 个人配置面板 ── */
+    .settings-drawer { z-index: 120; width: min(520px, 96vw); }
+    .settings-body { flex: 1; overflow-y: auto; padding: 16px 24px 8px; }
+    .settings-state { margin: 18px 0; color: var(--ink-faint); font-family: var(--sans); font-size: 12px; }
+    .settings-group { padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid var(--line); }
+    .settings-group:last-child { border-bottom: 0; }
+    .settings-group-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+    .settings-group-head h3 { margin: 0; font-size: 17px; font-weight: 650; }
+    .settings-group-desc { margin: 4px 0 12px; color: var(--ink-soft); font-size: 12px; line-height: 1.6; }
+    .settings-test-btn { flex: 0 0 auto; padding: 6px 11px; font-size: 10px; }
+    .settings-field { margin-bottom: 14px; }
+    .settings-field .form-label { margin-bottom: 5px; font-size: 13px; }
+    .settings-field .form-input:disabled { cursor: not-allowed; opacity: .65; }
+    .settings-field-hint { margin: 5px 0 0; color: var(--ink-faint); font-family: var(--sans); font-size: 11px; line-height: 1.5; }
+    .settings-field-locked { color: var(--wine); }
+    .settings-secret-row { display: flex; align-items: center; gap: 8px; }
+    .settings-secret-row .form-input { flex: 1; }
+    .settings-secret-clear { flex: 0 0 auto; padding: 8px 10px; font-size: 10px; }
+    .settings-badge { padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 12px; color: var(--ink-faint); font-family: var(--sans); font-size: 10px; font-weight: 700; }
+    .settings-badge.is-set { color: var(--wine); border-color: var(--wine); }
+    .settings-footer { padding: 14px 24px 19px; border-top: 3px double var(--ink); background: var(--paper); }
+    .settings-note { margin: 0 0 11px; color: var(--ink-faint); font-family: var(--sans); font-size: 11px; line-height: 1.5; }
+
+    @media (max-width: 480px) {
+      .settings-drawer { width: min(520px, 100vw); }
+      .settings-body { padding: 14px 16px 6px; }
+      .settings-footer { padding: 12px 16px 18px; }
+    }

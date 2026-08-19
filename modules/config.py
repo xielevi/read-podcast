@@ -7,6 +7,8 @@ from dotenv import load_dotenv
 _THIS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = _THIS_DIR.parent
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.default.yaml"
+# 持久化机密文件名，与 config.yaml 同目录（Docker 下即挂载的 /config 卷）。
+SECRETS_FILENAME = "secrets.env"
 
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
 
@@ -20,6 +22,9 @@ class Settings:
 
     规范命名空间为 ``read-podcast:``，同时兼容旧 ``podcast2md:`` 与顶层配置。
     用户配置递归覆盖内置默认配置；Prompt 模板按名称合并；环境变量只提供路径和凭据。
+
+    机密除 ``.env`` 外，还会从持久化目录下的 ``secrets.env``（WebUI 设置面板写入）
+    补齐；真实环境变量（Compose / ``.env`` 注入的非空值）优先级更高，不会被覆盖。
     """
     def __init__(self, config_path=None):
         self.PROJECT_ROOT = PROJECT_ROOT
@@ -33,8 +38,58 @@ class Settings:
         else:
             self.CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 
+        # 与 config.yaml 同目录的机密文件（WebUI 设置面板写入，权限 0600）。
+        self.SECRETS_PATH = self.CONFIG_PATH.parent / SECRETS_FILENAME
+        # 由 secrets.env 注入、可被 WebUI 改写的环境变量名；真实环境变量不在其中。
+        self.MANAGED_SECRET_KEYS = self._load_managed_secrets()
+
         self._raw_config = self._load_yaml()
         self._initialize_settings()
+
+    def _load_managed_secrets(self) -> set:
+        """把 secrets.env 中的机密补进环境变量，已有非空环境变量优先。"""
+        applied = set()
+        path = self.SECRETS_PATH
+        if not path.exists():
+            return applied
+        try:
+            content = path.read_text(encoding='utf-8')
+        except OSError as e:
+            logger.warning("读取机密文件失败 %s: %s", path, e)
+            return applied
+        for line in content.splitlines():
+            entry = line.strip()
+            if not entry or entry.startswith('#'):
+                continue
+            if entry.startswith('export '):
+                entry = entry[len('export '):].lstrip()
+            key, separator, value = entry.partition('=')
+            key = key.strip()
+            if not separator or not key:
+                continue
+            value = value.strip()
+            if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+                value = value[1:-1]
+            if os.environ.get(key):
+                # Compose / .env 注入的真实环境变量优先级更高。
+                continue
+            os.environ[key] = value
+            applied.add(key)
+        return applied
+
+    def reload(self):
+        """重新读取持久化配置并刷新进程内设置（供 WebUI 保存后热生效）。"""
+        self._raw_config = self._load_yaml()
+        self._initialize_settings()
+
+    def get_value(self, dotted_key: str, default=None):
+        """按 ``a.b.c`` 读取合并后的配置值，供设置面板回显。"""
+        node = self._raw_config
+        for part in str(dotted_key).split('.'):
+            if not isinstance(node, dict) or part not in node:
+                return default
+            node = node[part]
+        return node
 
     @staticmethod
     def _read_yaml(path: Path) -> dict:

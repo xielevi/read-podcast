@@ -1,6 +1,9 @@
 # 内置默认配置（随镜像发布，不复制到持久化覆盖文件）
 # 普通配置集中在这里；持久化 config/config.yaml 可覆盖。
-# 机密（API Key、Token、Basic Auth 凭据）只放 .env。
+# 机密（API Key、Token、Basic Auth 凭据）放 .env，或由网页「设置」面板写入 config/secrets.env。
+#
+# 常用项（refiner 地址与模型、transcription 后端与地址、成稿与下载目录）也可以直接在
+# 网页右上角「设置」里改，保存即写入 config/config.yaml 并立即生效。
 
 paths:
   download_dir: workspace/downloads

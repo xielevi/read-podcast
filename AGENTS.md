@@ -19,9 +19,10 @@
 - Web 任务使用分阶段资源控制：Whisper 对外保持单请求，下载与精修允许有限并发和跨任务重叠。
 - 同机共享路径必须由 Whisper 服务端根目录 allowlist 约束；分离部署保留 multipart 上传回退。
 - 失败任务不得删除仍在保留期内的音频；只有输出文件真实存在时才能标记成功。
-- `workspace/`、`output/`、`config.yaml`、`.env`、数据库、音频和 Markdown 产物不得提交。
+- `workspace/`、`output/`、`config.yaml`、`config/secrets.env`、`.env`、数据库、音频和 Markdown 产物不得提交。
 - 精修结果必须保留长度和结构门禁，失败时回退原始转录。
-- 状态接口不得暴露 URL、Token、本机路径或其他凭据。
+- 状态接口不得暴露 URL、Token、本机路径或其他凭据。`/settings` 是唯一例外：它回显用户自己填写的地址与目录，但同样绝不回传机密内容，只回传「是否已配置」。
+- WebUI 可写配置只能走 `modules/user_settings.py` 的显式字段白名单，不开放任意 YAML 编辑；普通配置写 `config.yaml`，机密写同目录 `secrets.env`（0600），环境变量接管的字段必须拒绝写入。
 
 ## 验收
 
@@ -36,6 +37,7 @@ docker build -t read-podcast:test .
 - `GET /`、配置的子路径与 `GET /api/read-podcast/health` 返回 `200`。
 - Basic Auth 关闭时不拦截；同时配置用户名和密码时保护 WebUI 与业务 API。
 - `GET /api/read-podcast/transcription/status` 只返回安全元数据。
+- `GET /api/read-podcast/settings` 不含任何机密内容；被环境变量接管的字段标记 `locked`，`PUT` 时返回 400。
 - 原生 MLX 后端 `/health` 与带 Token 的 `/transcribe` 通过。
 - 容器进入 `healthy`。
 - 页面可以创建任务、接收 SSE 日志并打开生成稿件。

@@ -68,6 +68,9 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 
 **D11 文件连接器（实验分支）。** `/tasks/{id}/export` 经 `modules.connectors` 把成稿推送到两类目标：**群机器人 Webhook**（飞书/钉钉/Slack/通用 JSON）与**云文档知识库**（`notion` 建页、`feishu-doc` 建飞书 Docx）。与 refiner/transcriber 一致：代码不硬编码提供商，连接器只在配置声明 `name`/`format` 与凭据环境变量名，真实凭据只从 `.env` 注入，`/connectors` 只回传 `kind`/`configured`、不暴露地址或凭据。`export` 的 `mode=summary` 复用 `chat_completion` 先提炼知识条目再推送，实现「把播客沉淀成知识库」。所有出站请求 SSRF 校验、按目标上限裁剪并结构化为文档块；失败（HTTP 非 2xx 或业务错误码）返回 502 并脱敏。`/connectors/{name}/test` 做只读预检。仅用各家的简单 HTTP/JSON 接口（含飞书 tenant_access_token 换取），不引入任何厂商 OAuth 交互或 SDK 依赖。
 
+**D12 WebUI 个人配置面板。** 分层不变（D4）：普通配置写入持久化 `config/config.yaml`，机密写入同目录的 `secrets.env`（0600，随 `config/` 卷持久化），二者都不进镜像、不进版本库。`Settings` 启动时把 `secrets.env` 补进环境变量，**真实环境变量（Compose / `.env` 注入的非空值）优先级更高**：被环境变量接管的字段在 `/settings` 里标记 `locked` 并拒绝写入，避免用户在页面上做无效修改。面板只暴露显式白名单字段（refiner 服务商与参数、transcription 后端与地址、成稿与下载目录），不开放任意 YAML 编辑；保存后调用 `settings.reload()` 热生效，进程启动时读取的运行参数（并发、保留期）不进入面板。`GET /settings` 只回传「是否已配置」，任何时候都不回传机密内容；`POST /settings/test` 用一次极小的只读请求验证服务商可达性，失败信息剥离服务地址后返回。
+
+
 **D7 品牌与兼容标识。** 项目品牌统一为 Read Podcast，规范技术标识为 `/api/read-podcast`、`READ_PODCAST_*`、`read-podcast:` 与 `X-Read-Podcast-*`。既有 `/api/podcast2md`、`PODCAST2MD_*`、`podcast2md:`、`X-Podcast2MD-*` 和 `workspace/podcast2md.db` 只作为隐藏兼容接口继续保留，避免升级破坏现有配置、客户端与任务数据。
 
 ## 容错

@@ -51,6 +51,14 @@ from modules.library_qa import EpisodeDoc, build_library_context
 from modules.refiner import AssistantError, assistant_available, chat_completion
 from modules.rss_parser import RSSParser
 from modules.network_security import UnsafeUrlError, validate_public_url
+from modules.user_settings import (
+    SettingsError,
+    SettingsProbeError,
+    apply_settings,
+    describe_settings,
+    probe_refiner,
+    probe_transcription,
+)
 from modules.utils import extract_frontmatter
 
 logger = logging.getLogger(__name__)
@@ -99,6 +107,14 @@ class ExportRequest(BaseModel):
     connector: str = Field(min_length=1, max_length=200)
     # manuscript：推送整篇成稿；summary：推送 AI 提炼的知识条目
     mode: str = Field(default="manuscript", pattern="^(manuscript|summary)$")
+
+class SettingsUpdateRequest(BaseModel):
+    """普通配置与机密分开提交；机密缺省表示不改动，空串表示清除。"""
+    values: Dict[str, str] = Field(default_factory=dict)
+    secrets: Dict[str, str] = Field(default_factory=dict)
+
+class SettingsTestRequest(BaseModel):
+    target: str = Field(pattern="^(refiner|transcription)$")
 
 class PublicTask(BaseModel):
     id: str
@@ -1002,4 +1018,32 @@ async def test_connector_endpoint(name: str) -> Dict:
     try:
         return await asyncio.to_thread(precheck_connector, connector)
     except ConnectorError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
+# ── 个人配置面板（WebUI 直接编辑服务商地址、模型、路径与机密）──
+
+@api_router.get("/settings")
+async def get_settings() -> Dict:
+    """面板字段与当前取值；机密只回传「是否已配置」，绝不回传内容。"""
+    return await asyncio.to_thread(describe_settings)
+
+
+@api_router.put("/settings")
+async def update_settings(body: SettingsUpdateRequest) -> Dict:
+    """普通配置写入 config.yaml，机密写入 config/secrets.env，随后热重载。"""
+    async with _config_lock:
+        try:
+            return await asyncio.to_thread(apply_settings, body.values, body.secrets)
+        except SettingsError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@api_router.post("/settings/test")
+async def test_settings(body: SettingsTestRequest) -> Dict:
+    """按当前配置做一次只读预检，不产生正式内容，也不回传服务地址。"""
+    probe = probe_refiner if body.target == "refiner" else probe_transcription
+    try:
+        return await asyncio.to_thread(probe)
+    except SettingsProbeError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc

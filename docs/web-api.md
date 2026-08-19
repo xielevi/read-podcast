@@ -45,8 +45,13 @@
 | GET | `/connectors` | 可用文件连接器清单（`name`/`format`/`kind`/`configured`，不含任何地址或凭据） |
 | POST | `/tasks/{id}/export` | 把成稿推送到连接器（`connector` 名称 + `mode`：`manuscript` 整篇 / `summary` AI 知识条目） |
 | POST | `/connectors/{name}/test` | 预检连接器凭据/可达性，不产生正式内容 |
+| GET | `/settings` | 个人配置面板字段与当前取值（机密只回传 `configured`，不回传内容） |
+| PUT | `/settings` | 保存个人配置：普通配置写 `config.yaml`，机密写 `config/secrets.env`，随后热重载 |
+| POST | `/settings/test` | 预检 AI 服务商或转录服务可达性（`target`：`refiner` / `transcription`） |
 
 订阅增删直接持久化到 `config.yaml`，重启后生效；写入逻辑与顶层/命名空间两种配置结构兼容。
+
+**个人配置面板（`/settings`）** 让用户在网页里改服务商地址、模型、密钥与文件位置，无需登录服务器改文件。字段是显式白名单（`modules.user_settings.FIELDS`），不开放任意 YAML 编辑；普通配置写入持久化 `config.yaml`（空值表示删除覆盖项、回落内置默认值），机密写入同目录 `secrets.env`（0600）并同步注入当前进程，保存后 `settings.reload()` 立即生效。被环境变量接管的字段（如 Compose 注入的 `READ_PODCAST_TRANSCRIPTION_API_URL`、`READ_PODCAST_OUTPUT_DIR`）返回 `locked` 与原因，写入时返回 400。`GET` 绝不回传机密内容，只回传 `configured`；`POST /settings/test` 用一次极小的只读请求（refiner 走一次 16 token 对话，转录走 `/health` 或 `/models`）验证配置，失败信息剥离服务地址后以 502 返回。
 
 **AI 阅读助手（`/assistant/*` 与 `/tasks/{id}/chat`）** 复用 refiner 段的 OpenAI 兼容服务商配置与 `REFINER_API_KEY`，不引入新的凭据来源。`chat` 端点读取任务输出文本（沿用与 `/content` 一致的路径与类型校验），剥离 frontmatter 后按 `ASSISTANT_CONTEXT_CHAR_BUDGET`（默认 24000 字符）截断灌入模型，只保留最近 `ASSISTANT_MAX_HISTORY`（默认 8）轮历史。未配置 AI 时返回 503 并附可读原因，前端据 `/assistant/status` 隐藏入口。
 
