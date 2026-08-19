@@ -1370,12 +1370,12 @@
               tocList.appendChild(li);
             });
             tocContainer.appendChild(tocList);
-            setHidden(tocContainer, false);
             setupTocScrollSpy(headings, tocLinks);
-          } else {
-            setHidden(tocContainer, true);
           }
-          
+          // 侧栏同时承载大纲与关键概念，任一存在就展开。
+          renderConceptsSection(cleanId, tocContainer);
+          setHidden(tocContainer, headings.length === 0 && !_assistantAvailable);
+
           var saved = localStorage.getItem('scroll_pos_' + cleanId);
           if (saved) {
             restoreScroll(byId('manuscript-body'), parseInt(saved, 10) || 0, 10);
@@ -1392,6 +1392,111 @@
           state.textContent = '稿件读取失败：' + errorMessage(error); 
           byId('manuscript-body').appendChild(state); 
           updateReaderStats('');
+        });
+    }
+
+    // ── 关键概念 → 维基百科 ────────────────────────────────
+    // 抽取要过一次 AI，默认不自动触发；点一次按钮，结果由后端按稿件缓存。
+
+    function renderConceptsSection(taskId, container) {
+      if (!_assistantAvailable) return;
+
+      var section = document.createElement('div');
+      section.className = 'concepts-section';
+
+      var title = document.createElement('h3');
+      title.textContent = '关键概念';
+      section.appendChild(title);
+
+      var body = document.createElement('div');
+      body.className = 'concepts-body';
+      section.appendChild(body);
+
+      var button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'concepts-load-btn';
+      button.textContent = '抓取关键概念';
+      button.addEventListener('click', function () {
+        loadConcepts(taskId, body, button);
+      });
+      body.appendChild(button);
+
+      container.appendChild(section);
+    }
+
+    function loadConcepts(taskId, body, button) {
+      button.disabled = true;
+      button.textContent = '正在抽取…';
+
+      fetch(safeTaskUrl(taskId, '/concepts'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      })
+        .then(function (response) {
+          return response.text().then(function (raw) {
+            if (!response.ok) {
+              var detail = raw;
+              try { detail = JSON.parse(raw).detail || detail; } catch (ignore) {}
+              throw new Error(detail || 'HTTP ' + response.status);
+            }
+            return JSON.parse(raw);
+          });
+        })
+        .then(function (data) {
+          var concepts = (data && data.concepts) || [];
+          body.replaceChildren();
+          if (!concepts.length) {
+            var empty = document.createElement('div');
+            empty.className = 'concepts-empty';
+            empty.textContent = '没有找到可链接到维基百科的概念。';
+            body.appendChild(empty);
+            return;
+          }
+          var list = document.createElement('ul');
+          list.className = 'concepts-list';
+          concepts.forEach(function (concept) {
+            var li = document.createElement('li');
+
+            var link = document.createElement('a');
+            link.className = 'concept-link';
+            link.href = String(concept.url || '');
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = String(concept.term || '');
+            // 词条标题与提名词不同时（重定向/异语言）标出来，避免读者以为点错了。
+            var resolved = String(concept.wikipedia_title || '');
+            if (resolved && resolved !== String(concept.term || '')) {
+              var alias = document.createElement('span');
+              alias.className = 'concept-alias';
+              alias.textContent = '· ' + resolved;
+              link.appendChild(alias);
+            }
+            li.appendChild(link);
+
+            var summary = String(concept.summary || '');
+            if (summary) {
+              var desc = document.createElement('div');
+              desc.className = 'concept-summary';
+              desc.textContent = summary;
+              li.appendChild(desc);
+            }
+            list.appendChild(li);
+          });
+          body.appendChild(list);
+        })
+        .catch(function (error) {
+          body.replaceChildren();
+          var failed = document.createElement('div');
+          failed.className = 'concepts-empty';
+          failed.textContent = '抽取失败：' + errorMessage(error);
+          body.appendChild(failed);
+          var retry = document.createElement('button');
+          retry.type = 'button';
+          retry.className = 'concepts-load-btn';
+          retry.textContent = '重试';
+          retry.addEventListener('click', function () { loadConcepts(taskId, body, retry); });
+          body.appendChild(retry);
         });
     }
 

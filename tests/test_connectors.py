@@ -499,3 +499,243 @@ def test_connector_test_endpoint_failure_returns_502(monkeypatch):
     with TestClient(app) as client:
         res = client.post("/api/read-podcast/connectors/kb/test")
         assert res.status_code == 502
+
+
+# ── 飞书文档：块类型与分批 ──
+
+
+def _feishu_stub(calls, document_id="doc123"):
+    def fake_post(url, json=None, headers=None, timeout=None):
+        calls.append((url, json))
+        if url.endswith("/tenant_access_token/internal"):
+            return _JsonResp({"code": 0, "tenant_access_token": "t-abc"})
+        if url.endswith("/docx/v1/documents"):
+            return _JsonResp({"code": 0, "data": {"document": {"document_id": document_id}}})
+        return _JsonResp({"code": 0, "data": {}})
+
+    return fake_post
+
+
+def _feishu_connector():
+    return {
+        "name": "飞书文档",
+        "format": "feishu-doc",
+        "app_id_env": "FEISHU_APP_ID",
+        "app_secret_env": "FEISHU_APP_SECRET",
+    }
+
+
+def test_feishu_doc_maps_headings_and_bullets_to_native_blocks(monkeypatch):
+    """标题与列表要落成飞书原生块，而不是全部压成文本块。"""
+    monkeypatch.setenv("FEISHU_APP_ID", "cli_x")
+    monkeypatch.setenv("FEISHU_APP_SECRET", "sec_x")
+    monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
+    calls = []
+    monkeypatch.setattr(connectors_module.httpx, "post", _feishu_stub(calls))
+
+    markdown = "# 一级\n## 二级\n### 三级\n- 列表项\n普通段落"
+    send_document(_feishu_connector(), {"title": "T", "markdown": markdown})
+
+    children = [body for url, body in calls if "children" in url][0]["children"]
+    assert [c["block_type"] for c in children] == [3, 4, 5, 12, 2]
+    assert children[0]["heading1"]["elements"][0]["text_run"]["content"] == "一级"
+    assert children[3]["bullet"]["elements"][0]["text_run"]["content"] == "列表项"
+
+
+def test_feishu_doc_batches_long_transcript(monkeypatch):
+    """超过 50 块要分批写入，而不是被截断丢内容。"""
+    monkeypatch.setenv("FEISHU_APP_ID", "cli_x")
+    monkeypatch.setenv("FEISHU_APP_SECRET", "sec_x")
+    monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
+    calls = []
+    monkeypatch.setattr(connectors_module.httpx, "post", _feishu_stub(calls))
+
+    markdown = "\n".join(f"第 {i} 段" for i in range(120))
+    result = send_document(_feishu_connector(), {"title": "T", "markdown": markdown})
+
+    inserts = [body for url, body in calls if "children" in url]
+    assert len(inserts) == 3                      # 120 段 → 50 + 50 + 20
+    assert [b["index"] for b in inserts] == [0, 50, 100]
+    assert sum(len(b["children"]) for b in inserts) == 120
+    assert result["blocks"] == 120
+    assert result["truncated"] is False
+
+
+def test_notion_appends_blocks_beyond_first_request(monkeypatch):
+    """Notion 单请求上限 90 块，其余走 PATCH 追加。"""
+    monkeypatch.setenv("NOTION_TOKEN", "secret_x")
+    monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
+    monkeypatch.setattr(
+        connectors_module.httpx,
+        "post",
+        lambda *a, **k: _JsonResp({"id": "page1", "url": "https://notion.so/page1"}),
+    )
+    patches = []
+
+    def fake_patch(url, json=None, headers=None, timeout=None):
+        patches.append((url, json))
+        return _JsonResp({})
+
+    monkeypatch.setattr(connectors_module.httpx, "patch", fake_patch)
+
+    markdown = "\n".join(f"第 {i} 段" for i in range(200))
+    connector = {"name": "知识库", "format": "notion", "token_env": "NOTION_TOKEN", "database_id": "db1"}
+    result = send_document(connector, {"title": "T", "markdown": markdown})
+
+    assert result["blocks"] == 200
+    assert [len(body["children"]) for _url, body in patches] == [90, 20]
+    assert all("/v1/blocks/page1/children" in url for url, _ in patches)
+
+
+# ── Google Drive ──
+
+
+def _gdrive_connector(**extra):
+    return {
+        "name": "Google Drive",
+        "format": "gdrive",
+        "client_id_env": "GD_ID",
+        "client_secret_env": "GD_SECRET",
+        "refresh_token_env": "GD_REFRESH",
+        **extra,
+    }
+
+
+def _set_gdrive_env(monkeypatch):
+    monkeypatch.setenv("GD_ID", "id-x")
+    monkeypatch.setenv("GD_SECRET", "secret-x")
+    monkeypatch.setenv("GD_REFRESH", "refresh-x")
+
+
+def test_gdrive_available_and_configured(monkeypatch):
+    monkeypatch.delenv("GD_REFRESH", raising=False)
+    monkeypatch.setenv("GD_ID", "id-x")
+    monkeypatch.setenv("GD_SECRET", "secret-x")
+    entry = available_connectors([_gdrive_connector()])[0]
+    assert entry["kind"] == "doc"
+    assert entry["configured"] is False
+
+    monkeypatch.setenv("GD_REFRESH", "refresh-x")
+    assert available_connectors([_gdrive_connector()])[0]["configured"] is True
+
+
+def test_gdrive_uploads_as_google_doc(monkeypatch):
+    _set_gdrive_env(monkeypatch)
+    monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
+    calls = {}
+
+    def fake_post(url, data=None, content=None, headers=None, timeout=None):
+        if "oauth2" in url:
+            assert data["grant_type"] == "refresh_token"
+            assert data["refresh_token"] == "refresh-x"
+            return _JsonResp({"access_token": "at-1"})
+        calls["url"] = url
+        calls["headers"] = headers
+        calls["body"] = content.decode("utf-8")
+        return _JsonResp({"id": "f1", "webViewLink": "https://drive.google.com/file/f1"})
+
+    monkeypatch.setattr(connectors_module.httpx, "post", fake_post)
+
+    result = send_document(
+        _gdrive_connector(folder_id="fold1"),
+        {"title": "第一期", "markdown": "# 章节\n- 要点\n正文"},
+    )
+
+    assert result["ok"] is True
+    assert result["document_url"] == "https://drive.google.com/file/f1"
+    assert calls["headers"]["Authorization"] == "Bearer at-1"
+    assert "multipart/related" in calls["headers"]["Content-Type"]
+    # 元数据请求转换成原生 Google 文档，并落到指定文件夹
+    assert connectors_module.GDRIVE_DOC_MIME in calls["body"]
+    assert "fold1" in calls["body"]
+    # 正文以 HTML 提交，标题与列表保留结构
+    assert "<h2>章节</h2>" in calls["body"]
+    assert "<li>要点</li>" in calls["body"]
+
+
+def test_gdrive_markdown_mode_uploads_raw_markdown(monkeypatch):
+    _set_gdrive_env(monkeypatch)
+    monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
+    calls = {}
+
+    def fake_post(url, data=None, content=None, headers=None, timeout=None):
+        if "oauth2" in url:
+            return _JsonResp({"access_token": "at-1"})
+        calls["body"] = content.decode("utf-8")
+        return _JsonResp({"id": "f1", "webViewLink": "https://drive/f1"})
+
+    monkeypatch.setattr(connectors_module.httpx, "post", fake_post)
+    send_document(
+        _gdrive_connector(doc_format="markdown"),
+        {"title": "第一期", "markdown": "# 章节", "source_link": "https://e/1"},
+    )
+
+    assert "text/markdown" in calls["body"]
+    assert "第一期.md" in calls["body"]
+    assert "https://e/1" in calls["body"]
+    assert connectors_module.GDRIVE_DOC_MIME not in calls["body"]
+
+
+def test_gdrive_escapes_html_in_content(monkeypatch):
+    """正文里的尖括号不能破坏上传的 HTML 结构。"""
+    _set_gdrive_env(monkeypatch)
+    monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
+    calls = {}
+
+    def fake_post(url, data=None, content=None, headers=None, timeout=None):
+        if "oauth2" in url:
+            return _JsonResp({"access_token": "at-1"})
+        calls["body"] = content.decode("utf-8")
+        return _JsonResp({"id": "f1", "webViewLink": "https://drive/f1"})
+
+    monkeypatch.setattr(connectors_module.httpx, "post", fake_post)
+    send_document(_gdrive_connector(), {"title": "T", "markdown": "<script>alert(1)</script>"})
+
+    assert "<script>" not in calls["body"]
+    assert "&lt;script&gt;" in calls["body"]
+
+
+def test_gdrive_rejects_bad_doc_format(monkeypatch):
+    _set_gdrive_env(monkeypatch)
+    monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
+    monkeypatch.setattr(
+        connectors_module.httpx, "post", lambda *a, **k: _JsonResp({"access_token": "at-1"})
+    )
+    with pytest.raises(ConnectorError, match="doc_format"):
+        send_document(_gdrive_connector(doc_format="pdf"), {"title": "T", "markdown": "m"})
+
+
+def test_gdrive_missing_credentials(monkeypatch):
+    for key in ("GD_ID", "GD_SECRET", "GD_REFRESH"):
+        monkeypatch.delenv(key, raising=False)
+    with pytest.raises(ConnectorError, match="未设置"):
+        send_document(_gdrive_connector(), {"title": "T", "markdown": "m"})
+
+
+def test_gdrive_surfaces_revoked_refresh_token(monkeypatch):
+    _set_gdrive_env(monkeypatch)
+    monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
+    monkeypatch.setattr(
+        connectors_module.httpx,
+        "post",
+        lambda *a, **k: _JsonResp(
+            {"error": "invalid_grant", "error_description": "Token has been expired or revoked."},
+            status_code=400,
+        ),
+    )
+    with pytest.raises(ConnectorError, match="invalid_grant"):
+        send_document(_gdrive_connector(), {"title": "T", "markdown": "m"})
+
+
+def test_test_connector_gdrive(monkeypatch):
+    _set_gdrive_env(monkeypatch)
+    monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
+    monkeypatch.setattr(
+        connectors_module.httpx, "post", lambda *a, **k: _JsonResp({"access_token": "at-1"})
+    )
+    monkeypatch.setattr(
+        connectors_module.httpx,
+        "get",
+        lambda *a, **k: _JsonResp({"user": {"emailAddress": "me@example.com"}}),
+    )
+    assert run_test_connector(_gdrive_connector())["ok"] is True

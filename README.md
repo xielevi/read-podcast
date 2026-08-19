@@ -265,6 +265,29 @@ Windows／Linux／Intel Mac 上也能转录。云端接口通常限制单文件 
 它复用你已经配置好的精修服务商（`refiner.api_base` / `refiner.model` 与 `REFINER_API_KEY`），
 无需另配 Key。没配置 AI 时，助手入口会自动隐藏，不影响转录主流程。
 
+### 📚 关键概念 → 维基百科
+
+阅读页左侧栏有「关键概念」，点一次即可为这篇稿子抓取 5–10 个值得延伸阅读的概念
+（人物、机构、术语、事件、作品），每个都带**真实的维基百科链接**和一句话摘要，点击直达词条。
+
+链接不是 AI 编的：AI 只负责从文字稿里**提名**候选词，每个词都会到维基百科实际核对——
+先按词条名直查（自动跟随重定向，「斯坦福大学」会正确指向「史丹佛大學」），查不到再退到搜索，
+且搜索结果必须与原词足够接近才采用。核对不到词条的候选**直接丢弃**，所以实际条数可能少于
+上限。这是有意的取舍：一个指向错误词条的链接，比没有链接更糟。
+
+中文站查不到的词会自动退到英文维基百科。可在 `config/config.yaml` 调整：
+
+```yaml
+runtime:
+  wikipedia:
+    lang: zh              # 主语言站点
+    fallback_lang: en     # 主语言查不到时回退（留空则不回退）
+    limit: 8              # 目标条数，5–10
+```
+
+抽取要过一次 AI，所以默认由你点按钮触发，不会在每次打开稿件时自动消耗额度；
+同一篇稿子的结果会被缓存，正文没变就直接复用。
+
 ### 🗂️ 杂志封面合集
 
 订阅节目时会自动记住它的封面图（搜索添加用 iTunes 封面，直接填 RSS 则用频道封面）。
@@ -278,7 +301,8 @@ Windows／Linux／Intel Mac 上也能转录。云端接口通常限制单文件 
 还能点 **测试** 预检凭据。支持两类目标：
 
 - **群机器人 Webhook**（短消息）：飞书 / 钉钉 / Slack / 通用 JSON Webhook。
-- **云文档知识库**（真正的文档）：`notion`（在数据库或页面下新建页面）、`feishu-doc`（新建一篇飞书 Docx）。
+- **云文档知识库**（真正的文档）：`notion`（在数据库或页面下新建页面）、`feishu-doc`（新建一篇飞书 Docx）、
+  `gdrive`（在 Google Drive 新建一篇 Google 文档，或存成 `.md` 文件）。
 
 在 `config/config.yaml` 里声明连接器，凭据只填在 `.env`：
 
@@ -295,11 +319,35 @@ connectors:
     format: feishu-doc             # 新建一篇飞书 Docx 文档
     app_id_env: READ_PODCAST_CONNECTOR_FEISHU_APP_ID
     app_secret_env: READ_PODCAST_CONNECTOR_FEISHU_APP_SECRET
+  - name: Google Drive
+    format: gdrive                 # 新建一篇 Google 文档
+    client_id_env: READ_PODCAST_CONNECTOR_GDRIVE_CLIENT_ID
+    client_secret_env: READ_PODCAST_CONNECTOR_GDRIVE_CLIENT_SECRET
+    refresh_token_env: READ_PODCAST_CONNECTOR_GDRIVE_REFRESH_TOKEN
+    # folder_id: 你的文件夹ID       # 可选，留空存到「我的云端硬盘」根目录
+    # doc_format: gdoc             # gdoc（默认，可直接编辑）或 markdown（存 .md）
 ```
 
-凭据（Webhook 地址 / Notion token / 飞书 App Secret，均属机密）只填在 `.env` 的对应变量里，
-代码不硬编码任何服务商；`/connectors` 接口也绝不回传地址或凭据。没配置连接器时，「发送到…」入口会自动隐藏。
-需要 Google Drive 等其他目标时，用通用 `markdown` Webhook 接自建服务/Zapier 转存即可。
+凭据（Webhook 地址 / Notion token / 飞书 App Secret / Google 刷新令牌，均属机密）只填在 `.env` 的
+对应变量里，代码不硬编码任何服务商；`/connectors` 接口也绝不回传地址或凭据。没配置连接器时，
+「发送到…」入口会自动隐藏。
+
+<details>
+<summary>Google Drive 怎么拿到那三个值</summary>
+
+1. 到 [Google Cloud Console](https://console.cloud.google.com/) 新建项目，启用 **Google Drive API**。
+2. 「OAuth 同意屏幕」选 **外部**，把自己的账号加进「测试用户」。
+3. 「凭据 → 创建凭据 → OAuth 客户端 ID」，类型选 **桌面应用**，得到 `client_id` 与 `client_secret`。
+4. 用这两个值走一次 OAuth 授权（作用域 `https://www.googleapis.com/auth/drive.file`，
+   即只能访问本应用自己创建的文件），换到 `refresh_token`。可用
+   [OAuth 2.0 Playground](https://developers.google.com/oauthplayground/)，在设置里勾选
+   「Use your own OAuth credentials」填入上面两个值。
+5. 三个值分别填进 `.env` 的 `READ_PODCAST_CONNECTOR_GDRIVE_*`，回页面点「测试」验证。
+
+用刷新令牌而不是服务账号，是因为个人 Google 账号下服务账号没有独立存储配额，
+上传会失败，且文件不归属你本人。
+
+</details>
 
 ## 🛠️ 进阶与开发
 

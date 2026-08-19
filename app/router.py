@@ -14,7 +14,7 @@ import yaml
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Dict, List
+from typing import Callable, Dict, List, Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Response
@@ -60,6 +60,14 @@ from modules.user_settings import (
     probe_transcription,
 )
 from modules.utils import extract_frontmatter
+from modules.wikipedia import (
+    DEFAULT_FALLBACK_LANG,
+    DEFAULT_LANG,
+    MAX_CONCEPTS,
+    MIN_CONCEPTS,
+    WikipediaError,
+    collect_concepts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +115,11 @@ class ExportRequest(BaseModel):
     connector: str = Field(min_length=1, max_length=200)
     # manuscript：推送整篇成稿；summary：推送 AI 提炼的知识条目
     mode: str = Field(default="manuscript", pattern="^(manuscript|summary)$")
+
+class ConceptsRequest(BaseModel):
+    """关键概念抽取；limit 缺省时用配置里的值。"""
+    limit: Optional[int] = Field(default=None, ge=MIN_CONCEPTS, le=MAX_CONCEPTS)
+    refresh: bool = False
 
 class SettingsUpdateRequest(BaseModel):
     """普通配置与机密分开提交；机密缺省表示不改动，空串表示清除。"""
@@ -930,6 +943,67 @@ async def chat_with_library(body: LibraryChatRequest) -> Dict:
         "episodes_searched": len(docs),
         "context_truncated": selection.truncated,
     }
+
+
+# ── 关键概念 → 维基百科 ──
+# AI 只负责从文字稿里提名候选词，链接一律由维基百科 API 核对后生成，避免模型编造词条地址。
+
+# 抽取一次要过一遍 AI + 若干次维基百科查询，成本不低；同一篇稿子的结果按输出文件
+# 的修改时间缓存，正文没变就直接复用（前端也不必担心重复打开阅读页触发重算）。
+_concepts_cache: Dict[str, Dict] = {}
+_CONCEPTS_CACHE_MAX = 128
+
+
+def _wikipedia_config() -> Dict:
+    raw = settings.RUNTIME_CONFIG.get("wikipedia") if isinstance(settings.RUNTIME_CONFIG, dict) else None
+    return raw if isinstance(raw, dict) else {}
+
+
+@api_router.post("/tasks/{task_id}/concepts")
+async def get_task_concepts(task_id: str, body: ConceptsRequest) -> Dict:
+    """抽取本篇文字稿的关键概念，并给出经过核对的维基百科链接。"""
+    task = await get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
+
+    output_file, content = _read_task_output_text(task)
+    transcript = strip_leading_frontmatter(content).strip()
+    if not transcript:
+        raise HTTPException(status_code=422, detail="文字稿为空，无法抽取关键概念")
+
+    config = _wikipedia_config()
+    limit = body.limit or int(config.get("limit", MAX_CONCEPTS) or MAX_CONCEPTS)
+    limit = max(MIN_CONCEPTS, min(limit, MAX_CONCEPTS))
+
+    try:
+        mtime = output_file.stat().st_mtime_ns
+    except OSError:
+        mtime = 0
+    cache_key = f"{task_id}:{mtime}:{limit}"
+    if not body.refresh:
+        cached = _concepts_cache.get(cache_key)
+        if cached:
+            return {**cached, "cached": True}
+
+    try:
+        result = await asyncio.to_thread(
+            collect_concepts,
+            task.episode_title or output_file.stem,
+            task.podcast_name or "",
+            transcript,
+            settings.REFINER_CONFIG,
+            lang=str(config.get("lang", DEFAULT_LANG) or DEFAULT_LANG),
+            fallback_lang=str(config.get("fallback_lang", DEFAULT_FALLBACK_LANG) or ""),
+            limit=limit,
+        )
+    except WikipediaError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    payload = {"task_id": task_id, **result}
+    if len(_concepts_cache) >= _CONCEPTS_CACHE_MAX:
+        _concepts_cache.clear()
+    _concepts_cache[cache_key] = payload
+    return {**payload, "cached": False}
 
 
 # ── 文件连接器（把成稿推送到外部文档/群机器人）──
