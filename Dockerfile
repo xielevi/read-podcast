@@ -17,12 +17,11 @@ RUN uv sync --frozen --no-dev --no-install-project && uv cache clean
 COPY app ./app
 COPY modules ./modules
 COPY scripts ./scripts
-COPY config.default.yaml ./
 
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
     CMD ["uv", "run", "--no-sync", "python", "-c", "from urllib.request import urlopen; assert urlopen('http://127.0.0.1:8080/api/read-podcast/health').status == 200"]
 
-# config.default.yaml 始终提供普通默认值；持久化文件只保存用户覆盖与 WebUI 数据。
+# modules/config.default.yaml 随代码提供默认值；/config 卷只保存用户覆盖与机密。
 CMD ["sh", "-c", "mkdir -p /config && touch /config/config.yaml && exec uv run --no-sync uvicorn app.standalone:app --host 0.0.0.0 --port 8080"]

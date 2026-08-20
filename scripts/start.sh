@@ -23,7 +23,23 @@ command -v uv >/dev/null 2>&1 || die "找不到 uv，请先运行 ./scripts/inst
 mkdir -p config
 if [ ! -f config/config.yaml ]; then
   cat > config/config.yaml <<YAML
-# 本机运行的覆盖配置（由 start.sh 自动生成，可手动编辑）。
+# ── 你的配置就写在这个文件里 ──────────────────────────────
+# 由 start.sh 首次运行自动生成，之后不会被覆盖，git pull 也不会动它。
+# 手动编辑，或用网页右上角的「设置」面板，两者作用于同一份配置。
+#
+# 只写你想改的项即可，其余自动使用内置默认值。
+# 可用选项与示例见 modules/config.default.yaml（那是只读参考，不要直接改它）。
+# 密钥不写这里，写同目录的 secrets.env。
+#
+# 换 AI 服务商就改下面这段（去掉行首 # 即可启用）：
+# refiner:
+#   api_base: https://api.deepseek.com/v1
+#   model: deepseek-chat
+#
+# 改成稿保存位置：
+# paths:
+#   obsidian_markdown_dir: /Users/你的用户名/Obsidian/播客
+
 # 让网页应用连接本机上的语音转录后端；如需分离部署请改成对方地址。
 transcription:
   api_url: http://127.0.0.1:${MLX_PORT}/transcribe

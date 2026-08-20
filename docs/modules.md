@@ -4,7 +4,7 @@
 
 ## config.py — 配置管理
 
-`Settings` 单例（`settings`）在导入时加载配置。普通配置优先级：`config/config.yaml` 用户覆盖 > `config.default.yaml` 默认值。Prompt 模板按 `name` 合并，本地覆盖同名模板并保留默认模板。环境变量用于选择配置路径、输出目录和提供凭据。
+`Settings` 单例（`settings`）在导入时加载配置。普通配置优先级：`config/config.yaml` 用户覆盖 > `modules/config.default.yaml` 默认值。Prompt 模板按 `name` 合并，本地覆盖同名模板并保留默认模板。环境变量用于选择配置路径、输出目录和提供凭据。
 
 - 配置文件路径：`READ_PODCAST_CONFIG` 环境变量，否则 `PROJECT_ROOT/config/config.yaml`；容器内固定为 `/config/config.yaml`。覆盖文件可以为空，只需写偏离默认值的字段与 WebUI 订阅。
 - YAML 规范命名空间为 `read-podcast:`，同时兼容顶层结构和旧 `podcast2md:` 命名空间。

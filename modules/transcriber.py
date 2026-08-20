@@ -465,7 +465,7 @@ def get_transcriber(config: dict | None = None) -> BaseTranscriber:
         if not s["api_url"]:
             raise ValueError(
                 "未配置转录后端：请在 config.yaml 的 transcription 段填写 api_url"
-                "（见 config.default.yaml；一键脚本 start.sh 会自动写入本机默认地址）。"
+                "（见 modules/config.default.yaml；一键脚本 start.sh 会自动写入本机默认地址）。"
             )
         return WhisperApiTranscriber(
             api_url=s["api_url"],

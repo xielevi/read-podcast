@@ -54,7 +54,7 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 
 **D3 Web 原生分阶段流水线 + 共享音频路径。** `modules.pipeline.PodcastPipeline` 是唯一业务实现，WebUI 进程内调用并消费结构化阶段事件。下载/精修有限并发，Whisper 单请求，可跨阶段重叠。RSS enclosure 保留源格式，下载用临时文件 + 原子重命名。原始转录缓存命中则跳过下载与转录；音频由统一保留期清理，任务失败不立即删除。同机启用 `/transcribe-path` 提交相对路径，服务端 allowlist 解析；分离部署回退 multipart。转录失败必须使任务失败；只有输出文件真实存在才标记成功。MLX 分片并发默认降为 2，模型空闲保温后释放。
 
-**D4 配置分层。** `config.default.yaml` 保存普通运行默认值、Prompt 与空播客列表，持久化 `config/config.yaml` 保存用户覆盖和 WebUI 写入内容；`.env` 只保存 API Key、Token 与 Basic Auth 凭据。Compose 只描述本地构建、端口、挂载、资源限制和凭据注入，不重复应用默认值。
+**D4 配置分层。** `modules/config.default.yaml` 保存普通运行默认值、Prompt 与空播客列表，持久化 `config/config.yaml` 保存用户覆盖和 WebUI 写入内容；机密统一写入 `config/secrets.env`（0600），**手动编辑与 WebUI 面板作用于同一文件**；根目录 `.env` 保留为向后兼容的旧位置与 Docker Compose 的 `${VAR}` 替换来源，优先级低于 `secrets.env`。Compose 只描述本地构建、端口、挂载、资源限制和凭据注入，不重复应用默认值。
 
 **D5 本机原生部署为个人用户首选路径。** 面向非技术用户，`scripts/install.sh` 与 `scripts/start.sh` 在 macOS 上同时托管 MLX 后端与网页应用。Docker 保留为进阶备选，其网页应用镜像默认从 GHCR 拉取。两种路径下 MLX 均原生运行。启动入口通过环境覆盖确定模式：原生使用 `127.0.0.1:21567` 并关闭共享路径，Docker 使用 `host.docker.internal:21567` 与 `/app/workspace`；不会因持久化配置残留而串用地址。
 
@@ -70,7 +70,7 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 
 **D13 关键概念只给经核对的维基百科链接。** `POST /tasks/{id}/concepts` 分两段：AI 只从文字稿**提名**候选词，链接一律由维基百科 API 返回的规范标题生成——**模型给出的 URL 一概不采信**，因为模型会编造看似合理却不存在的词条地址。核对先按词条名直查摘要接口（自动跟随重定向），不中再退到全文搜索，且搜索结果须通过标题相关性校验（归一化后互为子串且长度比 ≥0.6）才接受；全文搜索对任何词都会返回结果，这道校验挡住「阿尔法折叠→CASP」这类沾边错链。核对不到或落到消歧义页的候选直接丢弃，因此返回条数常少于 `limit`——**宁可少给，也不给错链接**。复用 refiner 的服务商配置与 `REFINER_API_KEY`，不引入新凭据来源；语言代码经正则约束、站点地址由代码拼装，不接受外部主机名。抽取成本较高（一次 AI + 若干次查询），故由用户显式触发并按「任务 + 输出文件 mtime」缓存，不在流水线里自动跑，保持 D1 的转录主流程不受影响。
 
-**D12 WebUI 个人配置面板。** 分层不变（D4）：普通配置写入持久化 `config/config.yaml`，机密写入同目录的 `secrets.env`（0600，随 `config/` 卷持久化），二者都不进镜像、不进版本库。`Settings` 启动时把 `secrets.env` 补进环境变量，**真实环境变量（Compose / `.env` 注入的非空值）优先级更高**：被环境变量接管的字段在 `/settings` 里标记 `locked` 并拒绝写入，避免用户在页面上做无效修改。面板只暴露显式白名单字段（refiner 服务商与参数、transcription 后端与地址、成稿与下载目录），不开放任意 YAML 编辑；保存后调用 `settings.reload()` 热生效，进程启动时读取的运行参数（并发、保留期）不进入面板。`GET /settings` 只回传「是否已配置」，任何时候都不回传机密内容；`POST /settings/test` 用一次极小的只读请求验证服务商可达性，失败信息剥离服务地址后返回。
+**D12 WebUI 个人配置面板。** 分层不变（D4）：普通配置写入持久化 `config/config.yaml`，机密写入同目录的 `secrets.env`（0600，随 `config/` 卷持久化），二者都不进镜像、不进版本库。`Settings` 启动时把 `secrets.env` 补进环境变量，**只有部署方从外部注入的环境变量**（Compose / shell，即 Python 进程启动前就存在的，由 `EXTERNAL_ENV_KEYS` 在 `load_dotenv()` 之前快照记录）才标记 `locked` 并拒绝写入。`.env` 里的值**不锁定面板**——它和 `secrets.env` 一样只是本机文件，若也锁死，用户按 README 把 Key 填进 `.env` 后就会发现最想改的字段恰恰在网页上改不了。同理 `secrets.env` 优先级高于 `.env`，否则面板保存的新 Key 会被旧值静默盖掉。面板只暴露显式白名单字段（refiner 服务商与参数、transcription 后端与地址、成稿与下载目录），不开放任意 YAML 编辑；保存后调用 `settings.reload()` 热生效，进程启动时读取的运行参数（并发、保留期）不进入面板。`GET /settings` 只回传「是否已配置」，任何时候都不回传机密内容；`POST /settings/test` 用一次极小的只读请求验证服务商可达性，失败信息剥离服务地址后返回。
 
 
 **D7 品牌与兼容标识。** 项目品牌统一为 Read Podcast，规范技术标识为 `/api/read-podcast`、`READ_PODCAST_*`、`read-podcast:` 与 `X-Read-Podcast-*`。既有 `/api/podcast2md`、`PODCAST2MD_*`、`podcast2md:`、`X-Podcast2MD-*` 和 `workspace/podcast2md.db` 只作为隐藏兼容接口继续保留，避免升级破坏现有配置、客户端与任务数据。

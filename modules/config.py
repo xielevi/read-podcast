@@ -6,9 +6,24 @@ from dotenv import load_dotenv
 
 _THIS_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = _THIS_DIR.parent
-DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.default.yaml"
+# 内置默认值与代码一起分发，放在 modules/ 下而不是项目根目录：它是随版本更新的
+# 只读基线，用户不该编辑（改了 git pull 会冲突）。用户配置只写 config/config.yaml。
+DEFAULT_CONFIG_PATH = _THIS_DIR / "config.default.yaml"
 # 持久化机密文件名，与 config.yaml 同目录（Docker 下即挂载的 /config 卷）。
 SECRETS_FILENAME = "secrets.env"
+
+# 在加载 .env 之前先记下「真正来自外部」的环境变量名（Compose / shell 注入）。
+# 加载后 .env 的值与外部注入在 os.environ 里无从分辨，而两者该被区别对待：
+# 外部注入代表部署方的决定，设置面板必须只读；.env 只是本机的一个文件，
+# 和 secrets.env 同级，不该锁死面板（见 D12）。
+# 通过 is_external_env() 访问而非直接读，便于测试替换这份快照。
+EXTERNAL_ENV_KEYS = frozenset(os.environ)
+
+
+def is_external_env(name: str) -> bool:
+    """该环境变量是否由部署方在进程启动前注入（而非 .env / secrets.env）。"""
+    return name in EXTERNAL_ENV_KEYS
+
 
 load_dotenv(dotenv_path=PROJECT_ROOT / ".env", override=False)
 
@@ -38,16 +53,49 @@ class Settings:
         else:
             self.CONFIG_PATH = PROJECT_ROOT / "config" / "config.yaml"
 
-        # 与 config.yaml 同目录的机密文件（WebUI 设置面板写入，权限 0600）。
+        # 与 config.yaml 同目录的机密文件：手动编辑与 WebUI 面板的统一落点（0600）。
         self.SECRETS_PATH = self.CONFIG_PATH.parent / SECRETS_FILENAME
-        # 由 secrets.env 注入、可被 WebUI 改写的环境变量名；真实环境变量不在其中。
+        # 由 secrets.env 注入、可被 WebUI 改写的环境变量名；外部注入的不在其中。
         self.MANAGED_SECRET_KEYS = self._load_managed_secrets()
+        self._warn_legacy_dotenv_secrets()
 
         self._raw_config = self._load_yaml()
         self._initialize_settings()
 
+    def _warn_legacy_dotenv_secrets(self) -> None:
+        """提示把仍留在 .env 里的密钥迁到 secrets.env，避免两处各存一份。"""
+        dotenv_path = PROJECT_ROOT / ".env"
+        if not dotenv_path.exists():
+            return
+        try:
+            content = dotenv_path.read_text(encoding='utf-8')
+        except OSError:
+            return
+        stale = []
+        for line in content.splitlines():
+            entry = line.strip()
+            if not entry or entry.startswith('#'):
+                continue
+            key, separator, value = entry.partition('=')
+            key = key.strip()
+            if separator and key and value.strip() and key not in self.MANAGED_SECRET_KEYS:
+                stale.append(key)
+        if stale:
+            logger.info(
+                "以下密钥仍写在 .env：%s。建议迁到 %s —— 那里是手动编辑与网页设置面板的"
+                "统一落点，Docker 下也随 config/ 卷持久化。",
+                "、".join(stale),
+                self.SECRETS_PATH,
+            )
+
     def _load_managed_secrets(self) -> set:
-        """把 secrets.env 中的机密补进环境变量，已有非空环境变量优先。"""
+        """把 secrets.env 中的机密补进环境变量。
+
+        优先级：外部注入（Compose / shell）> ``secrets.env`` > ``.env``。
+        ``secrets.env`` 压过 ``.env`` 是有意的——两者都只是本机文件，但
+        ``secrets.env`` 是设置面板与手动编辑的统一落点，若被 ``.env`` 里的
+        旧值压住，用户在网页上保存的新 Key 就会静默失效。
+        """
         applied = set()
         path = self.SECRETS_PATH
         if not path.exists():
@@ -70,8 +118,10 @@ class Settings:
             value = value.strip()
             if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
                 value = value[1:-1]
-            if os.environ.get(key):
-                # Compose / .env 注入的真实环境变量优先级更高。
+            if is_external_env(key) and os.environ.get(key):
+                # 只有部署方从外部注入的值才压过 secrets.env。
+                continue
+            if not value:
                 continue
             os.environ[key] = value
             applied.add(key)
