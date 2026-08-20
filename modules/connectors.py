@@ -28,6 +28,7 @@ from typing import Any
 import httpx
 
 from modules.network_security import UnsafeUrlError, validate_public_url
+from modules.user_settings import SettingsError, write_integration_secrets
 
 logger = logging.getLogger(__name__)
 
@@ -93,6 +94,8 @@ def _required_env(connector: dict) -> list[str] | None:
         keys = ["token_env"]
     elif fmt == "feishu-doc":
         keys = ["app_id_env", "app_secret_env"]
+        if _cfg(connector, "user_refresh_token_env"):
+            keys.append("user_refresh_token_env")
     elif fmt == "gdrive":
         keys = ["client_id_env", "client_secret_env", "refresh_token_env"]
     else:
@@ -414,6 +417,65 @@ def _feishu_tenant_token(connector: dict, *, timeout: int) -> str:
     return token
 
 
+def _feishu_app_token(connector: dict, *, timeout: int) -> str:
+    """换取用户 OAuth 所需的 app_access_token。"""
+    name = _cfg(connector, "name")
+    app_id = _env_value(_cfg(connector, "app_id_env"))
+    app_secret = _env_value(_cfg(connector, "app_secret_env"))
+    if not app_id or not app_secret:
+        raise ConnectorError(f"连接器「{name}」的飞书应用凭据未设置（环境变量为空）。")
+    response = _post_json(
+        f"{_feishu_base(connector)}/open-apis/auth/v3/app_access_token/internal",
+        json_body={"app_id": app_id, "app_secret": app_secret},
+        headers={"Content-Type": "application/json"},
+        timeout=timeout,
+        label=f"连接器「{name}」",
+    )
+    try:
+        data = response.json()
+    except Exception as exc:
+        raise ConnectorError(f"连接器「{name}」获取飞书应用 token 失败：响应无法解析。") from exc
+    if data.get("code") not in (0, None):
+        raise ConnectorError(f"连接器「{name}」获取飞书应用 token 失败：{data.get('msg') or data.get('code')}")
+    token = str(data.get("app_access_token", "") or "")
+    if not token:
+        raise ConnectorError(f"连接器「{name}」未获得飞书 app_access_token。")
+    return token
+
+
+def _feishu_user_token(connector: dict, *, timeout: int) -> str:
+    """使用刷新令牌换取用户身份 token，并轮换服务端保存的令牌。"""
+    name = _cfg(connector, "name")
+    refresh_env = _cfg(connector, "user_refresh_token_env")
+    access_env = _cfg(connector, "user_access_token_env")
+    if not refresh_env:
+        return _feishu_tenant_token(connector, timeout=timeout)
+    refresh_token = _env_value(refresh_env)
+    if not refresh_token:
+        raise ConnectorError(f"连接器「{name}」尚未登录飞书账号。")
+    app_token = _feishu_app_token(connector, timeout=timeout)
+    response = _post_json(
+        f"{_feishu_base(connector)}/open-apis/authen/v1/refresh_access_token",
+        json_body={"grant_type": "refresh_token", "refresh_token": refresh_token},
+        headers={"Authorization": f"Bearer {app_token}", "Content-Type": "application/json"},
+        timeout=timeout,
+        label=f"连接器「{name}」",
+    )
+    data = _feishu_data(response, name, "刷新用户令牌")
+    access_token = str(data.get("access_token") or "")
+    next_refresh = str(data.get("refresh_token") or refresh_token)
+    if not access_token:
+        raise ConnectorError(f"连接器「{name}」未获得飞书 user_access_token。")
+    updates = {refresh_env: next_refresh}
+    if access_env:
+        updates[access_env] = access_token
+    try:
+        write_integration_secrets(updates)
+    except SettingsError as exc:
+        raise ConnectorError(f"连接器「{name}」保存飞书令牌失败。") from exc
+    return access_token
+
+
 # 飞书 docx 块类型：文本 2、一至三级标题 3/4/5、无序列表 12。
 _FEISHU_BLOCK_TYPES = {"p": 2, "h1": 3, "h2": 4, "h3": 5, "li": 12}
 _FEISHU_BLOCK_FIELDS = {2: "text", 3: "heading1", 4: "heading2", 5: "heading3", 12: "bullet"}
@@ -434,7 +496,7 @@ def _feishu_blocks(lines: list[tuple[str, str]]) -> list[dict]:
 def _send_feishu_doc(connector: dict, doc: dict, *, timeout: int) -> dict:
     name = _cfg(connector, "name")
     base = _feishu_base(connector)
-    token = _feishu_tenant_token(connector, timeout=timeout)
+    token = _feishu_user_token(connector, timeout=timeout)
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 
     title = str(doc.get("title", "")).strip() or "未命名稿件"
@@ -722,9 +784,8 @@ def test_connector(connector: dict, *, timeout: int = 15) -> dict:
         return {"connector": name, "ok": True, "detail": "Notion 凭据有效"}
 
     if fmt == "feishu-doc":
-        # 换取一次 tenant_access_token 即可验证应用凭据。
-        _feishu_tenant_token(connector, timeout=timeout)
-        return {"connector": name, "ok": True, "detail": "飞书应用凭据有效"}
+        _feishu_user_token(connector, timeout=timeout)
+        return {"connector": name, "ok": True, "detail": "飞书账号连接有效"}
 
     if fmt == "gdrive":
         # 换取访问令牌后读一次 about，确认令牌作用域覆盖 Drive。
