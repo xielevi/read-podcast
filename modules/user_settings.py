@@ -37,6 +37,16 @@ MAX_VALUE_LENGTH = 2048
 _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 _URL_PATTERN = re.compile(r"https?://\S+")
 
+INTEGRATION_SECRET_KEYS = {
+    "READ_PODCAST_CONNECTOR_GDRIVE_CLIENT_ID",
+    "READ_PODCAST_CONNECTOR_GDRIVE_CLIENT_SECRET",
+    "READ_PODCAST_CONNECTOR_GDRIVE_REFRESH_TOKEN",
+    "READ_PODCAST_CONNECTOR_FEISHU_APP_ID",
+    "READ_PODCAST_CONNECTOR_FEISHU_APP_SECRET",
+    "READ_PODCAST_CONNECTOR_FEISHU_ACCESS_TOKEN",
+    "READ_PODCAST_CONNECTOR_FEISHU_REFRESH_TOKEN",
+}
+
 SECRETS_HEADER = (
     "# Read Podcast 机密文件（权限 0600）。这里是密钥的唯一落点：\n"
     "# 网页「设置」面板写入这个文件，你也可以直接手动编辑它，两者作用于同一份配置。\n"
@@ -509,6 +519,28 @@ def _write_secrets(updates: Dict[str, str]) -> None:
             if key in managed:
                 os.environ.pop(key, None)
                 managed.discard(key)
+
+
+def write_integration_secrets(updates: Dict[str, Any]) -> None:
+    """写入 OAuth 应用凭据或令牌；仅允许云文档集成的固定白名单。"""
+    normalized: Dict[str, str] = {}
+    errors: List[str] = []
+    for raw_key, raw_value in (updates or {}).items():
+        key = str(raw_key)
+        if key not in INTEGRATION_SECRET_KEYS:
+            errors.append(f"未知云文档机密项：{key}")
+            continue
+        if _secret_is_external(key):
+            errors.append(f"{key} 由部署环境接管，无法在页面修改")
+            continue
+        try:
+            normalized[key] = _clean(raw_value)
+        except SettingsError as exc:
+            errors.append(f"{key}：{exc}")
+    if errors:
+        raise SettingsError("；".join(errors))
+    _write_secrets(normalized)
+    settings.reload()
 
 
 def apply_settings(values: Dict[str, Any] | None, secrets: Dict[str, Any] | None) -> Dict[str, Any]:

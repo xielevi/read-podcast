@@ -525,6 +525,42 @@ def _feishu_connector():
     }
 
 
+def test_feishu_oauth_connector_refreshes_user_token(monkeypatch):
+    connector = {
+        **_feishu_connector(),
+        "user_access_token_env": "FEISHU_USER_ACCESS_TOKEN",
+        "user_refresh_token_env": "FEISHU_USER_REFRESH_TOKEN",
+    }
+    monkeypatch.setenv("FEISHU_APP_ID", "cli_x")
+    monkeypatch.setenv("FEISHU_APP_SECRET", "sec_x")
+    monkeypatch.setenv("FEISHU_USER_REFRESH_TOKEN", "refresh-old")
+    monkeypatch.setattr(connectors_module, "validate_public_url", lambda url: url)
+    monkeypatch.setattr(
+        connectors_module,
+        "write_integration_secrets",
+        lambda updates: [monkeypatch.setenv(key, value) for key, value in updates.items()],
+    )
+
+    def fake_post(url, json=None, headers=None, timeout=None):
+        if url.endswith("/app_access_token/internal"):
+            return _JsonResp({"code": 0, "app_access_token": "app-token"})
+        assert url.endswith("/authen/v1/refresh_access_token")
+        assert headers["Authorization"] == "Bearer app-token"
+        assert json["refresh_token"] == "refresh-old"
+        return _JsonResp(
+            {"code": 0, "data": {"access_token": "user-token", "refresh_token": "refresh-new"}}
+        )
+
+    monkeypatch.setattr(connectors_module.httpx, "post", fake_post)
+
+    result = run_test_connector(connector)
+
+    assert result["ok"] is True
+    assert result["detail"] == "飞书账号连接有效"
+    assert connectors_module._env_value("FEISHU_USER_ACCESS_TOKEN") == "user-token"
+    assert connectors_module._env_value("FEISHU_USER_REFRESH_TOKEN") == "refresh-new"
+
+
 def test_feishu_doc_maps_headings_and_bullets_to_native_blocks(monkeypatch):
     """标题与列表要落成飞书原生块，而不是全部压成文本块。"""
     monkeypatch.setenv("FEISHU_APP_ID", "cli_x")

@@ -51,6 +51,18 @@
           <div id="podcast-list"></div>
           <button class="btn-add" id="add-podcast-btn" type="button">＋ 添加一档节目</button>
         </div>
+        <div class="document-logins" aria-label="文档账号">
+          <button class="document-login" id="google-docs-login" type="button" data-format="gdrive">
+            <span class="document-mark google-mark" aria-hidden="true">G</span>
+            <span class="document-name">Google 文档</span>
+            <span class="document-state">登录</span>
+          </button>
+          <button class="document-login" id="feishu-docs-login" type="button" data-format="feishu-doc">
+            <span class="document-mark feishu-mark" aria-hidden="true">F</span>
+            <span class="document-name">飞书文档</span>
+            <span class="document-state">登录</span>
+          </button>
+        </div>
       </aside>
 
       <section class="content" id="main-content">
@@ -231,6 +243,33 @@
         <button class="ghost-btn" id="settings-reload-btn" type="button">重新读取</button>
         <button class="solid-btn" id="settings-save-btn" type="button">保存配置</button>
       </div>
+    </div>
+  </aside>
+
+  <div class="overlay" id="integration-overlay"></div>
+  <aside class="drawer integration-drawer" id="integration-drawer" role="dialog" aria-hidden="true" aria-labelledby="integration-title">
+    <div class="drawer-head">
+      <div><span class="overline">文档账号</span><h2 id="integration-title">连接账号</h2></div>
+      <button class="close-btn" id="integration-close-btn" type="button" aria-label="关闭账号登录">×</button>
+    </div>
+    <div class="integration-body">
+      <div class="integration-provider-head">
+        <span class="document-mark" id="integration-provider-mark" aria-hidden="true"></span>
+        <strong id="integration-provider-name"></strong>
+        <span class="settings-badge" id="integration-status-badge">未连接</span>
+      </div>
+      <form class="integration-app-form" id="integration-app-form">
+        <label class="form-label" for="integration-client-id" id="integration-client-id-label">Client ID</label>
+        <input class="form-input" id="integration-client-id" type="text" autocomplete="off">
+        <label class="form-label" for="integration-client-secret" id="integration-client-secret-label">Client Secret</label>
+        <input class="form-input" id="integration-client-secret" type="password" autocomplete="new-password">
+        <button class="solid-btn" id="integration-save-login-btn" type="submit">保存并登录</button>
+      </form>
+      <div class="integration-account-actions" id="integration-account-actions" hidden>
+        <button class="solid-btn provider-login-btn" id="integration-login-btn" type="button">登录</button>
+        <button class="ghost-btn" id="integration-test-btn" type="button" hidden>测试连接</button>
+      </div>
+      <div class="integration-state" id="integration-state" role="status" aria-live="polite"></div>
     </div>
   </aside>
 

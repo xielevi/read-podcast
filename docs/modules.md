@@ -97,6 +97,13 @@
 - `send_document(connector, doc)`：按 `format` 分派。Webhook→单次 POST；`notion`→`POST /v1/pages`（首批 90 块随页面创建，其余 `PATCH /v1/blocks/{id}/children` 分批追加）；`feishu-doc`→换取 `tenant_access_token`→建 Docx→按语义映射为标题（block_type 3/4/5）、无序列表（12）、文本（2）块，每批 50 个分批插入；`gdrive`→用刷新令牌换访问令牌→multipart 上传（`gdoc` 提交 HTML 请求转换成原生 Google 文档，`markdown` 存 `.md`）。整篇块数上限 `_MAX_DOC_BLOCKS_TOTAL`（2000），超出才标记 `truncated`。所有出站地址先过 `validate_public_url`（SSRF）；HTTP 非 2xx 或飞书/Notion/Google 业务错误码非 0 抛 `ConnectorError`（不记录地址与响应正文）。
 - `test_connector(connector)`：只读预检——Notion 打 `/v1/users/me`，飞书换 token，Google Drive 换令牌后打 `/drive/v3/about`，Webhook 只校验已配置且公网可达。
 
+## oauth_integrations.py — 云文档账号登录
+
+- `integration_statuses()`：只返回 Google/飞书的应用配置与账号连接布尔状态，不返回 ID、Secret 或 token。
+- `begin_authorization(provider, redirect_uri, request_origin)`：校验同源、固定回调路径，生成十分钟过期的一次性 state 与第三方授权地址。
+- `complete_authorization(provider, code, state)`：消费 state，交换并保存刷新令牌；Google 请求 `drive.file` 离线访问，飞书保存用户访问/刷新令牌。
+- `effective_connectors(config)`：显式连接器优先；OAuth 应用已配置后，缺少对应格式时补入内置 Google/飞书连接器。
+
 ## wikipedia.py — 关键概念 → 维基百科
 
 从一篇文字稿里挑出 5–10 个值得延伸阅读的关键概念，并给出**经过核对**的维基百科链接。分两段是因为：AI 擅长判断「哪些词值得查」，但不能信任它给出的 URL（模型会编造看似合理却不存在的词条地址），所以链接一律由维基百科 API 返回的规范标题生成。

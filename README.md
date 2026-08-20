@@ -318,6 +318,18 @@ runtime:
 - **云文档知识库**（真正的文档）：`notion`（在数据库或页面下新建页面）、`feishu-doc`（新建一篇飞书 Docx）、
   `gdrive`（在 Google Drive 新建一篇 Google 文档，或存成 `.md` 文件）。
 
+Google 文档与飞书文档也可以直接从 WebUI 左下角登录。首次连接会要求填写开发者应用的
+Client/App ID 与 Secret，然后跳转到对应账号授权；刷新令牌只保存在本机
+`config/secrets.env`。两边开发者后台都必须把当前站点的回调地址加入允许列表：
+
+```text
+https://你的站点[/子路径]/api/read-podcast/integrations/google/callback
+https://你的站点[/子路径]/api/read-podcast/integrations/feishu/callback
+```
+
+Google 应用需启用 Drive API 并允许 `drive.file`；飞书应用需开通创建、编辑云文档所需权限。
+原有手工 `connectors` 配置仍然兼容，并且优先于内置 OAuth 连接器。
+
 在 `config/config.yaml` 里声明连接器，凭据只填在 `.env`：
 
 ```yaml
