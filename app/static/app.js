@@ -42,7 +42,7 @@
     var _lastReaderScrollTop = 0;
     var _subscriptions = [];
     var _timelineRequestToken = 0;
-    var _readEpisodes = loadReadEpisodes();
+    var _readEpisodes = {};
     var _currentReadingEpisode = null;
     var _currentTaskPodcastName = null;
 
@@ -63,20 +63,29 @@
     function setHidden(element, hidden) { if (element) element.hidden = hidden; }
 
     function loadReadEpisodes() {
-      try {
-        var raw = localStorage.getItem('read_episodes');
-        var parsed = raw ? JSON.parse(raw) : {};
-        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
-      } catch (ignore) {
-        return {};
-      }
+      return fetch(appUrl('/api/read-podcast/episodes/read'))
+        .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+        .then(function (keys) {
+          _readEpisodes = {};
+          (Array.isArray(keys) ? keys : []).forEach(function (key) { _readEpisodes[String(key)] = true; });
+          updateReaderReadState();
+          updateFilterCounts();
+          if (allEpisodes.length) renderEpisodeList(getFilteredEpisodes());
+          return _readEpisodes;
+        })
+        .catch(function () { return _readEpisodes; });
+    }
+
+    function episodeParts(episode) {
+      if (!episode) return null;
+      var podcastName = String(episode.podcast_name || episode.podcast || selectedPodcast || '').trim();
+      var title = String(episode.title || episode.episode_title || '').trim();
+      return podcastName && title ? { podcastName: podcastName, title: title } : null;
     }
 
     function episodeIdentity(episode) {
-      if (!episode) return '';
-      var podcastName = String(episode.podcast_name || episode.podcast || selectedPodcast || '').trim();
-      var title = String(episode.title || episode.episode_title || '').trim();
-      return podcastName && title ? podcastName + '::' + title : '';
+      var parts = episodeParts(episode);
+      return parts ? parts.podcastName + '::' + parts.title : '';
     }
 
     function isEpisodeRead(episode) {
@@ -84,19 +93,32 @@
       return Boolean(key && _readEpisodes[key]);
     }
 
-    function persistReadEpisodes() {
-      try { localStorage.setItem('read_episodes', JSON.stringify(_readEpisodes)); } catch (ignore) {}
-    }
-
     function setEpisodeRead(episode, read) {
-      var key = episodeIdentity(episode);
-      if (!key) return;
-      if (read) _readEpisodes[key] = Date.now();
+      var parts = episodeParts(episode);
+      if (!parts) return;
+      var key = parts.podcastName + '::' + parts.title;
+      var wasRead = Boolean(_readEpisodes[key]);
+      if (wasRead === read) return;
+      // 乐观更新：先改本地状态刷新界面，服务端保存失败再回滚。
+      if (read) _readEpisodes[key] = true;
       else delete _readEpisodes[key];
-      persistReadEpisodes();
       updateReaderReadState();
       updateFilterCounts();
       if (allEpisodes.length) renderEpisodeList(getFilteredEpisodes());
+      fetch(appUrl('/api/read-podcast/episodes/read'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ podcast_name: parts.podcastName, episode_title: parts.title, read: read }),
+      })
+        .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); })
+        .catch(function (error) {
+          if (read) delete _readEpisodes[key];
+          else _readEpisodes[key] = true;
+          updateReaderReadState();
+          updateFilterCounts();
+          if (allEpisodes.length) renderEpisodeList(getFilteredEpisodes());
+          addLog('保存已读状态失败：' + errorMessage(error), 'error');
+        });
     }
 
     function updateReaderReadState() {
@@ -2650,3 +2672,4 @@
     initSettings();
     loadSubscriptions();
     loadHistory();
+    loadReadEpisodes();
