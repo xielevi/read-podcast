@@ -1,6 +1,6 @@
 [project]
 name = "read-podcast"
-version = "0.1.0"
+version = "0.2.0"
 description = "Turn podcasts and audio into readable Markdown with local MLX Whisper."
 readme = "README.md"
 license = "MIT"
@@ -26,7 +26,8 @@ Issues = "https://github.com/xielevi/read-podcast/issues"
 
 [project.optional-dependencies]
 mlx = [
-    "numpy>=1.26.4",
+    # numpy 由 mlx-whisper 自己带入；这里不再重复声明——之前那条没有平台标记，
+    # 会让非 Apple Silicon 平台的 `--extra mlx` 装一个谁都用不上的 numpy。
     "mlx-whisper>=0.4.1 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 

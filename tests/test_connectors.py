@@ -18,7 +18,6 @@ from modules.connectors import (
     ConnectorError,
     available_connectors,
     build_payload,
-    find_connector,
     send_document,
 )
 from modules.connectors import test_connector as run_test_connector
