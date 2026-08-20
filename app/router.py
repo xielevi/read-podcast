@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Response
-from fastapi.responses import StreamingResponse, FileResponse
+from fastapi import APIRouter, HTTPException, UploadFile, File, Query, Request, Response
+from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from app.models.task import Task, TaskStatus
@@ -48,6 +48,16 @@ from modules.connectors import (
 from modules.connectors import test_connector as precheck_connector
 from modules.formatter import strip_leading_frontmatter
 from modules.library_qa import EpisodeDoc, build_library_context
+from modules.oauth_integrations import (
+    OAuthIntegrationError,
+    begin_authorization,
+    cancel_authorization,
+    complete_authorization,
+    effective_connectors,
+    integration_status,
+    integration_statuses,
+    save_app_credentials,
+)
 from modules.refiner import AssistantError, assistant_available, chat_completion
 from modules.rss_parser import RSSParser
 from modules.network_security import UnsafeUrlError, validate_public_url
@@ -128,6 +138,13 @@ class SettingsUpdateRequest(BaseModel):
 
 class SettingsTestRequest(BaseModel):
     target: str = Field(pattern="^(refiner|transcription)$")
+
+class OAuthAppCredentialsRequest(BaseModel):
+    client_id: str = Field(min_length=1, max_length=2048)
+    client_secret: str = Field(min_length=1, max_length=2048)
+
+class OAuthAuthorizeRequest(BaseModel):
+    redirect_uri: str = Field(min_length=1, max_length=2048)
 
 class PublicTask(BaseModel):
     id: str
@@ -1008,10 +1025,89 @@ async def get_task_concepts(task_id: str, body: ConceptsRequest) -> Dict:
 
 # ── 文件连接器（把成稿推送到外部文档/群机器人）──
 
+def _connectors() -> List[Dict]:
+    return effective_connectors(settings.CONNECTORS)
+
+
+def _request_origin(request: Request) -> str:
+    return f"{request.url.scheme}://{request.url.netloc}"
+
+
+def _oauth_callback_html(provider: str, ok: bool, detail: str, origin: str) -> HTMLResponse:
+    payload = json.dumps(
+        {"type": "read-podcast-oauth", "provider": provider, "ok": ok, "detail": detail},
+        ensure_ascii=False,
+    ).replace("<", "\\u003c").replace(">", "\\u003e")
+    target_origin = json.dumps(origin).replace("<", "\\u003c").replace(">", "\\u003e")
+    title = "账号已连接" if ok else "账号连接失败"
+    body = (
+        "<!doctype html><html lang='zh-CN'><head><meta charset='utf-8'>"
+        f"<title>{title}</title></head><body><p>{title}</p><script>"
+        f"if(window.opener){{window.opener.postMessage({payload},{target_origin});}}"
+        "window.close();</script></body></html>"
+    )
+    return HTMLResponse(body, headers={"Cache-Control": "no-store"})
+
+
+@api_router.get("/integrations")
+async def get_integrations() -> List[Dict]:
+    """返回 OAuth 应用与账号连接状态，不含任何凭据或令牌。"""
+    return integration_statuses()
+
+
+@api_router.put("/integrations/{provider}/app")
+async def put_integration_app(provider: str, body: OAuthAppCredentialsRequest) -> Dict:
+    """保存开发者应用凭据；机密只落本机 secrets.env。"""
+    try:
+        return await asyncio.to_thread(
+            save_app_credentials,
+            provider,
+            body.client_id,
+            body.client_secret,
+        )
+    except OAuthIntegrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@api_router.post("/integrations/{provider}/authorize")
+async def authorize_integration(
+    provider: str,
+    body: OAuthAuthorizeRequest,
+    request: Request,
+) -> Dict:
+    """创建一次性 state 并返回第三方授权地址。"""
+    try:
+        return begin_authorization(provider, body.redirect_uri, _request_origin(request))
+    except OAuthIntegrationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@api_router.get("/integrations/{provider}/callback")
+async def integration_callback(
+    provider: str,
+    request: Request,
+    state: str = "",
+    code: str = "",
+    error: str = "",
+) -> HTMLResponse:
+    """校验 state、交换令牌并通知同源登录窗口。"""
+    origin = _request_origin(request)
+    try:
+        if error:
+            pending = cancel_authorization(provider, state)
+            origin = pending["origin"]
+            raise OAuthIntegrationError("用户取消了授权")
+        result = await asyncio.to_thread(complete_authorization, provider, code, state)
+        origin = str(result.pop("origin"))
+        return _oauth_callback_html(provider, True, "账号已连接", origin)
+    except OAuthIntegrationError as exc:
+        return _oauth_callback_html(provider, False, str(exc), origin)
+
+
 @api_router.get("/connectors")
 async def get_connectors() -> List[Dict]:
     """可用连接器清单（不含 Webhook 地址），供前端渲染导出入口。"""
-    return available_connectors(settings.CONNECTORS)
+    return available_connectors(_connectors())
 
 
 @api_router.post("/tasks/{task_id}/export")
@@ -1021,7 +1117,7 @@ async def export_task(task_id: str, body: ExportRequest) -> Dict:
     if not task:
         raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
 
-    connector = find_connector(settings.CONNECTORS, body.connector.strip())
+    connector = find_connector(_connectors(), body.connector.strip())
     if not connector:
         raise HTTPException(status_code=404, detail=f"连接器 '{body.connector}' 不存在")
 
@@ -1086,7 +1182,7 @@ async def _build_knowledge_entry(title: str, podcast: str, transcript: str) -> s
 @api_router.post("/connectors/{name}/test")
 async def test_connector_endpoint(name: str) -> Dict:
     """预检连接器凭据/可达性，不产生正式内容。"""
-    connector = find_connector(settings.CONNECTORS, name.strip())
+    connector = find_connector(_connectors(), name.strip())
     if not connector:
         raise HTTPException(status_code=404, detail=f"连接器 '{name}' 不存在")
     try:

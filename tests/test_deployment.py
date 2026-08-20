@@ -176,6 +176,10 @@ def test_standalone_health_and_frontend():
     assert 'id="episode-inspector"' in response.text
     assert 'id="reader-progress-range"' in response.text
     assert 'id="episode-summary-drawer"' in response.text
+    assert 'id="google-docs-login"' in response.text
+    assert 'id="feishu-docs-login"' in response.text
+    assert 'id="integration-drawer"' in response.text
+    assert "function openIntegration(provider)" in script.text
     assert "window.READ_PODCAST_BASE_PATH" in response.text
     assert 'href="app.css"' not in response.text
     assert '<script src="app.js"></script>' not in response.text
