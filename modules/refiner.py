@@ -88,7 +88,7 @@ class OpenaiCompatRefiner(BaseRefiner):
         if not self.api_base or not self.model:
             raise ValueError(
                 "未配置精修服务商：请在 config.yaml 的 refiner 段填写 api_base 和 model"
-                "（参考 config.default.yaml 注释与 README「申请 AI Key」）。"
+                "（参考 modules/config.default.yaml 注释与 README「申请 AI Key」）。"
             )
 
         self.api_key = os.environ.get("REFINER_API_KEY", "")
@@ -342,7 +342,7 @@ def build_refine_prompt(summary: str, refiner_config: dict | None = None) -> str
     """构建 RSS 单集精修 prompt。
 
     优先使用 ``refiner_config['refine_prompt']``（含 ``{summary}`` 占位符，
-    默认模板见 ``config.default.yaml``）；缺失时回退极简模板。
+    默认模板见 ``modules/config.default.yaml``）；缺失时回退极简模板。
     """
     template = ((refiner_config or {}).get("refine_prompt") or "").strip()
     if not template:

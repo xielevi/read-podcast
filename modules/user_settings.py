@@ -1,13 +1,15 @@
 """WebUI「个人配置」面板的读写逻辑。
 
-配置分层保持不变（见 ``docs/ARCHITECTURE.md`` D4/D12）：``config.default.yaml``
+配置分层保持不变（见 ``docs/ARCHITECTURE.md`` D4/D12）：``modules/config.default.yaml``
 提供内置默认值，持久化 ``config/config.yaml`` 保存用户覆盖，机密写入同目录的
 ``secrets.env``（权限 0600，不进镜像、不进版本库）。
 
 两条硬约束：
 
-* 真实环境变量（Compose / ``.env`` 注入的非空值）优先级始终更高。被环境变量接管的
-  字段在接口里标记为只读并拒绝写入，避免用户在页面上做无效修改。
+* **只有部署方从外部注入的环境变量**（Compose / shell）才接管字段并标记只读。
+  写在 ``.env`` 里的值不算——它和 ``secrets.env`` 一样只是本机文件，若也锁死面板，
+  用户就会发现自己最想改的 Key 恰恰在网页上改不了。手动编辑与面板保存统一落在
+  ``config/secrets.env``。
 * 接口任何时候都不回传机密内容，只回传「是否已配置」；连通性由 ``/settings/test``
   在服务端验证。
 """
@@ -24,7 +26,7 @@ from urllib.parse import urlparse, urlunparse
 import httpx
 import yaml
 
-from modules.config import settings
+from modules.config import is_external_env, settings
 from modules.refiner import AssistantError, chat_completion
 
 logger = logging.getLogger("UserSettings")
@@ -36,8 +38,9 @@ _CONTROL_CHARS = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 _URL_PATTERN = re.compile(r"https?://\S+")
 
 SECRETS_HEADER = (
-    "# Read Podcast 机密文件（由 WebUI 设置面板写入，权限 0600）。\n"
-    "# 真实环境变量（Compose / .env 注入的非空值）优先级更高，会覆盖这里的同名项。\n"
+    "# Read Podcast 机密文件（权限 0600）。这里是密钥的唯一落点：\n"
+    "# 网页「设置」面板写入这个文件，你也可以直接手动编辑它，两者作用于同一份配置。\n"
+    "# 只有部署方从外部注入的环境变量（Docker Compose / shell）会覆盖这里的同名项。\n"
 )
 
 
@@ -236,19 +239,27 @@ _FIELDS_BY_KEY: Dict[str, Dict[str, Any]] = {field["key"]: field for field in FI
 
 
 def _env_override(env_names: Iterable[str]) -> Tuple[str, str]:
-    """返回接管该字段的环境变量名与值；未被接管时返回空串。"""
+    """返回接管该字段的环境变量名与值；未被接管时返回空串。
+
+    与机密同理，只有**外部注入**（Compose / shell）才算接管；写在 ``.env``
+    里的值不锁定面板，否则用户改不了自己在本机填过的字段。
+    """
     for name in env_names or ():
         value = os.environ.get(name, "")
-        if value:
+        if value and is_external_env(name):
             return name, value
     return "", ""
 
 
 def _secret_is_external(env_name: str) -> bool:
-    """机密是否来自真实环境变量（Compose / .env），而非面板写入的 secrets.env。"""
+    """机密是否由部署方从外部注入（Compose / shell），因而面板不该改写。
+
+    只认真正的外部注入。写在 ``.env`` 里的值**不算**——它和 ``secrets.env``
+    一样只是本机文件，锁死面板会让用户在网页上根本改不了自己的 Key。
+    """
     if not os.environ.get(env_name, ""):
         return False
-    return env_name not in getattr(settings, "MANAGED_SECRET_KEYS", set())
+    return is_external_env(env_name)
 
 
 def _describe_field(field: Dict[str, Any]) -> Dict[str, Any]:
@@ -269,14 +280,14 @@ def _describe_field(field: Dict[str, Any]) -> Dict[str, Any]:
         described["configured"] = bool(os.environ.get(env_name, ""))
         if _secret_is_external(env_name):
             described["locked"] = True
-            described["locked_reason"] = f"由环境变量 {env_name} 接管，请在 Compose 或 .env 中修改。"
+            described["locked_reason"] = f"由部署环境注入的 {env_name} 接管，请在 Compose 或启动脚本中修改。"
         return described
 
     env_name, env_value = _env_override(field.get("env_names", ()))
     if env_name:
         described["value"] = env_value
         described["locked"] = True
-        described["locked_reason"] = f"由环境变量 {env_name} 接管，请在 Compose 或 .env 中修改。"
+        described["locked_reason"] = f"由部署环境注入的 {env_name} 接管，请在 Compose 或启动脚本中修改。"
         return described
 
     value = settings.get_value(field["key"])

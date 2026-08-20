@@ -51,7 +51,7 @@ cd read-podcast
 
 ### 第 3 步：填入 AI Key
 
-用「文本编辑」打开项目里的 `.env` 文件，把你的 Key 粘到 `REFINER_API_KEY=` 后面，保存。
+用「文本编辑」打开项目里的 `config/secrets.env` 文件，把你的 Key 粘到 `REFINER_API_KEY=` 后面，保存。（文件不存在就新建一个。）
 
 不想改文件也可以：先跳过这一步直接启动，再在网页右上角点 **设置**，把服务地址、模型和 Key 填进去保存即可（见 [「网页里的设置面板」](#️-网页里的设置面板)）。
 
@@ -107,7 +107,7 @@ docker compose up -d
 **每种服务都要做的两件事：**
 
 1. 把拿到的 Key 填进项目的 `.env`：`REFINER_API_KEY=你的key`。
-2. 在 `config/config.yaml` 里填服务商的 `refiner.api_base` 和 `refiner.model`（对照 `config.default.yaml` 顶部注释里的示例）。
+2. 在 `config/config.yaml` 里填服务商的 `refiner.api_base` 和 `refiner.model`（可用选项对照 `modules/config.default.yaml` 的注释，那是只读参考，别直接改它）。
 
 ### 路线 A：OpenCode Zen（新手推荐，免费模型无需充值）
 
@@ -151,9 +151,9 @@ docker compose up -d
 几点说明：
 
 - **保存后立即生效**，不用重启；下一个任务就会用新配置。
-- **密钥不会回显**。页面只显示「已配置 / 未配置」，密钥写入服务器上的 `config/secrets.env`（权限 0600，和 `config.yaml` 同目录，Docker 下随 `config/` 卷持久化）。想换就直接填新的，想删就点「清除」再保存。
+- **密钥不会回显**。页面只显示「已配置 / 未配置」，密钥写入服务器上的 `config/secrets.env`（权限 0600，和 `config.yaml` 同目录，Docker 下随 `config/` 卷持久化）。想换就直接填新的，想删就点「清除」再保存。**这个文件你也可以手动编辑**——面板和手改作用于同一份配置。
 - 每组右上角有 **测试连接**，用一次极小的请求验证地址和 Key 是否可用，不会产生真实转录或精修。
-- 如果某个字段显示为灰色只读，说明它被环境变量接管了（例如 Docker Compose 里写死的转录地址和输出目录）——这类字段请改 `docker-compose.yml` 或 `.env`，环境变量的优先级始终高于页面。
+- 如果某个字段显示为**灰色只读**，说明它被**部署环境注入的变量**接管了（例如 Docker Compose 里写死的转录地址和输出目录）——这类字段请改 `docker-compose.yml` 或启动脚本。写在 `.env` 里的值**不会**锁定页面，你随时能在网页上覆盖它。
 - 留空并保存表示「恢复默认值」。
 
 ---
@@ -171,13 +171,27 @@ git pull
 
 ---
 
-## 🗂️ 你的数据在哪里
+## 🗂️ 配置在哪里改
 
-- `config/`：你的设置和订阅（首次自动生成，可编辑）。
-- `config/secrets.env`：网页设置面板保存的密钥（权限 0600，只有你自己可读）。
+**只有一个地方 —— `config/` 目录，两个文件：**
+
+| 文件 | 放什么 |
+| :--- | :--- |
+| `config/config.yaml` | 普通设置：AI 地址与模型、转录后端、输出目录、订阅 |
+| `config/secrets.env` | 密钥：API Key、访问口令（权限 0600） |
+
+**手动编辑和网页「设置」面板作用于同一份配置**，改哪边都行。两个文件都不进版本库，`git pull` 不会覆盖。
+
+> `modules/config.default.yaml` 是**内置默认值，不要改**（改了 `git pull` 会冲突）。
+> 它的作用是**参考手册**：想知道有哪些可用选项，读它的注释，然后把要改的项抄到 `config/config.yaml`。
+>
+> 完整说明见 [config/README.md](config/README.md)。
+
+其余目录：
+
 - `workspace/`：下载的音频、转录缓存、日志、任务记录。
 - `output/`：最终生成的 Markdown 文章。
-- `.env`：你的密钥。
+- `.env`：旧版密钥位置，仍可用；建议搬到 `config/secrets.env` 统一到一处。
 
 这些内容都保存在你自己的电脑上，不会被提交到 Git。处理过程中仍会发生以下联网传输：
 
@@ -191,7 +205,7 @@ git pull
 
 - **安装脚本说“只支持 Apple 芯片的 Mac”。** 很遗憾，本工具的语音转录依赖苹果芯片，其他设备暂时无法使用。
 - **网页能打开，但一处理就报错、提示转录失败。** 多半是语音服务没启动。用方式一的话，`start.sh` 会自动带起它；用 Docker 的话，请确认窗口 A 的 `start-mlx.sh` 还开着。
-- **精修（AI 整理）那一步失败。** 检查 `.env` 里的 `REFINER_API_KEY` 是否填对、账户是否有余额、`config.default.yaml` 里的服务商地址是否正确。
+- **精修（AI 整理）那一步失败。** 检查 `config/secrets.env` 里的 `REFINER_API_KEY` 是否填对、账户是否有余额、`config/config.yaml` 里的服务商地址是否正确。
 - **第一次特别慢。** 首次会下载 1～2 GB 的语音模型，属正常，之后就快了。
 
 ---
@@ -353,7 +367,7 @@ connectors:
 
 - 架构与设计决策：[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - 网页 API：[docs/web-api.md](docs/web-api.md) · 模块说明：[docs/modules.md](docs/modules.md)
-- 协作边界：[AGENTS.md](AGENTS.md) · 参与贡献：[CONTRIBUTING.md](CONTRIBUTING.md)
+- 协作边界：[AGENTS.md](AGENTS.md) · 参与贡献：[.github/CONTRIBUTING.md](.github/CONTRIBUTING.md)
 - 反向代理子路径、Basic Auth、分离部署（网页应用与语音服务分处两台机器）等高级用法，见上述架构文档。
 
 镜像发布：`main` 分支测试通过后由 GitHub Actions 自动发布多架构镜像到

@@ -13,6 +13,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from app.standalone import app
+from modules import config as config_module
 from modules import user_settings
 from modules.config import settings
 
@@ -141,8 +142,18 @@ def test_clearing_secret_removes_it_everywhere(temp_settings):
     assert field["configured"] is False
 
 
+def _mark_external(monkeypatch, *names):
+    """把这些变量伪装成「进程启动前由 Compose/shell 注入」。
+
+    真实部署里这份快照在 import 时就冻结了，测试无法用 setenv 模拟，
+    因此直接替换快照本身。
+    """
+    monkeypatch.setattr(config_module, "EXTERNAL_ENV_KEYS", frozenset(names))
+
+
 def test_env_managed_field_is_locked_and_rejected(temp_settings, monkeypatch):
     monkeypatch.setenv("READ_PODCAST_TRANSCRIPTION_API_URL", "http://host.docker.internal:21567/transcribe")
+    _mark_external(monkeypatch, "READ_PODCAST_TRANSCRIPTION_API_URL")
     settings.reload()
     with TestClient(app) as client:
         listed = client.get("/api/read-podcast/settings").json()
@@ -158,9 +169,21 @@ def test_env_managed_field_is_locked_and_rejected(temp_settings, monkeypatch):
     assert "环境变量" in rejected.json()["detail"]
 
 
+def test_dotenv_field_is_not_locked(temp_settings, monkeypatch):
+    """写在 .env 里的值不锁面板——否则用户改不了自己填过的字段。"""
+    monkeypatch.setenv("READ_PODCAST_TRANSCRIPTION_API_URL", "http://127.0.0.1:21567/transcribe")
+    _mark_external(monkeypatch)  # 没有任何外部注入，模拟 .env 加载后的状态
+    settings.reload()
+    with TestClient(app) as client:
+        listed = client.get("/api/read-podcast/settings").json()
+
+    assert _find_field(listed, "transcription.api_url")["locked"] is False
+
+
 def test_externally_injected_secret_is_locked(temp_settings, monkeypatch):
-    """Compose/.env 注入的机密不归面板管，页面上只读。"""
+    """Compose 注入的机密不归面板管，页面上只读。"""
     monkeypatch.setenv("REFINER_API_KEY", "sk-from-compose")
+    _mark_external(monkeypatch, "REFINER_API_KEY")
     with TestClient(app) as client:
         listed = client.get("/api/read-podcast/settings").json()
         rejected = client.put(
@@ -195,7 +218,8 @@ def test_invalid_payloads_are_rejected(temp_settings, payload):
     )
 
 
-def test_secret_file_is_loaded_but_never_overrides_real_environment(tmp_path, monkeypatch):
+def test_secret_file_never_overrides_external_injection(tmp_path, monkeypatch):
+    """外部注入（Compose/shell）压过 secrets.env，部署方的决定不被面板改写。"""
     secrets_file = tmp_path / "secrets.env"
     secrets_file.write_text(
         "# comment\nREFINER_API_KEY=from-file\nREAD_PODCAST_WHISPER_API_TOKEN='quoted-token'\n",
@@ -204,14 +228,74 @@ def test_secret_file_is_loaded_but_never_overrides_real_environment(tmp_path, mo
     monkeypatch.setenv("REFINER_API_KEY", "from-environment")
     monkeypatch.delenv("READ_PODCAST_WHISPER_API_TOKEN", raising=False)
     monkeypatch.setenv("READ_PODCAST_CONFIG", str(tmp_path / "config.yaml"))
+    _mark_external(monkeypatch, "REFINER_API_KEY")
 
-    from modules.config import Settings
-
-    fresh = Settings()
+    fresh = config_module.Settings()
     assert os.environ["REFINER_API_KEY"] == "from-environment"
     assert "REFINER_API_KEY" not in fresh.MANAGED_SECRET_KEYS
     assert os.environ["READ_PODCAST_WHISPER_API_TOKEN"] == "quoted-token"
     assert "READ_PODCAST_WHISPER_API_TOKEN" in fresh.MANAGED_SECRET_KEYS
+
+
+def test_empty_compose_variable_does_not_count_as_external(monkeypatch):
+    """`${REFINER_API_KEY:-}` 注入的空串不算「部署方的决定」。
+
+    docker-compose.yml 里的默认写法在用户没设该变量时会注入空串：键存在，
+    但等于什么都没给。若算作外部注入，面板会被一个空值锁死，
+    secrets.env 里的真实密钥也用不上（曾在容器里实测到这个回归）。
+    """
+    monkeypatch.setattr(os, "environ", {"EMPTY_VAR": "", "BLANK_VAR": "   ", "REAL_VAR": "v"})
+    snapshot = frozenset(
+        name for name, value in os.environ.items() if value.strip()
+    )
+    assert snapshot == {"REAL_VAR"}
+
+
+def test_empty_external_secret_falls_through_to_secrets_file(tmp_path, monkeypatch):
+    """Compose 注入空串时，secrets.env 的值应生效且面板保持可编辑。"""
+    secrets_file = tmp_path / "secrets.env"
+    secrets_file.write_text("REFINER_API_KEY=from-secrets-file\n", encoding="utf-8")
+    monkeypatch.setenv("REFINER_API_KEY", "")  # Compose 的 ${VAR:-} 效果
+    monkeypatch.setenv("READ_PODCAST_CONFIG", str(tmp_path / "config.yaml"))
+    _mark_external(monkeypatch)  # 空串不进快照
+
+    fresh = config_module.Settings()
+    assert os.environ["REFINER_API_KEY"] == "from-secrets-file"
+    assert "REFINER_API_KEY" in fresh.MANAGED_SECRET_KEYS
+    assert user_settings._secret_is_external("REFINER_API_KEY") is False
+
+
+def test_secret_file_overrides_dotenv_value(tmp_path, monkeypatch):
+    """secrets.env 压过 .env：否则面板保存的新 Key 会被旧值静默盖掉。"""
+    secrets_file = tmp_path / "secrets.env"
+    secrets_file.write_text("REFINER_API_KEY=from-secrets-file\n", encoding="utf-8")
+    # 模拟 .env 已被 load_dotenv 注入（因此在 os.environ 里，但不是外部注入）
+    monkeypatch.setenv("REFINER_API_KEY", "from-dotenv")
+    monkeypatch.setenv("READ_PODCAST_CONFIG", str(tmp_path / "config.yaml"))
+    _mark_external(monkeypatch)
+
+    fresh = config_module.Settings()
+    assert os.environ["REFINER_API_KEY"] == "from-secrets-file"
+    assert "REFINER_API_KEY" in fresh.MANAGED_SECRET_KEYS
+
+
+def test_dotenv_secret_stays_editable_in_panel(temp_settings, monkeypatch):
+    """.env 里的 Key 不锁面板，用户可以直接在网页上换掉它。"""
+    monkeypatch.setenv("REFINER_API_KEY", "sk-from-dotenv")
+    _mark_external(monkeypatch)
+    with TestClient(app) as client:
+        listed = client.get("/api/read-podcast/settings").json()
+        saved = client.put(
+            "/api/read-podcast/settings",
+            json={"values": {}, "secrets": {"REFINER_API_KEY": "sk-from-webui"}},
+        )
+
+    field = _find_field(listed, "secret.REFINER_API_KEY")
+    assert field["configured"] is True
+    assert field["locked"] is False
+    assert saved.status_code == 200
+    assert os.environ["REFINER_API_KEY"] == "sk-from-webui"
+    assert "sk-from-webui" in settings.SECRETS_PATH.read_text(encoding="utf-8")
 
 
 def test_probe_endpoint_reports_missing_configuration(temp_settings, monkeypatch):

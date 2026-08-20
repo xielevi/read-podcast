@@ -9,10 +9,12 @@ config.local.yaml
 secrets/
 
 # Docker deployment runtime configuration and generated output
+# config/ 保存用户自己的配置与机密，一律不进版本库；只有说明文档例外。
 config/**
 !config/
 !config/**/
 !config/**/.gitkeep
+!config/README.md
 output/**
 !output/
 !output/**/
@@ -69,6 +71,9 @@ build/
 # Local one-off automation helpers that may contain machine paths or secrets
 *.local.py
 *.plist
+
+# Local tool scratch dirs
+.playwright-cli/
 
 # IDE and OS files
 .DS_Store
