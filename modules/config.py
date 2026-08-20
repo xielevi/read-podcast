@@ -17,7 +17,11 @@ SECRETS_FILENAME = "secrets.env"
 # 外部注入代表部署方的决定，设置面板必须只读；.env 只是本机的一个文件，
 # 和 secrets.env 同级，不该锁死面板（见 D12）。
 # 通过 is_external_env() 访问而非直接读，便于测试替换这份快照。
-EXTERNAL_ENV_KEYS = frozenset(os.environ)
+#
+# 只记**有值**的变量：docker-compose.yml 里的 `${REFINER_API_KEY:-}` 在用户没设
+# 该变量时会注入一个空串，键存在但等于什么都没给。若把它算作「部署方的决定」，
+# 面板就会被一个空值锁死，secrets.env 里的真实密钥也用不上。
+EXTERNAL_ENV_KEYS = frozenset(name for name, value in os.environ.items() if value.strip())
 
 
 def is_external_env(name: str) -> bool:

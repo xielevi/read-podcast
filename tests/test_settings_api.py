@@ -237,6 +237,34 @@ def test_secret_file_never_overrides_external_injection(tmp_path, monkeypatch):
     assert "READ_PODCAST_WHISPER_API_TOKEN" in fresh.MANAGED_SECRET_KEYS
 
 
+def test_empty_compose_variable_does_not_count_as_external(monkeypatch):
+    """`${REFINER_API_KEY:-}` 注入的空串不算「部署方的决定」。
+
+    docker-compose.yml 里的默认写法在用户没设该变量时会注入空串：键存在，
+    但等于什么都没给。若算作外部注入，面板会被一个空值锁死，
+    secrets.env 里的真实密钥也用不上（曾在容器里实测到这个回归）。
+    """
+    monkeypatch.setattr(os, "environ", {"EMPTY_VAR": "", "BLANK_VAR": "   ", "REAL_VAR": "v"})
+    snapshot = frozenset(
+        name for name, value in os.environ.items() if value.strip()
+    )
+    assert snapshot == {"REAL_VAR"}
+
+
+def test_empty_external_secret_falls_through_to_secrets_file(tmp_path, monkeypatch):
+    """Compose 注入空串时，secrets.env 的值应生效且面板保持可编辑。"""
+    secrets_file = tmp_path / "secrets.env"
+    secrets_file.write_text("REFINER_API_KEY=from-secrets-file\n", encoding="utf-8")
+    monkeypatch.setenv("REFINER_API_KEY", "")  # Compose 的 ${VAR:-} 效果
+    monkeypatch.setenv("READ_PODCAST_CONFIG", str(tmp_path / "config.yaml"))
+    _mark_external(monkeypatch)  # 空串不进快照
+
+    fresh = config_module.Settings()
+    assert os.environ["REFINER_API_KEY"] == "from-secrets-file"
+    assert "REFINER_API_KEY" in fresh.MANAGED_SECRET_KEYS
+    assert user_settings._secret_is_external("REFINER_API_KEY") is False
+
+
 def test_secret_file_overrides_dotenv_value(tmp_path, monkeypatch):
     """secrets.env 压过 .env：否则面板保存的新 Key 会被旧值静默盖掉。"""
     secrets_file = tmp_path / "secrets.env"
