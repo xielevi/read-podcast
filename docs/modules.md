@@ -92,10 +92,19 @@
 
 把成稿推送到**群机器人 Webhook** 或**云文档知识库**，**代码不硬编码任何提供商**：连接器只在配置声明 `name`/`format` 与承载凭据的环境变量名，真实凭据只从环境变量读取。
 
-- `available_connectors(config)`：返回 `name`/`format`/`kind`（webhook|doc）/`configured`，按格式判断所需环境变量（webhook 需 `url_env`；notion 需 `token_env`+`database_id`/`page_id`；feishu-doc 需 `app_id_env`+`app_secret_env`），不暴露任何地址/凭据。
+- `available_connectors(config)`：返回 `name`/`format`/`kind`（webhook|doc）/`configured`，按格式判断所需环境变量（webhook 需 `url_env`；notion 需 `token_env`+`database_id`/`page_id`；feishu-doc 需 `app_id_env`+`app_secret_env`；gdrive 需 `client_id_env`+`client_secret_env`+`refresh_token_env`），不暴露任何地址/凭据。
 - `build_payload(fmt, doc, max_chars)`：Webhook 四种格式（feishu/dingtalk/slack/markdown）的请求体，正文按上限裁剪。
-- `send_document(connector, doc)`：按 `format` 分派。Webhook→单次 POST；`notion`→`POST /v1/pages`（markdown 结构化为标题/段落/列表块，parent 用 database 或 page）；`feishu-doc`→换取 `tenant_access_token`→建 Docx→写入文本块。所有出站地址先过 `validate_public_url`（SSRF）；HTTP 非 2xx 或飞书/Notion 业务错误码非 0 抛 `ConnectorError`（不记录地址与响应正文）。
-- `test_connector(connector)`：只读预检——Notion 打 `/v1/users/me`，飞书换 token，Webhook 只校验已配置且公网可达。
+- `send_document(connector, doc)`：按 `format` 分派。Webhook→单次 POST；`notion`→`POST /v1/pages`（首批 90 块随页面创建，其余 `PATCH /v1/blocks/{id}/children` 分批追加）；`feishu-doc`→换取 `tenant_access_token`→建 Docx→按语义映射为标题（block_type 3/4/5）、无序列表（12）、文本（2）块，每批 50 个分批插入；`gdrive`→用刷新令牌换访问令牌→multipart 上传（`gdoc` 提交 HTML 请求转换成原生 Google 文档，`markdown` 存 `.md`）。整篇块数上限 `_MAX_DOC_BLOCKS_TOTAL`（2000），超出才标记 `truncated`。所有出站地址先过 `validate_public_url`（SSRF）；HTTP 非 2xx 或飞书/Notion/Google 业务错误码非 0 抛 `ConnectorError`（不记录地址与响应正文）。
+- `test_connector(connector)`：只读预检——Notion 打 `/v1/users/me`，飞书换 token，Google Drive 换令牌后打 `/drive/v3/about`，Webhook 只校验已配置且公网可达。
+
+## wikipedia.py — 关键概念 → 维基百科
+
+从一篇文字稿里挑出 5–10 个值得延伸阅读的关键概念，并给出**经过核对**的维基百科链接。分两段是因为：AI 擅长判断「哪些词值得查」，但不能信任它给出的 URL（模型会编造看似合理却不存在的词条地址），所以链接一律由维基百科 API 返回的规范标题生成。
+
+- `propose_concepts(...)`：用 `chat_completion` 让模型提名候选词（多提名一倍以抵消核对淘汰），`_parse_candidates` 容忍 ```json 围栏与前后散文，并按大小写去重。
+- `lookup_concept(client, term, lang, fallback_lang)`：先按词条名直查 `/api/rest_v1/page/summary/`（自动跟随重定向），不中再退到 `list=search`，且搜索结果须过 `_titles_related`（归一化后互为子串且长度比 ≥0.6）才接受——全文搜索对任何词都会返回结果，这道校验挡住「阿尔法折叠→CASP」这类错误链接。消歧义页丢弃；主语言不中按 `fallback_lang` 回退。
+- `collect_concepts(...)`：编排两段，线程池并发核对但按候选顺序收集以保留 AI 给出的重要性排序，再按「语言+规范标题」去重并截到 `limit`。返回 `concepts`（含 `term`/`reason`/`wikipedia_title`/`url`/`summary`/`lang`）与 `proposed`。语言代码只接受 `^[a-z]{2,3}(-[a-z]{2,8})*$`，站点地址由代码拼装。
+- `concepts_to_markdown(concepts)`：渲染成「延伸阅读」列表，供附在导出正文后。
 
 ## pipeline.py — 业务流水线（核心）
 

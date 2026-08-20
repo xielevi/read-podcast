@@ -23,6 +23,13 @@ runtime:
   download_concurrency: 2
   refine_concurrency: 2
   debug: false
+  # 关键概念 → 维基百科（阅读页侧栏「关键概念」）。
+  # AI 只提名候选词，链接一律由维基百科 API 核对后生成；核对不到词条的候选直接丢弃，
+  # 所以实际条数可能少于 limit。抽取要过一次 AI，由用户点按钮触发，结果按稿件缓存。
+  wikipedia:
+    lang: zh              # 主语言站点
+    fallback_lang: en     # 主语言查不到时回退（留空则不回退）
+    limit: 8              # 目标条数，5–10
 
 web:
   base_path: ""
@@ -205,6 +212,8 @@ prompt_templates:
 #  B) 云文档知识库（真正的文档）：
 #       notion     在数据库或页面下新建页面；声明 token_env + database_id(+title_property) 或 page_id
 #       feishu-doc 在飞书/Lark 新建一篇 Docx；声明 app_id_env + app_secret_env（可选 folder_token / base_url）
+#       gdrive     在 Google Drive 新建 Google 文档；声明 client_id_env + client_secret_env
+#                  + refresh_token_env（可选 folder_id / doc_format）
 #
 # 示例（默认留空；需要时在 config/config.yaml 覆盖，并在 .env 填对应凭据）：
 # connectors:
@@ -228,6 +237,13 @@ prompt_templates:
 #     app_id_env: READ_PODCAST_CONNECTOR_FEISHU_APP_ID
 #     app_secret_env: READ_PODCAST_CONNECTOR_FEISHU_APP_SECRET
 #     # folder_token: xxxx        # 可选：放到指定文件夹；base_url 可改 https://open.larksuite.com
+#   - name: Google Drive
+#     format: gdrive
+#     client_id_env: READ_PODCAST_CONNECTOR_GDRIVE_CLIENT_ID
+#     client_secret_env: READ_PODCAST_CONNECTOR_GDRIVE_CLIENT_SECRET
+#     refresh_token_env: READ_PODCAST_CONNECTOR_GDRIVE_REFRESH_TOKEN
+#     # folder_id: xxxx           # 可选：存到指定文件夹，留空则放我的云端硬盘根目录
+#     # doc_format: gdoc          # gdoc（默认，转成可编辑的 Google 文档）或 markdown（存 .md）
 connectors: []
 
 # Example podcasts (manage via WebUI or override in ./config/config.yaml)

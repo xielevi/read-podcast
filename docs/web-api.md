@@ -42,6 +42,7 @@
 | POST | `/assistant/lookup` | 百科查询：解释文字稿中的概念/人物/术语（`term`≤200，可选 `context`≤4000） |
 | POST | `/tasks/{id}/chat` | 针对某份已完成文字稿的问答，回答严格基于文字稿内容（`question`≤2000，可带 `history`） |
 | POST | `/assistant/library/chat` | 跨多期播客问答：从最近最多 60 期稿件中检索相关节目后综合作答，返回 `answer` 与带编号的 `sources` |
+| POST | `/tasks/{id}/concepts` | 抽取本篇 5–10 个关键概念并给出经核对的维基百科链接（可选 `limit` 5–10、`refresh`） |
 | GET | `/connectors` | 可用文件连接器清单（`name`/`format`/`kind`/`configured`，不含任何地址或凭据） |
 | POST | `/tasks/{id}/export` | 把成稿推送到连接器（`connector` 名称 + `mode`：`manuscript` 整篇 / `summary` AI 知识条目） |
 | POST | `/connectors/{name}/test` | 预检连接器凭据/可达性，不产生正式内容 |
@@ -57,9 +58,11 @@
 
 **跨节目问答（`/assistant/library/chat`）** 取最近 `LIBRARY_CORPUS_LIMIT`（默认 60）期已成功稿件，经 `modules.library_qa` 的零依赖关键词检索（ASCII 词 + 中文二元组打分、新近意图回退）挑出最相关的若干期，从每期抽取有界相关片段拼成带编号来源的上下文，再交给模型综合作答（要求标注各观点来自哪一期、点出共识与分歧、片段外内容不编造）。返回的 `sources` 含 `index`/`task_id`/`title`/`podcast`，前端渲染为可点击跳转到对应稿件的来源标签。稿件库为空时返回 404。
 
-**文件连接器（`/connectors`、`/tasks/{id}/export`、`/connectors/{name}/test`）** 复用 `modules.connectors`，把成稿推送到两类目标：**群机器人 Webhook**（`feishu`/`dingtalk`/`slack`/`markdown`，声明 `url_env`）与**云文档知识库**（`notion` 在数据库/页面下建页，声明 `token_env`+`database_id`/`page_id`；`feishu-doc` 新建飞书 Docx，声明 `app_id_env`+`app_secret_env`）。所有凭据只从 `.env` 读取，`/connectors` 只回传 `format`/`kind`/`configured`，绝不暴露地址或凭据。
+**关键概念 → 维基百科（`POST /tasks/{id}/concepts`）** 复用 `modules.wikipedia`：AI 只负责从文字稿里**提名**候选词，链接一律由维基百科 API 核对后生成——模型给出的 URL 一概不采信。核对分两步，先按词条名直查摘要接口（自动跟随重定向，「斯坦福大学」→「史丹佛大學」），不中再退到全文搜索，且搜索结果必须通过标题相关性校验才接受，否则丢弃；消歧义页同样丢弃。因此返回条数常少于 `limit`（这是有意的：错误的链接比没有链接更糟）。主语言查不到时按 `fallback_lang` 回退。语言代码只接受 `^[a-z]{2,3}(-[a-z]{2,8})*$`，站点地址由代码拼装，不接受外部主机名。结果按「任务 + 输出文件 mtime + limit」缓存，正文未变则直接复用，`refresh: true` 强制重算。AI 未配置或鉴权失败返回 503，文字稿为空返回 422。
 
-`export` 支持 `mode`：`manuscript` 推送整篇成稿；`summary` 先用 `chat_completion` 从文字稿提炼「核心观点/关键案例/知识点/延伸选题」的知识条目再推送（AI 未配置时 503）。所有出站请求经 `validate_public_url` 做 SSRF 校验，正文按目标上限裁剪、云文档结构化为标题/段落/列表块；飞书/钉钉/Notion 的业务错误码或非 2xx 视为失败并返回 502（脱敏）。`test` 端点对 Notion（`GET /v1/users/me`）与飞书（换取 `tenant_access_token`）做只读预检，Webhook 无只读预检口则只校验已配置且地址公网可达。
+**文件连接器（`/connectors`、`/tasks/{id}/export`、`/connectors/{name}/test`）** 复用 `modules.connectors`，把成稿推送到两类目标：**群机器人 Webhook**（`feishu`/`dingtalk`/`slack`/`markdown`，声明 `url_env`）与**云文档知识库**（`notion` 在数据库/页面下建页，声明 `token_env`+`database_id`/`page_id`；`feishu-doc` 新建飞书 Docx，声明 `app_id_env`+`app_secret_env`；`gdrive` 在 Google Drive 建 Google 文档，声明 `client_id_env`+`client_secret_env`+`refresh_token_env`）。所有凭据只从 `.env` 读取，`/connectors` 只回传 `format`/`kind`/`configured`，绝不暴露地址或凭据。
+
+`export` 支持 `mode`：`manuscript` 推送整篇成稿；`summary` 先用 `chat_completion` 从文字稿提炼「核心观点/关键案例/知识点/延伸选题」的知识条目再推送（AI 未配置时 503）。所有出站请求经 `validate_public_url` 做 SSRF 校验，正文按目标上限裁剪、云文档结构化为标题/段落/列表块。长文字稿**分批写入**而非截断：飞书每批 50 块、Notion 首批 90 块随页面创建、其余经 `PATCH /v1/blocks/{id}/children` 追加，整篇上限 `_MAX_DOC_BLOCKS_TOTAL`（2000 块）。Google Drive 走 OAuth 刷新令牌换访问令牌后 multipart 上传，`doc_format: gdoc` 提交 HTML 并请求转换成原生 Google 文档（标题/列表保留结构，正文做 HTML 转义），`markdown` 则存 `.md` 原文；刻意不用服务账号——个人 Google 账号下服务账号没有独立存储配额且文件不归属用户本人。飞书/钉钉/Notion/Google 的业务错误码或非 2xx 视为失败并返回 502（脱敏）。`test` 端点对 Notion（`GET /v1/users/me`）、飞书（换取 `tenant_access_token`）与 Google Drive（换令牌后 `GET /drive/v3/about`）做只读预检，Webhook 无只读预检口则只校验已配置且地址公网可达。
 
 ## app/tasks.py — 任务编排
 
