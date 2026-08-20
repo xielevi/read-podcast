@@ -64,9 +64,9 @@
           </section>
           <div class="content-head">
             <div class="headline-group">
-              <span class="overline" id="center-sub">选择一档节目</span>
-              <h2 id="center-title">单集列表</h2>
-              <p>选择一期，转录后即可阅读。</p>
+              <span class="overline" id="center-sub">按时间线展示所有订阅</span>
+              <h2 id="center-title">全部订阅</h2>
+              <p>从最近更新开始，想读哪一期就打开哪一期。</p>
             </div>
             <div class="head-actions">
               <label class="search" for="episode-search">
@@ -76,12 +76,12 @@
               <button class="icon-btn" id="refresh-btn" type="button" title="刷新单集" aria-label="刷新单集" hidden>刷新</button>
             </div>
           </div>
-          <div class="story-filter" role="tablist" aria-label="单集过滤">
-            <button class="active" id="filter-all" type="button" role="tab" aria-selected="true" aria-controls="episode-list">全部单集</button>
-            <button id="filter-pending" type="button" role="tab" aria-selected="false" aria-controls="episode-list">未转录</button>
-            <button id="filter-completed" type="button" role="tab" aria-selected="false" aria-controls="episode-list">已完成</button>
+          <div class="story-filter" role="tablist" aria-label="阅读状态过滤">
+            <button class="active" id="filter-all" type="button" role="tab" aria-selected="true" aria-controls="episode-list">全部 <span class="filter-count" id="filter-all-count">0</span></button>
+            <button id="filter-unread" type="button" role="tab" aria-selected="false" aria-controls="episode-list">未读 <span class="filter-count" id="filter-unread-count">0</span></button>
+            <button id="filter-read" type="button" role="tab" aria-selected="false" aria-controls="episode-list">已读 <span class="filter-count" id="filter-read-count">0</span></button>
           </div>
-          <div class="empty-state" id="episode-empty"><div><p>选择一档节目，看看最近更新。</p></div></div>
+          <div class="empty-state" id="episode-empty"><div><p>还没有订阅节目，先添加一档播客。</p></div></div>
           <div class="episode-list" id="episode-list" hidden></div>
           <nav class="pagination" id="episode-pagination" aria-label="单集分页" hidden>
             <button id="page-prev" type="button">上一页</button>
@@ -251,6 +251,7 @@
             <button class="theme-btn theme-dark" id="theme-dark-btn" type="button" title="极夜黑" style="background:#1e1e1e;border:1px solid #444"></button>
           </div>
           <button class="control-btn assistant-toggle" id="assistant-toggle-btn" type="button" title="AI 阅读助手" aria-pressed="false" hidden>AI 助手</button>
+          <button class="control-btn reader-read-toggle" id="reader-read-toggle" type="button" aria-pressed="false">标记为已读</button>
           <button class="control-btn reader-export-btn" id="reader-export-btn" type="button" title="发送到外部文档" aria-haspopup="true" aria-expanded="false" hidden>发送到…</button>
           <a class="reader-download" id="reader-download" href="#" download>下载</a>
           <button class="close-btn" id="reader-close-btn" type="button" aria-label="关闭阅读">×</button>
