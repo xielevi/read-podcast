@@ -78,6 +78,8 @@ from modules.wikipedia import (
     MIN_CONCEPTS,
     WikipediaError,
     collect_concepts,
+    strip_concepts_section,
+    upsert_concepts_section,
 )
 
 logger = logging.getLogger(__name__)
@@ -1002,7 +1004,8 @@ async def get_task_concepts(task_id: str, body: ConceptsRequest) -> Dict:
         raise HTTPException(status_code=404, detail=f"任务 {task_id} 不存在")
 
     output_file, content = _read_task_output_text(task)
-    transcript = strip_leading_frontmatter(content).strip()
+    # 上一轮写回的「延伸阅读」不算正文，否则模型会把自己生成的链接列表当素材。
+    transcript = strip_concepts_section(strip_leading_frontmatter(content)).strip()
     if not transcript:
         raise HTTPException(status_code=422, detail="文字稿为空，无法抽取关键概念")
 
@@ -1035,10 +1038,33 @@ async def get_task_concepts(task_id: str, body: ConceptsRequest) -> Dict:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
     payload = {"task_id": task_id, **result}
+    # 写回成稿，这样 /download 拿到的静态文件里就带着「延伸阅读」，而下载本身
+    # 仍然是零等待的。写回会改 mtime，所以缓存键必须用写回之后的值重算——否则
+    # 下次请求算出的键永远对不上，这份代价高昂的抽取会被反复重跑。
+    if _persist_concepts(output_file, content, result.get("concepts") or []):
+        try:
+            cache_key = f"{task_id}:{output_file.stat().st_mtime_ns}:{limit}"
+        except OSError:
+            pass
     if len(_concepts_cache) >= _CONCEPTS_CACHE_MAX:
         _concepts_cache.clear()
     _concepts_cache[cache_key] = payload
     return {**payload, "cached": False}
+
+
+def _persist_concepts(output_file: Path, content: str, concepts: List[Dict]) -> bool:
+    """把「延伸阅读」写回成稿；写不进去也不该让整个请求失败。"""
+    if not concepts:
+        return False
+    try:
+        updated = upsert_concepts_section(content, concepts)
+        if updated == content:
+            return False
+        output_file.write_text(updated, encoding="utf-8")
+        return True
+    except OSError as exc:
+        logger.warning("延伸阅读写回 %s 失败：%s", output_file, exc)
+        return False
 
 
 # ── 文件连接器（把成稿推送到外部文档/群机器人）──
