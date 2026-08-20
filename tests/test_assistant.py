@@ -1,5 +1,4 @@
 """AI 阅读助手（百科查询 + 文字稿问答）的测试。"""
-import asyncio
 import sys
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -13,7 +12,6 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from app.standalone import app
 from app import router as router_module
-from modules import refiner as refiner_module
 from modules.refiner import AssistantError, assistant_available, chat_completion
 
 

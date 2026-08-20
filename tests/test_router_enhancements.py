@@ -1,9 +1,8 @@
 import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock, patch
 from datetime import datetime, timedelta
-import pytest
 from fastapi.testclient import TestClient
 
 PROJECT_ROOT = Path(__file__).parent.parent.absolute()

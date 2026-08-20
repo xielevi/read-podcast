@@ -6,8 +6,6 @@ import subprocess
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
-import requests
-
 from modules.config import settings
 from modules.network_security import redact_url, safe_get, validate_public_url
 

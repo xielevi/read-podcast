@@ -352,21 +352,3 @@ def collect_concepts(
         "lang": primary,
         "fallback_lang": secondary,
     }
-
-
-def concepts_to_markdown(concepts: list[dict], heading: str = "## 延伸阅读（维基百科）") -> str:
-    """把概念列表渲染成 Markdown，供导出到云文档时附在正文后。"""
-    if not concepts:
-        return ""
-    lines = [heading, ""]
-    for concept in concepts:
-        term = str(concept.get("term") or "").strip()
-        url = str(concept.get("url") or "").strip()
-        summary = str(concept.get("summary") or "").strip()
-        if not term or not url:
-            continue
-        line = f"- [{term}]({url})"
-        if summary:
-            line += f" —— {summary}"
-        lines.append(line)
-    return "\n".join(lines) if len(lines) > 2 else ""

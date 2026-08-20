@@ -11,7 +11,6 @@ if str(PROJECT_ROOT) not in sys.path:
 from modules import transcriber as transcriber_module
 from modules.transcriber import (
     OpenAITranscriber,
-    TranscriptionResult,
     WhisperApiTranscriber,
     describe_transcriber,
     get_transcriber,

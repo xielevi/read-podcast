@@ -40,16 +40,6 @@ class TranscriptionResult:
         self.segments = segments or []
         self.duration = duration
 
-    def to_dict(self) -> dict:
-        data: dict[str, Any] = {"text": self.text}
-        if self.language:
-            data["language"] = self.language
-        if self.segments:
-            data["segments"] = self.segments
-        if self.duration is not None:
-            data["duration"] = self.duration
-        return data
-
     @classmethod
     def from_dict(cls, data: dict) -> TranscriptionResult:
         return cls(

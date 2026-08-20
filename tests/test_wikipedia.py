@@ -17,7 +17,6 @@ from modules.wikipedia import (
     _parse_candidates,
     _titles_related,
     collect_concepts,
-    concepts_to_markdown,
     lookup_concept,
 )
 
@@ -216,21 +215,6 @@ def test_collect_concepts_rejects_empty_transcript():
 def test_collect_concepts_rejects_bad_language():
     with pytest.raises(WikipediaError, match="语言代码"):
         collect_concepts("t", "p", "正文", {}, lang="zh; rm -rf /")
-
-
-# ── Markdown 渲染（导出到云文档时附在正文后）──
-
-
-def test_concepts_to_markdown_renders_links():
-    md = concepts_to_markdown(
-        [{"term": "OpenAI", "url": "https://zh.wikipedia.org/wiki/OpenAI", "summary": "一家公司"}]
-    )
-    assert "[OpenAI](https://zh.wikipedia.org/wiki/OpenAI)" in md
-    assert "一家公司" in md
-
-
-def test_concepts_to_markdown_empty_returns_blank():
-    assert concepts_to_markdown([]) == ""
 
 
 # ── 端点 /tasks/{id}/concepts ──
