@@ -40,6 +40,11 @@
     var _episodeCache = {};
     var _episodeRequests = new Map();
     var _lastReaderScrollTop = 0;
+    var _subscriptions = [];
+    var _timelineRequestToken = 0;
+    var _readEpisodes = loadReadEpisodes();
+    var _currentReadingEpisode = null;
+    var _currentTaskPodcastName = null;
 
     function byId(id) { return document.getElementById(id); }
     function nowTime() { return new Date().toLocaleTimeString('zh-CN', { hour12: false }); }
@@ -56,6 +61,55 @@
       return appUrl('/api/read-podcast/tasks/' + encodeURIComponent(String(taskId || '')) + suffix);
     }
     function setHidden(element, hidden) { if (element) element.hidden = hidden; }
+
+    function loadReadEpisodes() {
+      try {
+        var raw = localStorage.getItem('read_episodes');
+        var parsed = raw ? JSON.parse(raw) : {};
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+      } catch (ignore) {
+        return {};
+      }
+    }
+
+    function episodeIdentity(episode) {
+      if (!episode) return '';
+      var podcastName = String(episode.podcast_name || episode.podcast || selectedPodcast || '').trim();
+      var title = String(episode.title || episode.episode_title || '').trim();
+      return podcastName && title ? podcastName + '::' + title : '';
+    }
+
+    function isEpisodeRead(episode) {
+      var key = episodeIdentity(episode);
+      return Boolean(key && _readEpisodes[key]);
+    }
+
+    function persistReadEpisodes() {
+      try { localStorage.setItem('read_episodes', JSON.stringify(_readEpisodes)); } catch (ignore) {}
+    }
+
+    function setEpisodeRead(episode, read) {
+      var key = episodeIdentity(episode);
+      if (!key) return;
+      if (read) _readEpisodes[key] = Date.now();
+      else delete _readEpisodes[key];
+      persistReadEpisodes();
+      updateReaderReadState();
+      updateFilterCounts();
+      if (allEpisodes.length) renderEpisodeList(getFilteredEpisodes());
+    }
+
+    function updateReaderReadState() {
+      var button = byId('reader-read-toggle');
+      if (!button) return;
+      var hasEpisode = Boolean(episodeIdentity(_currentReadingEpisode));
+      var read = hasEpisode && isEpisodeRead(_currentReadingEpisode);
+      setHidden(button, !hasEpisode);
+      button.textContent = read ? '已读 · 改为未读' : '标记为已读';
+      button.title = read ? '将这期改回未读' : '标记这期已经读完';
+      button.setAttribute('aria-pressed', String(read));
+      button.classList.toggle('is-read', read);
+    }
 
     byId('clock').textContent = nowTime();
     setInterval(function () { byId('clock').textContent = nowTime(); }, 1000);
@@ -79,10 +133,12 @@
       byId('tab-custom').setAttribute('aria-selected', String(customMode));
       byId('tab-library').setAttribute('aria-selected', String(libraryMode));
       if (customMode) {
+        setHidden(byId('episode-inspector'), false);
         byId('inspector-title').textContent = '本地音频';
         byId('inspector-meta').textContent = '选择音频后开始转录';
         byId('inspector-summary').textContent = '从声音到可以慢慢阅读的文字，只需要一次转录。';
       } else if (libraryMode) {
+        setHidden(byId('episode-inspector'), false);
         byId('inspector-title').textContent = '稿件库';
         byId('inspector-meta').textContent = '所有已经生成的稿件';
         byId('inspector-summary').textContent = '可以按标题搜索，并直接阅读或下载。';
@@ -178,8 +234,8 @@
             allEpisodes = [];
             currentPage = 1;
             resetEpisodeInspector();
-            byId('center-title').textContent = '单集列表';
-            byId('center-sub').textContent = '选择一档节目';
+            byId('center-title').textContent = '全部订阅';
+            byId('center-sub').textContent = '按时间线展示所有订阅';
             byId('episode-list').replaceChildren();
             setHidden(byId('episode-list'), true);
             setHidden(byId('episode-pagination'), true);
@@ -234,9 +290,46 @@
       return item;
     }
 
+    function createAllPodcastsItem() {
+      var item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'podcast-item all-podcasts-item';
+      item.dataset.name = '';
+      item.style.setProperty('--item-index', 0);
+      var dot = document.createElement('span');
+      dot.className = 'dot dot-accent';
+      dot.setAttribute('aria-hidden', 'true');
+      var copy = document.createElement('span');
+      copy.style.minWidth = '0';
+      var name = document.createElement('span');
+      name.className = 'pod-name';
+      name.style.display = 'block';
+      name.textContent = '全部订阅';
+      var meta = document.createElement('span');
+      meta.className = 'pod-meta';
+      meta.style.display = 'block';
+      meta.textContent = '按时间线浏览';
+      copy.append(name, meta);
+      item.append(dot, copy);
+      item.addEventListener('click', selectAllPodcasts);
+      return item;
+    }
+
+    function selectAllPodcasts() {
+      if (currentMode !== 'podcast') switchMode('podcast');
+      selectedPodcast = null;
+      currentPage = 1;
+      resetEpisodeInspector();
+      document.querySelectorAll('.podcast-item').forEach(function (item) { item.classList.toggle('active', !item.dataset.name); });
+      loadTimelineEpisodes(_subscriptions, false);
+    }
+
     function renderPodcastList(podcasts) {
       var list = byId('podcast-list');
       list.replaceChildren();
+      var allItem = createAllPodcastsItem();
+      if (!selectedPodcast) allItem.classList.add('active');
+      list.appendChild(allItem);
       if (!Array.isArray(podcasts) || podcasts.length === 0) {
         var empty = document.createElement('div');
         empty.className = 'empty-state';
@@ -306,20 +399,114 @@
       return fetch(appUrl('/api/read-podcast/subscriptions'))
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (podcasts) {
-          renderPodcastList(podcasts);
-          renderCoverCollage(podcasts);
-          prefetchEpisodePages(podcasts);
-          return podcasts;
+          _subscriptions = Array.isArray(podcasts) ? podcasts : [];
+          if (selectedPodcast && !_subscriptions.some(function (podcast) { return podcast && podcast.name === selectedPodcast; })) {
+            selectedPodcast = null;
+          }
+          renderPodcastList(_subscriptions);
+          renderCoverCollage(_subscriptions);
+          loadTimelineEpisodes(getScopedSubscriptions(), false);
+          return _subscriptions;
         })
         .catch(function () { byId('server-dot').style.background = 'var(--error)'; byId('server-status').textContent = '暂不可用'; });
+    }
+
+    function getScopedSubscriptions() {
+      if (!selectedPodcast) return _subscriptions.slice();
+      return _subscriptions.filter(function (podcast) { return podcast && String(podcast.name || '') === selectedPodcast; });
+    }
+
+    function decorateEpisodes(podcastName, episodes) {
+      return (Array.isArray(episodes) ? episodes : []).map(function (episode) {
+        return Object.assign({}, episode, { podcast_name: String(episode.podcast_name || podcastName || '') });
+      });
+    }
+
+    function sortEpisodeTimeline(episodes) {
+      return episodes.slice().sort(function (left, right) {
+        var leftTime = Date.parse(left.published || '') || 0;
+        var rightTime = Date.parse(right.published || '') || 0;
+        return rightTime - leftTime;
+      });
+    }
+
+    function updateTimelineHeading(cacheState) {
+      var scopeCount = getScopedSubscriptions().length;
+      byId('center-title').textContent = selectedPodcast || '全部订阅';
+      var pieces = [];
+      if (allEpisodes.length) pieces.push('按时间线');
+      if (selectedPodcast) pieces.push(allEpisodes.length + ' 期');
+      else if (scopeCount) pieces.push(scopeCount + ' 档节目 · ' + allEpisodes.length + ' 期');
+      if (cacheState === 'warming') pieces.push('正在补齐历史单集');
+      byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? '正在读取订阅…' : '先添加一档节目，时间线会从这里开始');
+    }
+
+    function loadTimelineEpisodes(podcasts, force) {
+      var scope = (Array.isArray(podcasts) ? podcasts : []).filter(function (podcast) { return podcast && podcast.name; });
+      var requestToken = ++_timelineRequestToken;
+      allEpisodes = [];
+      currentPage = 1;
+      resetEpisodeInspector();
+      byId('episode-search').value = '';
+      byId('episode-search').disabled = !scope.length;
+      currentFilter = 'all';
+      setFilterButtons('all');
+      setHidden(byId('refresh-btn'), !scope.length);
+      setHidden(byId('episode-empty'), true);
+      setHidden(byId('episode-list'), false);
+      updateTimelineHeading();
+      if (!scope.length) {
+        renderEpisodeList([]);
+        return Promise.resolve([]);
+      }
+
+      renderSkeletons(Math.min(12, Math.max(4, scope.length * 3)));
+      var previews = Promise.all(scope.map(function (podcast) {
+        return fetchEpisodePage(String(podcast.name), force).catch(function () { return { episodes: [], cacheState: 'error' }; });
+      }));
+      return previews.then(function (previewResults) {
+        if (requestToken !== _timelineRequestToken) return [];
+        var previewEpisodes = [];
+        var warming = false;
+        previewResults.forEach(function (result, index) {
+          if (result && result.cacheState === 'warming') warming = true;
+          previewEpisodes = previewEpisodes.concat(decorateEpisodes(scope[index].name, result && result.episodes));
+        });
+        allEpisodes = sortEpisodeTimeline(previewEpisodes);
+        updateTimelineHeading(warming ? 'warming' : 'complete');
+        renderEpisodeList(getFilteredEpisodes());
+
+        return Promise.all(scope.map(function (podcast) {
+          return hydrateAllEpisodes(String(podcast.name)).catch(function () { return null; });
+        })).then(function (fullResults) {
+          if (requestToken !== _timelineRequestToken) return [];
+          var merged = [];
+          scope.forEach(function (podcast, index) {
+            var full = fullResults[index];
+            var source = full && Array.isArray(full.episodes) ? full.episodes : (previewResults[index] && previewResults[index].episodes);
+            merged = merged.concat(decorateEpisodes(podcast.name, source));
+          });
+          allEpisodes = sortEpisodeTimeline(merged);
+          updateTimelineHeading('complete');
+          renderEpisodeList(getFilteredEpisodes());
+          return allEpisodes;
+        });
+      }).catch(function (error) {
+        if (requestToken !== _timelineRequestToken) return [];
+        allEpisodes = [];
+        renderEpisodeList([]);
+        addLog('加载节目时间线失败：' + errorMessage(error), 'error');
+        return [];
+      });
     }
 
     function resetEpisodeInspector() {
       selectedEpisode = null;
       closeEpisodeSummary();
-      byId('inspector-title').textContent = '选择一期节目';
-      byId('inspector-meta').textContent = '点击单集卡片，在这里查看介绍。';
-      byId('inspector-summary').textContent = '声音会在转录后变成可以慢慢阅读的文字。';
+      setHidden(byId('episode-inspector'), true);
+      byId('inspector-title').textContent = '';
+      byId('inspector-meta').textContent = '';
+      byId('inspector-summary').textContent = '';
       document.querySelectorAll('.episode-item').forEach(function (item) { item.classList.remove('is-selected'); });
     }
 
@@ -333,12 +520,14 @@
 
     function renderEpisodeInspector(episode) {
       selectedEpisode = episode;
+      setHidden(byId('episode-inspector'), false);
       var task = completedTaskForEpisode(episode);
       var meta = [];
+      if (!selectedPodcast && episode.podcast_name) meta.push(String(episode.podcast_name));
       if (episode.published) meta.push(new Date(episode.published).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }));
       var duration = formatDuration(episode.duration_seconds);
       if (duration) meta.push(duration);
-      meta.push(task ? '已完成' : '未转录');
+      meta.push(isEpisodeRead(episode) ? '已读' : task ? '未读 · 已转录' : '未读 · 未转录');
       byId('inspector-title').textContent = String(episode.title || '未命名单集');
       byId('inspector-meta').textContent = meta.join(' · ');
       byId('inspector-summary').textContent = cleanEpisodeSummary(episode.summary);
@@ -346,7 +535,7 @@
       byId('episode-summary-meta').textContent = meta.join(' · ');
       byId('episode-summary-copy').textContent = cleanEpisodeSummary(episode.summary);
       document.querySelectorAll('.episode-item').forEach(function (item) {
-        item.classList.toggle('is-selected', item.dataset.episodeTitle === String(episode.title || ''));
+        item.classList.toggle('is-selected', item.dataset.episodeKey === episodeIdentity(episode));
       });
       if (isMobileViewport()) openEpisodeSummary();
     }
@@ -379,23 +568,20 @@
       document.querySelectorAll('.podcast-item').forEach(function (item) { item.classList.toggle('active', item.dataset.name === name); });
       byId('center-title').textContent = name;
       byId('center-sub').textContent = '正在打开节目…';
-      setHidden(byId('refresh-btn'), false);
       byId('episode-search').disabled = false;
       loadEpisodes(name, false);
     }
 
+    function getScopedEpisodes() {
+      if (!selectedPodcast) return allEpisodes.slice();
+      return allEpisodes.filter(function (episode) { return String(episode.podcast_name || '') === selectedPodcast; });
+    }
+
     function getFilteredEpisodes() {
       var query = byId('episode-search').value.trim().toLowerCase();
-      var filtered = allEpisodes;
-      if (currentFilter === 'pending') {
-        filtered = filtered.filter(function (episode) {
-          return !completedTaskForEpisode(episode);
-        });
-      } else if (currentFilter === 'completed') {
-        filtered = filtered.filter(function (episode) {
-          return !!completedTaskForEpisode(episode);
-        });
-      }
+      var filtered = getScopedEpisodes();
+      if (currentFilter === 'unread') filtered = filtered.filter(function (episode) { return !isEpisodeRead(episode); });
+      else if (currentFilter === 'read') filtered = filtered.filter(function (episode) { return isEpisodeRead(episode); });
       if (query) {
         filtered = filtered.filter(function (episode) {
           return String(episode.title || '').toLowerCase().includes(query);
@@ -407,13 +593,29 @@
     function setFilter(filter) {
       currentFilter = filter;
       currentPage = 1;
-      byId('filter-all').classList.toggle('active', filter === 'all');
-      byId('filter-pending').classList.toggle('active', filter === 'pending');
-      byId('filter-completed').classList.toggle('active', filter === 'completed');
-      byId('filter-all').setAttribute('aria-selected', String(filter === 'all'));
-      byId('filter-pending').setAttribute('aria-selected', String(filter === 'pending'));
-      byId('filter-completed').setAttribute('aria-selected', String(filter === 'completed'));
+      setFilterButtons(filter);
       renderEpisodeList(getFilteredEpisodes());
+    }
+
+    function setFilterButtons(filter) {
+      ['all', 'unread', 'read'].forEach(function (name) {
+        var button = byId('filter-' + name);
+        if (!button) return;
+        button.classList.toggle('active', filter === name);
+        button.setAttribute('aria-selected', String(filter === name));
+      });
+    }
+
+    function updateFilterCounts() {
+      var scoped = getScopedEpisodes();
+      var unread = scoped.filter(function (episode) { return !isEpisodeRead(episode); }).length;
+      var read = scoped.length - unread;
+      var allCount = byId('filter-all-count');
+      var unreadCount = byId('filter-unread-count');
+      var readCount = byId('filter-read-count');
+      if (allCount) allCount.textContent = String(scoped.length);
+      if (unreadCount) unreadCount.textContent = String(unread);
+      if (readCount) readCount.textContent = String(read);
     }
 
     function fetchEpisodePage(podcastName, force) {
@@ -481,38 +683,8 @@
     }
 
     function loadEpisodes(podcastName, force) {
-      var container = byId('episode-list');
-      byId('episode-search').value = '';
-      currentFilter = 'all';
-      currentPage = 1;
-      resetEpisodeInspector();
-      byId('filter-all').classList.add('active');
-      byId('filter-pending').classList.remove('active');
-      byId('filter-completed').classList.remove('active');
-      byId('filter-all').setAttribute('aria-selected', 'true');
-      byId('filter-pending').setAttribute('aria-selected', 'false');
-      byId('filter-completed').setAttribute('aria-selected', 'false');
-      setHidden(byId('episode-empty'), true);
-      setHidden(container, false);
-      renderSkeletons(7);
-      fetchEpisodePage(podcastName, force)
-        .then(function (result) {
-          allEpisodes = result.episodes;
-          byId('center-sub').textContent = result.cacheState === 'warming' ? '正在补齐 · 先显示最近 ' + allEpisodes.length + ' 期' : '共 ' + allEpisodes.length + ' 期';
-          renderEpisodeList(getFilteredEpisodes());
-          return hydrateAllEpisodes(podcastName);
-        })
-        .then(function (result) {
-          if (!result || selectedPodcast !== podcastName) return;
-          allEpisodes = result.episodes;
-          byId('center-sub').textContent = '共 ' + allEpisodes.length + ' 期';
-          renderEpisodeList(getFilteredEpisodes());
-        })
-        .catch(function (error) {
-          container.replaceChildren();
-          var empty = document.createElement('div'); empty.className = 'empty-state'; empty.textContent = '加载失败：' + errorMessage(error); container.appendChild(empty);
-          addLog('加载失败：' + errorMessage(error), 'error');
-        });
+      var scope = _subscriptions.filter(function (podcast) { return podcast && String(podcast.name || '') === String(podcastName || ''); });
+      return loadTimelineEpisodes(scope, force);
     }
 
     function renderSkeletons(count) {
@@ -530,9 +702,10 @@
     }
 
     function completedTaskForEpisode(episode) {
-      var key = selectedPodcast + '::' + (episode ? episode.title : '');
+      var podcastName = episode && episode.podcast_name ? episode.podcast_name : selectedPodcast;
+      var key = String(podcastName || '') + '::' + (episode ? episode.title : '');
       if (_taskHistoryMap[key]) return _taskHistoryMap[key];
-      if (episode && episode.task_id && (episode.status === 'success' || episode.status === 'completed' || episode.completed === true)) return { id: episode.task_id, episode_title: episode.title, podcast_name: selectedPodcast, status: 'success' };
+      if (episode && episode.task_id && (episode.status === 'success' || episode.status === 'completed' || episode.completed === true)) return { id: episode.task_id, episode_title: episode.title, podcast_name: podcastName, status: 'success' };
       return null;
     }
 
@@ -556,8 +729,8 @@
         event.stopPropagation();
         renderEpisodeInspector(episode);
         // 已完成节目的主按钮是「阅读」；只有未转录时才隐式触发转录（force=false）。
-        if (task) openManuscript(task.id);
-        else triggerEpisode(String(episode.title || ''), event, false);
+        if (task) openManuscript(task.id, episode);
+        else triggerEpisode(String(episode.podcast_name || selectedPodcast || ''), String(episode.title || ''), event, false);
       });
       actions.appendChild(primaryButton);
       if (task) {
@@ -570,7 +743,7 @@
           event.stopPropagation();
           renderEpisodeInspector(episode);
           // 重新转录是唯一允许对已完成节目重跑的入口：显式 force=true。
-          triggerEpisode(String(episode.title || ''), event, true);
+          triggerEpisode(String(episode.podcast_name || selectedPodcast || ''), String(episode.title || ''), event, true);
         });
         actions.appendChild(rerunButton);
       }
@@ -581,8 +754,11 @@
       var container = byId('episode-list');
       var pagination = byId('episode-pagination');
       container.replaceChildren();
+      updateFilterCounts();
       if (!episodes.length) {
-        var empty = document.createElement('div'); empty.className = 'empty-state'; empty.textContent = '没有找到单集'; container.appendChild(empty);
+        var empty = document.createElement('div'); empty.className = 'empty-state';
+        empty.textContent = _subscriptions.length ? '没有符合条件的单集' : '还没有订阅节目，先添加一档播客。';
+        container.appendChild(empty);
         setHidden(pagination, true);
         return;
       }
@@ -597,15 +773,18 @@
         row.className = 'episode-item';
         row.tabIndex = 0;
         row.dataset.episodeTitle = String(episode.title || '');
+        row.dataset.episodeKey = episodeIdentity(episode);
         row.setAttribute('aria-label', '查看「' + String(episode.title || '未命名单集') + '」的介绍');
         row.style.setProperty('--item-index', index);
-        if (selectedEpisode && String(selectedEpisode.title || '') === String(episode.title || '')) row.classList.add('is-selected');
+        if (selectedEpisode && episodeIdentity(selectedEpisode) === episodeIdentity(episode)) row.classList.add('is-selected');
         var copy = document.createElement('div'); copy.className = 'ep-copy';
         var meta = document.createElement('div'); meta.className = 'ep-meta';
-        var status = document.createElement('span'); status.className = 'status-tag' + (task ? ' complete' : ''); status.textContent = task ? '已完成' : '未转录';
+        var source = document.createElement('span'); source.className = 'episode-source'; source.textContent = String(episode.podcast_name || '订阅节目');
+        var read = isEpisodeRead(episode);
+        var status = document.createElement('span'); status.className = 'status-tag' + (read ? ' read' : task ? ' complete' : ''); status.textContent = read ? '已读' : task ? '未读 · 已转录' : '未读 · 未转录';
         var date = document.createElement('span');
         date.textContent = episode.published ? new Date(episode.published).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '--';
-        meta.append(status, date);
+        meta.append(source, status, date);
         var duration = formatDuration(episode.duration_seconds);
         if (duration) { var durationNode = document.createElement('span'); durationNode.textContent = duration; meta.appendChild(durationNode); }
         var title = document.createElement('div'); title.className = 'ep-title'; title.textContent = String(episode.title || '未命名单集');
@@ -626,18 +805,20 @@
     }
 
     var _submittingEpisodes = {};
-    function triggerEpisode(title, event, force) {
+    function triggerEpisode(podcastName, title, event, force) {
       if (event) event.stopPropagation();
-      if (!selectedPodcast) { addLog('错误：未选择节目', 'error'); return; }
+      var sourceName = String(podcastName || selectedPodcast || '').trim();
+      if (!sourceName) { addLog('错误：未找到节目来源', 'error'); return; }
       var button = event && event.currentTarget && event.currentTarget.tagName === 'BUTTON' ? event.currentTarget : null;
-      var episodeKey = selectedPodcast + '::' + title;
+      _currentTaskPodcastName = sourceName;
+      var episodeKey = sourceName + '::' + title;
       // 客户端防抖：同一节目在提交完成前忽略后续点击，避免误触重复入队。
       if (_submittingEpisodes[episodeKey]) return;
       _submittingEpisodes[episodeKey] = true;
       if (button) button.disabled = true;
       setHidden(byId('task-card'), false);
       setTaskStatus('正在转录', 0);
-      var url = appUrl('/api/read-podcast/tasks?podcast_name=' + encodeURIComponent(selectedPodcast)
+      var url = appUrl('/api/read-podcast/tasks?podcast_name=' + encodeURIComponent(sourceName)
         + '&episode_title=' + encodeURIComponent(title)
         + (force ? '&force=true' : ''));
       fetch(url, { method: 'POST' })
@@ -797,6 +978,7 @@
     }
     function applyPublicTask(task) {
       var id = String(task.id || ''); if (!id) return null;
+      if (task.podcast_name) _currentTaskPodcastName = String(task.podcast_name);
       var card = ensureTaskCard(id, task.episode_title);
       card.status = String(task.status || 'pending');
       card.stage = String(task.stage || 'queued');
@@ -823,7 +1005,7 @@
         setHidden(byId('download-result-wrap'), false);
         addLog('任务全流程处理成功', 'success');
       } else addLog('任务处理失败', 'error');
-      setPodcastDot(selectedPodcast, succeeded ? 'var(--success)' : 'var(--error)', false);
+      setPodcastDot(_currentTaskPodcastName || selectedPodcast, succeeded ? 'var(--success)' : 'var(--error)', false);
     }
     function handleTaskCancelled(taskId) {
       var task = ensureTaskCard(taskId);
@@ -832,7 +1014,7 @@
       renderTaskQueue();
       loadHistory();
       addLog('任务已取消', 'info');
-      setPodcastDot(selectedPodcast, 'var(--error)', false);
+      setPodcastDot(_currentTaskPodcastName || selectedPodcast, 'var(--error)', false);
     }
     function startPolling(taskId) {
       var id = String(taskId || '');
@@ -864,7 +1046,7 @@
         if (data.progress !== undefined) setTaskStatus(data.stage, data.progress, id, null, data.message);
         if (data.status === 'cancelled' || data.stage === 'cancelled') handleTaskCancelled(id);
         else if (data.level === 'done' || data.level === 'error') handleTaskFinished(id, data.level === 'done', data);
-        else { _taskCards[id].status = 'running'; setPodcastDot(selectedPodcast, 'var(--rust)', true); }
+        else { _taskCards[id].status = 'running'; setPodcastDot(_currentTaskPodcastName || selectedPodcast, 'var(--rust)', true); }
       };
       globalEventSource.onerror = function () {
         if (globalEventSource) { globalEventSource.close(); globalEventSource = null; }
@@ -880,7 +1062,7 @@
       ensureTaskCard(_currentTaskId, title);
       renderTaskQueue();
       ensureGlobalSSE();
-      setPodcastDot(selectedPodcast, 'var(--rust)', true);
+      setPodcastDot(_currentTaskPodcastName || selectedPodcast, 'var(--rust)', true);
     }
 
     function setPodcastDot(name, color, pulsing) {
@@ -923,7 +1105,7 @@
             .catch(function () {})
             .finally(function () { renderHistory(_taskHistory.slice(0, 7)); });
           loadLibrary(_taskHistory);
-          if (selectedPodcast && allEpisodes.length) {
+          if (allEpisodes.length) {
             renderEpisodeList(getFilteredEpisodes());
             if (selectedEpisode) renderEpisodeInspector(selectedEpisode);
           }
@@ -1095,6 +1277,17 @@
       var statsEl = byId('reader-meta-stats');
       if (statsEl) {
         statsEl.textContent = count ? (countStr + ' · 预计阅读 ' + minutes + ' 分钟') : '';
+      }
+    }
+
+    function updateReaderProgress(percent) {
+      var bounded = Math.min(100, Math.max(0, Number(percent) || 0));
+      var progressRange = byId('reader-progress-range');
+      var progressValue = byId('reader-progress-value');
+      if (progressRange) progressRange.value = String(bounded);
+      if (progressValue) progressValue.textContent = Math.round(bounded) + '%';
+      if (bounded >= 99.5 && _currentReadingEpisode && !isEpisodeRead(_currentReadingEpisode)) {
+        setEpisodeRead(_currentReadingEpisode, true);
       }
     }
 
@@ -1282,15 +1475,17 @@
       }
     }
 
-    function openManuscript(taskId) {
+    function openManuscript(taskId, episode) {
       var cleanId = String(taskId || '').trim();
       if (!cleanId) return;
       closeEpisodeSummary();
       _currentReadingTaskId = cleanId;
       resetAssistant();
       var task = _taskHistory.find(function (item) { return String(item.id) === cleanId; });
+      _currentReadingEpisode = episode || (task ? { podcast_name: task.podcast_name, title: task.episode_title } : null);
       byId('reader-title').textContent = task && task.episode_title ? String(task.episode_title) : '阅读';
       byId('reader-download').href = safeTaskUrl(cleanId, '/download');
+      updateReaderReadState();
       
       var tocContainer = byId('reader-toc');
       setHidden(tocContainer, true);
@@ -1378,11 +1573,14 @@
 
           var saved = localStorage.getItem('scroll_pos_' + cleanId);
           if (saved) {
-            restoreScroll(byId('manuscript-body'), parseInt(saved, 10) || 0, 10);
+            var savedTop = parseInt(saved, 10) || 0;
+            restoreScroll(byId('manuscript-body'), savedTop, 10);
+            var savedTotal = Math.max(0, byId('manuscript-body').scrollHeight - byId('manuscript-body').clientHeight);
+            updateReaderProgress(savedTotal > 0 ? savedTop / savedTotal * 100 : 100);
           } else {
             byId('manuscript-body').scrollTop = 0;
-            if (progressRange) progressRange.value = '0';
-            if (progressValue) progressValue.textContent = '0%';
+            var initialTotal = Math.max(0, byId('manuscript-body').scrollHeight - byId('manuscript-body').clientHeight);
+            updateReaderProgress(initialTotal > 0 ? 0 : 100);
           }
         })
         .catch(function (error) { 
@@ -1502,6 +1700,8 @@
 
     function closeManuscript() {
       _currentReadingTaskId = null;
+      _currentReadingEpisode = null;
+      updateReaderReadState();
       closeAssistantPanel();
       hideLookupPopover();
       hideLookupCard();
@@ -1528,8 +1728,8 @@
     byId('episode-search').addEventListener('input', function () { currentPage = 1; renderEpisodeList(getFilteredEpisodes()); });
     byId('library-search').addEventListener('input', function () { renderLibrary(_libraryTasks); });
     byId('filter-all').addEventListener('click', function () { setFilter('all'); });
-    byId('filter-pending').addEventListener('click', function () { setFilter('pending'); });
-    byId('filter-completed').addEventListener('click', function () { setFilter('completed'); });
+    byId('filter-unread').addEventListener('click', function () { setFilter('unread'); });
+    byId('filter-read').addEventListener('click', function () { setFilter('read'); });
     byId('page-prev').addEventListener('click', function () { if (currentPage > 1) { currentPage -= 1; renderEpisodeList(getFilteredEpisodes()); } });
     byId('page-next').addEventListener('click', function () {
       var totalPages = Math.ceil(getFilteredEpisodes().length / PAGE_SIZE);
@@ -1555,11 +1755,8 @@
       _lastReaderScrollTop = self.scrollTop;
       
       var totalScroll = self.scrollHeight - self.clientHeight;
-      var percent = totalScroll > 0 ? (self.scrollTop / totalScroll * 100) : 0;
-      var progressRange = byId('reader-progress-range');
-      var progressValue = byId('reader-progress-value');
-      if (progressRange) progressRange.value = String(percent);
-      if (progressValue) progressValue.textContent = Math.round(percent) + '%';
+      var percent = totalScroll > 0 ? (self.scrollTop / totalScroll * 100) : (self.scrollHeight > 0 ? 100 : 0);
+      updateReaderProgress(percent);
       
       if (!_currentReadingTaskId) return;
       if (_scrollThrottleTimer) return;
@@ -1573,11 +1770,16 @@
       var totalScroll = Math.max(0, body.scrollHeight - body.clientHeight);
       var percent = Math.min(100, Math.max(0, Number(this.value) || 0));
       body.scrollTop = totalScroll * percent / 100;
-      byId('reader-progress-value').textContent = Math.round(percent) + '%';
+      updateReaderProgress(percent);
+    });
+    byId('reader-read-toggle').addEventListener('click', function () {
+      if (_currentReadingEpisode) setEpisodeRead(_currentReadingEpisode, !isEpisodeRead(_currentReadingEpisode));
     });
     byId('episode-summary-close-btn').addEventListener('click', closeEpisodeSummary);
     byId('episode-summary-overlay').addEventListener('click', closeEpisodeSummary);
-    byId('refresh-btn').addEventListener('click', function () { if (selectedPodcast) loadEpisodes(selectedPodcast, true); });
+    byId('refresh-btn').addEventListener('click', function () {
+      loadTimelineEpisodes(getScopedSubscriptions(), true);
+    });
     byId('add-podcast-btn').addEventListener('click', openDrawer);
     byId('drawer-close-btn').addEventListener('click', closeDrawer);
     byId('drawer-overlay').addEventListener('click', closeDrawer);
