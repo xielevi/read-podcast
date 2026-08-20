@@ -26,8 +26,10 @@ from app.database import (
     delete_task,
     get_task,
     list_completed_keys,
+    list_read_keys,
     list_successful_tasks,
     list_tasks,
+    set_episode_read,
 )
 from app.tasks import (
     AlreadyProcessedError,
@@ -145,6 +147,11 @@ class OAuthAppCredentialsRequest(BaseModel):
 
 class OAuthAuthorizeRequest(BaseModel):
     redirect_uri: str = Field(min_length=1, max_length=2048)
+
+class EpisodeReadStateRequest(BaseModel):
+    podcast_name: str = Field(min_length=1, max_length=500)
+    episode_title: str = Field(min_length=1, max_length=1000)
+    read: bool
 
 class PublicTask(BaseModel):
     id: str
@@ -686,6 +693,18 @@ async def get_all_tasks(limit: int = Query(20, ge=1, le=200)) -> List[PublicTask
 @api_router.get("/tasks/completed-keys")
 async def get_completed_task_keys() -> List[Dict[str, str]]:
     return await list_completed_keys()
+
+
+@api_router.get("/episodes/read")
+async def get_read_episodes() -> List[str]:
+    """已读单集的 `播客名::标题` key 列表，服务端持久化，不依赖浏览器本地存储。"""
+    return await list_read_keys()
+
+
+@api_router.put("/episodes/read")
+async def put_read_episode(body: EpisodeReadStateRequest) -> Dict:
+    await set_episode_read(body.podcast_name.strip(), body.episode_title.strip(), body.read)
+    return {"ok": True}
 
 
 @api_router.get("/tasks/stream")

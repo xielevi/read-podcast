@@ -59,6 +59,14 @@ async def init_db():
     )
     await _db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_created_at ON tasks(created_at DESC)")
     await _db.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)")
+    await _db.execute("""
+            CREATE TABLE IF NOT EXISTS read_state (
+                podcast_name TEXT NOT NULL,
+                episode_title TEXT NOT NULL,
+                read_at TIMESTAMP NOT NULL,
+                PRIMARY KEY (podcast_name, episode_title)
+            )
+        """)
     await _db.commit()
 
 
@@ -188,3 +196,26 @@ async def list_completed_keys() -> list[dict[str, str]]:
         seen.add(key)
         completed.append({"key": key, "task_id": row["id"]})
     return completed
+
+
+async def set_episode_read(podcast_name: str, episode_title: str, read: bool) -> None:
+    db = await _connection()
+    if read:
+        await db.execute(
+            "INSERT INTO read_state (podcast_name, episode_title, read_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(podcast_name, episode_title) DO UPDATE SET read_at = excluded.read_at",
+            (podcast_name, episode_title, datetime.now()),
+        )
+    else:
+        await db.execute(
+            "DELETE FROM read_state WHERE podcast_name = ? AND episode_title = ?",
+            (podcast_name, episode_title),
+        )
+    await db.commit()
+
+
+async def list_read_keys() -> list[str]:
+    db = await _connection()
+    async with db.execute("SELECT podcast_name, episode_title FROM read_state") as cursor:
+        rows = await cursor.fetchall()
+    return [f"{row['podcast_name']}::{row['episode_title']}" for row in rows]
