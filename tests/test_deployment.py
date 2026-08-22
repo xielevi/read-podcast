@@ -173,6 +173,8 @@ def test_standalone_health_and_frontend():
     assert ".history-list { max-height: clamp(260px, 38vh, 420px); }" in stylesheet.text
     assert 'id="episode-list"' in response.text
     assert 'id="episode-pagination"' in response.text
+    assert 'id="filter-readable"' in response.text
+    assert 'id="filter-readable-count"' in response.text
     assert 'id="episode-inspector"' in response.text
     assert 'id="reader-progress-range"' in response.text
     assert 'id="episode-summary-drawer"' in response.text
@@ -185,6 +187,8 @@ def test_standalone_health_and_frontend():
     assert '<script src="app.js"></script>' not in response.text
     assert "var APP_BASE_PATH = (function detectBasePath()" in script.text
     assert "function appUrl(path)" in script.text
+    assert "currentFilter === 'readable'" in script.text
+    assert "selectPodcast(String(episode.podcast_name || ''))" in script.text
     assert "var SAFE_LINK =" in script.text
     assert "fetch('/api/read-podcast" not in script.text
     assert "xhr.open('POST', '/api/read-podcast" not in script.text

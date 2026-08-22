@@ -602,7 +602,8 @@
     function getFilteredEpisodes() {
       var query = byId('episode-search').value.trim().toLowerCase();
       var filtered = getScopedEpisodes();
-      if (currentFilter === 'unread') filtered = filtered.filter(function (episode) { return !isEpisodeRead(episode); });
+      if (currentFilter === 'readable') filtered = filtered.filter(function (episode) { return Boolean(completedTaskForEpisode(episode)); });
+      else if (currentFilter === 'unread') filtered = filtered.filter(function (episode) { return !isEpisodeRead(episode); });
       else if (currentFilter === 'read') filtered = filtered.filter(function (episode) { return isEpisodeRead(episode); });
       if (query) {
         filtered = filtered.filter(function (episode) {
@@ -620,7 +621,7 @@
     }
 
     function setFilterButtons(filter) {
-      ['all', 'unread', 'read'].forEach(function (name) {
+      ['all', 'readable', 'unread', 'read'].forEach(function (name) {
         var button = byId('filter-' + name);
         if (!button) return;
         button.classList.toggle('active', filter === name);
@@ -630,12 +631,15 @@
 
     function updateFilterCounts() {
       var scoped = getScopedEpisodes();
+      var readable = scoped.filter(function (episode) { return Boolean(completedTaskForEpisode(episode)); }).length;
       var unread = scoped.filter(function (episode) { return !isEpisodeRead(episode); }).length;
       var read = scoped.length - unread;
       var allCount = byId('filter-all-count');
+      var readableCount = byId('filter-readable-count');
       var unreadCount = byId('filter-unread-count');
       var readCount = byId('filter-read-count');
       if (allCount) allCount.textContent = String(scoped.length);
+      if (readableCount) readableCount.textContent = String(readable);
       if (unreadCount) unreadCount.textContent = String(unread);
       if (readCount) readCount.textContent = String(read);
     }
@@ -801,7 +805,15 @@
         if (selectedEpisode && episodeIdentity(selectedEpisode) === episodeIdentity(episode)) row.classList.add('is-selected');
         var copy = document.createElement('div'); copy.className = 'ep-copy';
         var meta = document.createElement('div'); meta.className = 'ep-meta';
-        var source = document.createElement('span'); source.className = 'episode-source'; source.textContent = String(episode.podcast_name || '订阅节目');
+        var source = document.createElement('button');
+        source.type = 'button';
+        source.className = 'episode-source';
+        source.textContent = String(episode.podcast_name || '订阅节目');
+        source.setAttribute('aria-label', '只看「' + source.textContent + '」的节目');
+        source.addEventListener('click', function (event) {
+          event.stopPropagation();
+          selectPodcast(String(episode.podcast_name || ''));
+        });
         var read = isEpisodeRead(episode);
         var status = document.createElement('span'); status.className = 'status-tag' + (read ? ' read' : task ? ' complete' : ''); status.textContent = read ? '已读' : task ? '未读 · 已转录' : '未读 · 未转录';
         var date = document.createElement('span');
@@ -1750,6 +1762,7 @@
     byId('episode-search').addEventListener('input', function () { currentPage = 1; renderEpisodeList(getFilteredEpisodes()); });
     byId('library-search').addEventListener('input', function () { renderLibrary(_libraryTasks); });
     byId('filter-all').addEventListener('click', function () { setFilter('all'); });
+    byId('filter-readable').addEventListener('click', function () { setFilter('readable'); });
     byId('filter-unread').addEventListener('click', function () { setFilter('unread'); });
     byId('filter-read').addEventListener('click', function () { setFilter('read'); });
     byId('page-prev').addEventListener('click', function () { if (currentPage > 1) { currentPage -= 1; renderEpisodeList(getFilteredEpisodes()); } });
