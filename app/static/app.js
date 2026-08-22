@@ -1628,7 +1628,8 @@
     }
 
     // ── 关键概念 → 维基百科 ────────────────────────────────
-    // 抽取要过一次 AI，默认不自动触发；点一次按钮，结果由后端按稿件缓存。
+    // 打开稿件即自动抽取一次（结果由后端按稿件缓存，重复打开不重算）；
+    // 侧栏列出完整清单，同时把每个概念在正文中的首次出现原地变成可点的维基百科链接。
 
     function renderConceptsSection(taskId, container) {
       if (!_assistantAvailable) return;
@@ -1644,21 +1645,16 @@
       body.className = 'concepts-body';
       section.appendChild(body);
 
-      var button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'concepts-load-btn';
-      button.textContent = '抓取关键概念';
-      button.addEventListener('click', function () {
-        loadConcepts(taskId, body, button);
-      });
-      body.appendChild(button);
-
       container.appendChild(section);
+      loadConcepts(taskId, body);
     }
 
-    function loadConcepts(taskId, body, button) {
-      button.disabled = true;
-      button.textContent = '正在抽取…';
+    function loadConcepts(taskId, body) {
+      body.replaceChildren();
+      var loading = document.createElement('div');
+      loading.className = 'concepts-empty';
+      loading.textContent = '正在抽取关键概念…';
+      body.appendChild(loading);
 
       fetch(safeTaskUrl(taskId, '/concepts'), {
         method: 'POST',
@@ -1716,6 +1712,8 @@
             list.appendChild(li);
           });
           body.appendChild(list);
+
+          linkifyManuscriptConcepts(concepts);
         })
         .catch(function (error) {
           body.replaceChildren();
@@ -1727,9 +1725,64 @@
           retry.type = 'button';
           retry.className = 'concepts-load-btn';
           retry.textContent = '重试';
-          retry.addEventListener('click', function () { loadConcepts(taskId, body, retry); });
+          retry.addEventListener('click', function () { loadConcepts(taskId, body); });
           body.appendChild(retry);
         });
+    }
+
+    // 把已核对的关键概念在正文里原地变成可点的维基百科链接：每个概念只链接
+    // 第一次出现（避免满屏都是下划线），按词长降序处理，防止短词（如「AI」）
+    // 抢在长词（如「OpenAI」）前面把它从中间截断。
+    function linkifyManuscriptConcepts(concepts) {
+      var root = byId('manuscript-body');
+      if (!root) return;
+      (concepts || [])
+        .map(function (c) { return { term: String(c.term || '').trim(), url: String(c.url || '').trim() }; })
+        .filter(function (c) { return c.term && c.url; })
+        .sort(function (a, b) { return b.term.length - a.term.length; })
+        .forEach(function (c) { linkifyFirstOccurrence(root, c.term, c.url); });
+    }
+
+    function isAsciiAlnum(ch) {
+      return !!ch && /[A-Za-z0-9]/.test(ch);
+    }
+
+    // 只在词边界处匹配：纯子串查找会把「OpenAI」里的「AI」错误地单独截出来。
+    function findTermStart(text, term) {
+      var from = 0;
+      while (true) {
+        var idx = text.indexOf(term, from);
+        if (idx === -1) return -1;
+        var before = idx > 0 ? text[idx - 1] : '';
+        var after = idx + term.length < text.length ? text[idx + term.length] : '';
+        var okBefore = !isAsciiAlnum(term[0]) || !isAsciiAlnum(before);
+        var okAfter = !isAsciiAlnum(term[term.length - 1]) || !isAsciiAlnum(after);
+        if (okBefore && okAfter) return idx;
+        from = idx + 1;
+      }
+    }
+
+    function linkifyFirstOccurrence(root, term, url) {
+      var walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (node) {
+          if (!node.nodeValue || findTermStart(node.nodeValue, term) === -1) return NodeFilter.FILTER_SKIP;
+          if (node.parentElement && node.parentElement.closest('a')) return NodeFilter.FILTER_SKIP;
+          return NodeFilter.FILTER_ACCEPT;
+        }
+      });
+      var node = walker.nextNode();
+      if (!node) return;
+      var idx = findTermStart(node.nodeValue, term);
+      var match = node.splitText(idx);
+      match.splitText(term.length);
+      var link = document.createElement('a');
+      link.className = 'concept-inline-link';
+      link.href = url;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.title = '维基百科';
+      link.textContent = match.nodeValue;
+      match.parentNode.replaceChild(link, match);
     }
 
     function closeManuscript() {

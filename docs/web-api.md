@@ -62,7 +62,7 @@
 
 **跨节目问答（`/assistant/library/chat`）** 取最近 `LIBRARY_CORPUS_LIMIT`（默认 60）期已成功稿件，经 `modules.library_qa` 的零依赖关键词检索（ASCII 词 + 中文二元组打分、新近意图回退）挑出最相关的若干期，从每期抽取有界相关片段拼成带编号来源的上下文，再交给模型综合作答（要求标注各观点来自哪一期、点出共识与分歧、片段外内容不编造）。返回的 `sources` 含 `index`/`task_id`/`title`/`podcast`，前端渲染为可点击跳转到对应稿件的来源标签。稿件库为空时返回 404。
 
-**关键概念 → 维基百科（`POST /tasks/{id}/concepts`）** 复用 `modules.wikipedia`：AI 只负责从文字稿里**提名**候选词，链接一律由维基百科 API 核对后生成——模型给出的 URL 一概不采信。核对分两步，先按词条名直查摘要接口（自动跟随重定向，「斯坦福大学」→「史丹佛大學」），不中再退到全文搜索，且搜索结果必须通过标题相关性校验才接受，否则丢弃；消歧义页同样丢弃。因此返回条数常少于 `limit`（这是有意的：错误的链接比没有链接更糟）。主语言查不到时按 `fallback_lang` 回退。语言代码只接受 `^[a-z]{2,3}(-[a-z]{2,8})*$`，站点地址由代码拼装，不接受外部主机名。结果按「任务 + 输出文件 mtime + limit」缓存，正文未变则直接复用，`refresh: true` 强制重算。AI 未配置或鉴权失败返回 503，文字稿为空返回 422。
+**关键概念 → 维基百科（`POST /tasks/{id}/concepts`）** 复用 `modules.wikipedia`：AI 只负责从文字稿里**提名**候选词，链接一律由维基百科 API 核对后生成——模型给出的 URL 一概不采信。核对分两步，先按词条名直查摘要接口（自动跟随重定向，「斯坦福大学」→「史丹佛大學」），不中再退到全文搜索，且搜索结果必须通过标题相关性校验才接受，否则丢弃；消歧义页同样丢弃。因此返回条数常少于 `limit`（这是有意的：错误的链接比没有链接更糟）。主语言查不到时按 `fallback_lang` 回退。语言代码只接受 `^[a-z]{2,3}(-[a-z]{2,8})*$`，站点地址由代码拼装，不接受外部主机名。结果按「任务 + 输出文件 mtime + limit」缓存，正文未变则直接复用，`refresh: true` 强制重算。AI 未配置或鉴权失败返回 503，文字稿为空返回 422。前端在阅读页打开稿件时自动调用一次（无需用户手动触发），拿到结果后除了在侧栏列出完整清单，还会把每个概念在正文中的首次出现原地替换成维基百科链接。
 
 **文件连接器（`/connectors`、`/tasks/{id}/export`、`/connectors/{name}/test`）** 复用 `modules.connectors`，把成稿推送到两类目标：**群机器人 Webhook**（`feishu`/`dingtalk`/`slack`/`markdown`，声明 `url_env`）与**云文档知识库**（`notion` 在数据库/页面下建页，声明 `token_env`+`database_id`/`page_id`；`feishu-doc` 新建飞书 Docx，声明 `app_id_env`+`app_secret_env`；`gdrive` 在 Google Drive 建 Google 文档，声明 `client_id_env`+`client_secret_env`+`refresh_token_env`）。所有凭据只从 `.env` 读取，`/connectors` 只回传 `format`/`kind`/`configured`，绝不暴露地址或凭据。
 

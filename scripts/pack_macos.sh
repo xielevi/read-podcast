@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# 把 Read Podcast 打包成一个 macOS App（仅 Apple Silicon）。
+# 把 Read Podcast 打包成一个 macOS App + dmg 安装镜像（仅 Apple Silicon）。
 #
 # 做法参考了 QwenPaw 等项目的"轻量版"桌面打包方式：不用 PyInstaller 冻结
 # Python（mlx-whisper 这类带 Metal/Accelerate 原生扩展的包冻结后容易出问题），
 # 而是把一个可重定位的独立 CPython（python-build-standalone）连同按 uv.lock
 # 精确安装好的依赖，整个塞进 .app/Contents/Resources，再用一个 bash 启动器
 # 设置 PYTHONHOME 后原地跑 —— 等价于把 start.sh 的流程包进一个可双击的壳。
+# 最后用系统自带的 hdiutil 把 .app 连同一个 /Applications 快捷方式封进 dmg。
 #
-# 产物：dist/Read Podcast.app（未公证，仅供本机运行 / 信任的人之间分发）。
+# 产物：dist/Read Podcast.app 与 dist/Read Podcast-<version>.dmg
+#（均为 ad-hoc 签名，未公证，仅供本机运行 / 信任的人之间分发）。
 # 用法：bash scripts/pack_macos.sh
 set -euo pipefail
 
@@ -305,13 +307,34 @@ info "ad-hoc 签名（本机运行足够；分发/公证见下方提示）…"
 codesign --force --deep --sign - "$APP_DIR"
 ok "签名完成"
 
+# --- Step 7: 打包成 dmg ------------------------------------------------------
+# 纯用系统自带的 hdiutil，不引入 create-dmg 之类的第三方依赖：一个 App 图标 +
+# 一个指向 /Applications 的快捷方式，拖拽安装，够用。
+info "打包成 dmg 安装镜像…"
+DMG_NAME="${APP_NAME}-${VERSION}.dmg"
+DMG_PATH="$DIST_DIR/$DMG_NAME"
+STAGING_DIR="$DIST_DIR/_dmg_staging"
+rm -rf "$STAGING_DIR"
+rm -f "$DMG_PATH"
+mkdir -p "$STAGING_DIR"
+cp -R "$APP_DIR" "$STAGING_DIR/"
+ln -s /Applications "$STAGING_DIR/Applications"
+hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -fs HFS+ -format UDZO -ov "$DMG_PATH" >/dev/null
+rm -rf "$STAGING_DIR"
+ok "dmg 已生成（$(du -sh "$DMG_PATH" | cut -f1)）"
+
 echo
 ok "构建完成：$APP_DIR"
+ok "安装镜像：$DMG_PATH"
 echo "测试运行： open \"$APP_DIR\""
+echo "测试安装： open \"$DMG_PATH\"（打开后把 App 拖进 Applications）"
 echo
 echo "提示："
-echo "  · 这是 ad-hoc 签名，不是 Apple Developer ID 签名/公证。给别人分发前，"
-echo "    对方首次打开需要右键 → 打开 绕过 Gatekeeper（或使用付费开发者证书重签）。"
-echo "  · 如需正式签名分发，把这一步换成："
+echo "  · App 和 dmg 里的签名都是 ad-hoc，不是 Apple Developer ID 签名/公证。给别人"
+echo "    分发前，对方首次打开需要右键 → 打开 绕过 Gatekeeper（或使用付费开发者证书重签）。"
+echo "  · 如需正式签名分发，把 Step 6 的签名命令换成："
 echo '      codesign --force --deep --sign "Developer ID Application: 你的名字 (TEAMID)" "'"$APP_DIR"'"'
-echo "    然后走 notarytool 公证。"
+echo "    dmg 生成后再对 dmg 本身签名一次，然后走 notarytool 公证："
+echo '      codesign --force --sign "Developer ID Application: 你的名字 (TEAMID)" "'"$DMG_PATH"'"'
+echo '      xcrun notarytool submit "'"$DMG_PATH"'" --keychain-profile <profile> --wait'
+echo '      xcrun stapler staple "'"$DMG_PATH"'"'

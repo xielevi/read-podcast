@@ -322,6 +322,8 @@
     .concept-link:hover { text-decoration: underline; }
     .concept-alias { color: var(--ink-faint); font-weight: 400; font-size: 0.9em; margin-left: 4px; }
     .concept-summary { color: var(--ink-faint); font-size: 11.5px; line-height: 1.5; margin-top: 3px; }
+    .concept-inline-link { color: var(--wine); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 3px; }
+    .concept-inline-link:hover { text-decoration-style: solid; }
 
     html[data-theme="green"] { --paper: #d9edd4; --paper-light: #eaf2e8; --paper-deep: #c7ddc1; --ink: #20331e; --ink-soft: #435b3f; --ink-faint: #60745b; --line: rgba(32,51,30,.14); --line-strong: rgba(32,51,30,.24); --wine: #164012; --wine-dark: #0f2d0d; --rust: #3f7650; --success: #2e6a38; }
     html[data-theme="dark"] { --paper: #1a1a1a; --paper-light: #222; --paper-deep: #121212; --ink: #d1c9bd; --ink-soft: #aaa; --ink-faint: #888; --line: rgba(255,255,255,.12); --line-strong: rgba(255,255,255,.22); --wine: #ff8b94; --wine-dark: #4e1423; --rust: #ca836d; --success: #91c487; --error: #ff8b94; --warning: #e4b267; color-scheme: dark; }

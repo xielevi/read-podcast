@@ -112,7 +112,7 @@
 - `lookup_concept(client, term, lang, fallback_lang)`：先按词条名直查 `/api/rest_v1/page/summary/`（自动跟随重定向），不中再退到 `list=search`，且搜索结果须过 `_titles_related`（归一化后互为子串且长度比 ≥0.6）才接受——全文搜索对任何词都会返回结果，这道校验挡住「阿尔法折叠→CASP」这类错误链接。消歧义页丢弃；主语言不中按 `fallback_lang` 回退。
 - `collect_concepts(...)`：编排两段，线程池并发核对但按候选顺序收集以保留 AI 给出的重要性排序，再按「语言+规范标题」去重并截到 `limit`。返回 `concepts`（含 `term`/`reason`/`wikipedia_title`/`url`/`summary`/`lang`）与 `proposed`。语言代码只接受 `^[a-z]{2,3}(-[a-z]{2,8})*$`，站点地址由代码拼装。
 
-概念只作为 WebUI 的阅读辅助：`/tasks/{id}/concepts` 返回 JSON，前端点「加载概念」后自行渲染，**不写回成稿**，也不进入 `/download` 与连接器导出的正文。
+概念只作为 WebUI 的阅读辅助：`/tasks/{id}/concepts` 返回 JSON，前端点「加载概念」后自行渲染，**不写回成稿**，也不进入 `/download` 与连接器导出的正文——前端只是在阅读页正文里原地把每个概念词的首次出现变成可点的维基百科链接（`app.js` 的 `linkifyManuscriptConcepts`，纯 DOM 层面），侧栏列表同时展示完整清单。
 
 ## pipeline.py — 业务流水线（核心）
 
