@@ -180,7 +180,8 @@
     .ep-copy { min-width: 0; }
     .ep-title { font-size: clamp(16px, 1.2vw, 19px); font-weight: 600; line-height: 1.4; color: var(--ink); }
     .ep-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 6px; color: var(--ink-faint); font-family: var(--sans); font-size: 11px; }
-    .episode-source { color: var(--wine); font-weight: 700; }
+    .episode-source { padding: 0; border: 0; cursor: pointer; color: var(--wine); background: transparent; font: inherit; font-weight: 700; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; transition: text-decoration-color .2s ease; }
+    .episode-source:hover, .episode-source:focus-visible { text-decoration-color: currentColor; }
     .status-tag { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px; color: var(--ink-soft); background: rgba(0, 0, 0, 0.05); font-family: var(--sans); font-size: 10px; font-weight: 700; }
     .status-tag.complete { color: var(--success); background: rgba(46, 82, 41, 0.1); }
     .status-tag.read { color: var(--success); background: rgba(46, 82, 41, 0.1); }
