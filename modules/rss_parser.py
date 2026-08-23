@@ -28,7 +28,9 @@ class RSSParser:
     def __init__(self, rss_url, name, insecure_tls=False):
         self.rss_url = rss_url
         self.name = name
-        self.insecure_tls = bool(insecure_tls)
+        # 只有真正的布尔 True 才算显式开启：YAML 里写成 "false" 这类字符串
+        # 会被 bool(...) 判成真值，从而在管理员明确禁用时仍降级 TLS 校验。
+        self.insecure_tls = insecure_tls is True
         self.channel_image = ""
 
     @staticmethod

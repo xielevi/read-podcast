@@ -136,3 +136,54 @@ def test_rss_response_closes_when_size_limit_fails(monkeypatch):
 
     assert parser.fetch_episodes() == []
     assert response.closed is True
+
+
+def test_rss_string_false_does_not_enable_insecure_tls(monkeypatch):
+    # 手改 YAML 写成 insecure_tls: "false" 不能被当成显式开启。
+    parser = RSSParser("https://example.com/feed.xml", "Example", insecure_tls="false")
+    assert parser.insecure_tls is False
+
+    calls = []
+
+    def fake_get(_headers, *, verify):
+        calls.append(verify)
+        raise requests.exceptions.SSLError("certificate failed")
+
+    monkeypatch.setattr(parser, "_get", fake_get)
+
+    assert parser.fetch_episodes() == []
+    assert calls == [True]
+
+
+def test_settings_rejects_non_mapping_openai_section(tmp_path: Path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "transcription:\n  openai:\n    - key: value\n", encoding="utf-8"
+    )
+    with pytest.raises(ConfigurationError, match="transcription.openai 必须是映射"):
+        Settings(config_path)
+
+
+def test_pipeline_propagates_insecure_tls_to_parser(monkeypatch):
+    from modules.pipeline import PodcastPipeline
+
+    pipeline = PodcastPipeline.__new__(PodcastPipeline)
+    pipeline.podcast_config = lambda name: {
+        "rss_url": "https://example.com/feed.xml",
+        "name": name,
+        "insecure_tls": True,
+    }
+
+    captured = {}
+
+    class DummyParser:
+        def __init__(self, rss_url, name, insecure_tls=False):
+            captured["insecure_tls"] = insecure_tls
+
+        def fetch_episodes(self, **_kwargs):
+            return []
+
+    monkeypatch.setattr("modules.pipeline.RSSParser", DummyParser)
+
+    pipeline.fetch_episodes("Example")
+    assert captured["insecure_tls"] is True

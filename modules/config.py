@@ -199,6 +199,11 @@ class Settings:
         for name in list_sections:
             if name in config and not isinstance(config[name], list):
                 raise ConfigurationError(f"配置段 {name} 必须是列表")
+
+        transcription = config.get('transcription')
+        if isinstance(transcription, dict) and 'openai' in transcription \
+                and not isinstance(transcription['openai'], dict):
+            raise ConfigurationError("配置段 transcription.openai 必须是映射")
         return config
 
     @classmethod

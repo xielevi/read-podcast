@@ -105,7 +105,11 @@ class PodcastPipeline:
         episode_title: str | None = None,
     ) -> list[dict]:
         podcast = self.podcast_config(podcast_name)
-        parser = RSSParser(podcast["rss_url"], podcast["name"])
+        parser = RSSParser(
+            podcast["rss_url"],
+            podcast["name"],
+            insecure_tls=podcast.get("insecure_tls", False),
+        )
         return parser.fetch_episodes(
             limit=limit,
             min_duration_seconds=podcast.get("filter", {}).get("min_duration_seconds", 0),
