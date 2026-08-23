@@ -78,6 +78,8 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 
 **D15 代码目录与可写数据目录分离。** `modules.runtime_paths` 是代码根与工作数据根的唯一解析入口。源码、Docker 和旧部署未设置环境变量时继续使用仓库 `workspace/`；只读打包应用通过 `READ_PODCAST_DATA_DIR` 把数据库、上传、缓存、日志和默认稿件目录统一放到 Application Support，不在启动时删除或改写签名后的 `.app` 内容。旧 `workspace/...` 相对配置仍映射到新的数据根，其他相对路径保持项目根语义。所有任务状态与 SSE 事件只返回业务字段和任务 ID，绝不暴露数据根或输出文件绝对路径。
 
+**D16 macOS 安装镜像可复现边界。** `scripts/pack_macos.sh` 固定 python-build-standalone 的完整 Python 版本、release、资产名与 SHA256，不在构建时查询 `latest`。依赖仍由 `uv.lock` 导出；对 MLX 依赖的裁剪必须保留严格补丁锚点、完整 import 验证，并可通过 `READ_PODCAST_PACK_SMOKE_AUDIO` 启用真实音频转写门禁。源码缓存不进入 App，验证阶段用独立数据目录且禁止写 `.pyc`。App 与 DMG 先在临时目录完成严格签名/镜像校验，全部通过后再发布到 `dist/` 并生成 SHA256 文件。免费本机产物仅对 App 做 ad-hoc 签名，DMG 未签名且不声称已公证；正式分发另走 Developer ID、DMG 签名与 notarytool。
+
 **D7 品牌与兼容标识。** 项目品牌统一为 Read Podcast，规范技术标识为 `/api/read-podcast`、`READ_PODCAST_*`、`read-podcast:` 与 `X-Read-Podcast-*`。既有 `/api/podcast2md`、`PODCAST2MD_*`（包括 `PODCAST2MD_DATA_DIR`）、`podcast2md:`、`X-Podcast2MD-*` 和 `workspace/podcast2md.db` 只作为隐藏兼容接口继续保留，避免升级破坏现有配置、客户端与任务数据。
 
 ## 容错

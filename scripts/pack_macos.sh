@@ -8,8 +8,8 @@
 # 设置 PYTHONHOME 后原地跑 —— 等价于把 start.sh 的流程包进一个可双击的壳。
 # 最后用系统自带的 hdiutil 把 .app 连同一个 /Applications 快捷方式封进 dmg。
 #
-# 产物：dist/Read Podcast.app 与 dist/Read Podcast-<version>.dmg
-#（均为 ad-hoc 签名，未公证，仅供本机运行 / 信任的人之间分发）。
+# 产物：dist/Read Podcast.app、dist/Read Podcast-<version>.dmg 与 SHA256 文件。
+# App 为 ad-hoc 签名；dmg 未签名、未公证，仅供本机运行 / 信任的人之间分发。
 # 用法：bash scripts/pack_macos.sh
 set -euo pipefail
 
@@ -17,10 +17,14 @@ cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
 DIST_DIR="${DIST_DIR:-$REPO_ROOT/dist}"
 APP_NAME="Read Podcast"
-APP_DIR="$DIST_DIR/$APP_NAME.app"
+FINAL_APP_DIR="$DIST_DIR/$APP_NAME.app"
 BUNDLE_ID="${READ_PODCAST_BUNDLE_ID:-com.xielevi.read-podcast}"
 PYTHON_XY="3.12"
-PBS_RELEASE="${READ_PODCAST_PBS_RELEASE:-latest}"
+PYTHON_VERSION="3.12.14"
+PBS_RELEASE="20260814"
+PBS_ASSET="cpython-${PYTHON_VERSION}+${PBS_RELEASE}-aarch64-apple-darwin-install_only.tar.gz"
+PBS_SHA256="4572133a5542f306b9bdb155da5800f9e38950cd0a98d469b832ce256fe299ea"
+PBS_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/${PBS_ASSET}"
 
 info() { printf '\033[1;34m▶ %s\033[0m\n' "$1"; }
 ok()   { printf '\033[1;32m✓ %s\033[0m\n' "$1"; }
@@ -29,41 +33,34 @@ die()  { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] || \
   die "本工具只支持 Apple 芯片的 Mac（M1/M2/M3/M4）。"
 command -v uv >/dev/null 2>&1 || die "找不到 uv，请先运行 ./scripts/install.sh"
+for tool in curl shasum codesign hdiutil; do
+  command -v "$tool" >/dev/null 2>&1 || die "缺少构建工具：$tool"
+done
+mkdir -p "$DIST_DIR"
+
+BUILD_DIR=$(mktemp -d "$DIST_DIR/.pack-macos.XXXXXX")
+cleanup_build() { rm -rf "$BUILD_DIR"; }
+trap cleanup_build EXIT
+APP_DIR="$BUILD_DIR/$APP_NAME.app"
+mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
+RES="$APP_DIR/Contents/Resources"
 
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
 [ -n "$VERSION" ] || die "无法从 pyproject.toml 读取版本号。"
 
-# pyproject 的版本号只在发版时才动，光看它分不清一个 .app 到底打的是哪次提交
-# （很容易误以为构建产物很旧）。把 git 描述一起写进 CFBundleVersion，
-# 「显示简介」里就能看到确切来源。
+# CFBundleVersion 只能使用数字构建号；Git 描述另存到显示信息和自定义字段。
 BUILD_REV=$(git describe --tags --always --dirty 2>/dev/null || echo "unknown")
+BUILD_NUMBER=$(git rev-list --count HEAD 2>/dev/null || date +%Y%m%d%H%M)
 BUILD_DATE=$(date +%Y-%m-%d)
 
-info "清理旧的构建产物…"
-rm -rf "$APP_DIR"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Resources"
-RES="$APP_DIR/Contents/Resources"
-
 # --- Step 1: 下载可重定位的独立 CPython 运行时 -----------------------------
-info "获取独立 Python ${PYTHON_XY} 运行时（aarch64-apple-darwin）…"
-if [ "$PBS_RELEASE" = "latest" ]; then
-  RELEASE_URL="https://api.github.com/repos/astral-sh/python-build-standalone/releases/latest"
-else
-  RELEASE_URL="https://api.github.com/repos/astral-sh/python-build-standalone/releases/tags/${PBS_RELEASE}"
-fi
-ASSET_URL=$(curl -fsSL "$RELEASE_URL" | python3 -c '
-import json, re, sys
-data = json.load(sys.stdin)
-pattern = re.compile(r"^cpython-'"$PYTHON_XY"'\.\d+\+\d+-aarch64-apple-darwin-install_only\.tar\.gz$")
-for asset in data.get("assets", []):
-    if pattern.match(asset.get("name", "")):
-        print(asset["browser_download_url"])
-        break
-')
-[ -n "$ASSET_URL" ] || die "在 python-build-standalone release 里找不到匹配的 CPython 构建（release=$PBS_RELEASE）。"
-curl -fsSL "$ASSET_URL" -o "$DIST_DIR/_python-runtime.tar.gz"
-tar -xzf "$DIST_DIR/_python-runtime.tar.gz" -C "$RES"
-rm -f "$DIST_DIR/_python-runtime.tar.gz"
+info "获取固定的独立 Python ${PYTHON_VERSION} 运行时（release ${PBS_RELEASE}）…"
+RUNTIME_ARCHIVE="$BUILD_DIR/$PBS_ASSET"
+curl -fL --retry 3 --retry-delay 2 "$PBS_URL" -o "$RUNTIME_ARCHIVE"
+ACTUAL_SHA256=$(shasum -a 256 "$RUNTIME_ARCHIVE" | awk '{print $1}')
+[ "$ACTUAL_SHA256" = "$PBS_SHA256" ] || \
+  die "Python 运行时 SHA256 不匹配：expected=$PBS_SHA256 actual=$ACTUAL_SHA256"
+tar -xzf "$RUNTIME_ARCHIVE" -C "$RES"
 mv "$RES/python" "$RES/python-runtime"
 PYTHON_BIN="$RES/python-runtime/bin/python3"
 [ -x "$PYTHON_BIN" ] || die "解压后找不到 Python 可执行文件：$PYTHON_BIN"
@@ -82,15 +79,16 @@ ok "Python 运行时已就绪"
 #     词级时间戳。Read Podcast 的流水线从不开这个开关，转录结果里也不消费
 #     词级时间戳。下面 Step 2c 会把它的 import 改成惰性，真要用时才报错。
 #
-# 用 --no-deps 严格按 uv.lock 装，再排除上面这些，功能不受影响（每次构建结束
-# 都会跑一次真实音频转写验证）。
+# 用 --no-deps 严格按 uv.lock 装，再排除上面这些。默认构建会验证完整 import 链；
+# 如设置 READ_PODCAST_PACK_SMOKE_AUDIO，还会用该音频执行一次真实 MLX 转写。
 info "按 uv.lock 安装依赖（含 mlx-whisper）…"
-uv export --extra mlx --no-dev --frozen --no-hashes -o "$DIST_DIR/_requirements.lock.txt"
-grep -vE '^(torch|sympy|networkx|numba|llvmlite|scipy)==' "$DIST_DIR/_requirements.lock.txt" \
-  > "$DIST_DIR/_requirements.trimmed.txt"
+REQUIREMENTS_LOCK="$BUILD_DIR/requirements.lock.txt"
+REQUIREMENTS_TRIMMED="$BUILD_DIR/requirements.trimmed.txt"
+uv export --extra mlx --no-dev --frozen --no-hashes -o "$REQUIREMENTS_LOCK"
+grep -vE '^(torch|sympy|networkx|numba|llvmlite|scipy)==' "$REQUIREMENTS_LOCK" \
+  > "$REQUIREMENTS_TRIMMED"
 "$PYTHON_BIN" -m ensurepip --upgrade >/dev/null 2>&1 || true
-"$PYTHON_BIN" -m pip install --no-deps --no-cache-dir --quiet -r "$DIST_DIR/_requirements.trimmed.txt"
-rm -f "$DIST_DIR/_requirements.lock.txt" "$DIST_DIR/_requirements.trimmed.txt"
+"$PYTHON_BIN" -m pip install --no-deps --no-cache-dir --quiet -r "$REQUIREMENTS_TRIMMED"
 ok "依赖安装完成"
 
 # --- Step 2c: 让 mlx-whisper 的词级时间戳依赖变成惰性 ------------------------
@@ -165,21 +163,55 @@ cp -R modules "$RES/modules"
 cp -R scripts "$RES/scripts"
 # 打包脚本自身对 App 没用，跟进去只会让人误以为能在 App 里重新构建。
 rm -f "$RES/scripts/pack_macos.sh"
+# 源码目录可能带有宿主 Python 生成的缓存；它们不可进入可复现产物。
+find "$RES/app" "$RES/modules" "$RES/scripts" -type d -name "__pycache__" -prune -exec rm -rf {} +
+find "$RES/app" "$RES/modules" "$RES/scripts" -type f -name "*.pyc" -delete
 ok "代码已拷贝"
 
 # --- Step 3b: 验证瘦身后的运行时 + 应用代码仍然可用 --------------------------
 # 上面删了不少东西，又改了第三方包，这里当场把整套 import 跑一遍，
 # 出问题就地失败，而不是等用户双击时才发现。
-info "验证打包结果能正常 import…"
-(cd "$RES" && PYTHONHOME="$RES/python-runtime" PYTHONPATH="$RES" \
+info "验证打包结果能正常 import，且只写临时数据目录…"
+SMOKE_DATA_DIR="$BUILD_DIR/smoke-data"
+(cd "$RES" && PYTHONDONTWRITEBYTECODE=1 PYTHONHOME="$RES/python-runtime" PYTHONPATH="$RES" \
+  READ_PODCAST_CONFIG="$BUILD_DIR/smoke-config.yaml" READ_PODCAST_DATA_DIR="$SMOKE_DATA_DIR" \
   "$PYTHON_BIN" -c "
 import mlx_whisper, fastapi, uvicorn, httpx, aiosqlite, feedparser, yaml, requests
 import app.standalone, scripts.mlx_backend
+import os
+from pathlib import Path
+from modules.config import settings
+assert settings.DATA_DIR == Path(os.environ['READ_PODCAST_DATA_DIR'])
 for banned in ('torch', 'numba', 'scipy', 'llvmlite'):
     assert banned not in __import__('sys').modules, banned + ' 竟然被导入了'
 print('  import 全部通过，且未触及已排除的重依赖')
 ") || die "打包结果无法正常 import，构建中止。"
+[ -z "$(find "$RES/app" "$RES/modules" "$RES/scripts" -type f -name '*.pyc' -print -quit)" ] || \
+  die "应用源码目录产生了 .pyc，构建不可复现。"
 ok "校验通过"
+
+if [ -n "${READ_PODCAST_PACK_SMOKE_AUDIO:-}" ]; then
+  [ -f "$READ_PODCAST_PACK_SMOKE_AUDIO" ] || die "真实转写测试音频不存在：$READ_PODCAST_PACK_SMOKE_AUDIO"
+  info "执行真实 MLX 音频转写验证…"
+  (cd "$RES" && PYTHONDONTWRITEBYTECODE=1 PYTHONHOME="$RES/python-runtime" PYTHONPATH="$RES" \
+    READ_PODCAST_CONFIG="$BUILD_DIR/smoke-config.yaml" READ_PODCAST_DATA_DIR="$SMOKE_DATA_DIR" \
+    "$PYTHON_BIN" - "$READ_PODCAST_PACK_SMOKE_AUDIO" <<'SMOKE'
+import sys
+from pathlib import Path
+from scripts.mlx_backend import MODEL, _transcribe_sync
+
+result = _transcribe_sync(
+    Path(sys.argv[1]),
+    MODEL,
+    {"word_timestamps": False, "verbose": False},
+    None,
+)
+if not isinstance(result, dict) or not str(result.get("text", "")).strip():
+    raise SystemExit("真实转写没有返回文本")
+print("  真实转写通过")
+SMOKE
+  ) || die "真实 MLX 音频转写验证失败。"
+fi
 
 # --- Step 4: 生成启动器 -----------------------------------------------------
 info "生成启动器…"
@@ -198,21 +230,15 @@ mkdir -p "$APP_SUPPORT/config" "$APP_SUPPORT/workspace"
 exec >>"$LOG" 2>&1
 echo "=== $(date) Read Podcast starting ==="
 
-# app/database.py 等模块把数据写在 PROJECT_ROOT/workspace 下（PROJECT_ROOT
-# 就是这里的 Resources）。用软链接把它重定向到 Application Support，这样
-# App 本体保持只读、可随时整体替换/删除，数据不会跟着丢。
-if [ ! -L "$RES/workspace" ]; then
-  rm -rf "$RES/workspace"
-  ln -s "$APP_SUPPORT/workspace" "$RES/workspace"
-fi
-
 cd "$RES"
 unset PYTHONPATH
 export PYTHONHOME="$RES/python-runtime"
 export PYTHONNOUSERSITE=1
+export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$RES"
 export PATH="$RES/python-runtime/bin:$PATH"
 export READ_PODCAST_CONFIG="$APP_SUPPORT/config/config.yaml"
+export READ_PODCAST_DATA_DIR="$APP_SUPPORT/workspace"
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
   osascript -e 'display alert "缺少 ffmpeg" message "Read Podcast 需要 ffmpeg 处理音频。请打开终端运行：\n\nbrew install ffmpeg\n\n（没有 Homebrew？先到 https://brew.sh 安装）" as critical' || true
@@ -265,13 +291,16 @@ echo "启动语音转录后端（首次会下载模型，可能需要几分钟�
 "$PYTHON_BIN" -m scripts.mlx_backend &
 MLX_PID=$!
 
+MLX_READY=0
 for _ in $(seq 1 60); do
   if curl -fsS "http://127.0.0.1:${MLX_PORT}/health" >/dev/null 2>&1; then
+    MLX_READY=1
     break
   fi
   kill -0 "$MLX_PID" 2>/dev/null || { echo "转录后端启动失败，见上方日志。"; exit 1; }
   sleep 1
 done
+[ "$MLX_READY" -eq 1 ] || { echo "转录后端在 60 秒内未就绪。"; exit 1; }
 
 ( sleep 2; open "http://127.0.0.1:${APP_PORT}/" ) &
 
@@ -292,9 +321,10 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
   <key>CFBundleName</key><string>${APP_NAME}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleVersion</key><string>${BUILD_REV}</string>
+  <key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>
   <key>CFBundleShortVersionString</key><string>${VERSION}</string>
   <key>CFBundleGetInfoString</key><string>${VERSION} (${BUILD_REV}, 构建于 ${BUILD_DATE})</string>
+  <key>ReadPodcastGitRevision</key><string>${BUILD_REV}</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>LSMinimumSystemVersion</key><string>13.5</string>
 </dict>
@@ -305,6 +335,7 @@ ok "Info.plist 已生成"
 # --- Step 6: ad-hoc 签名 -----------------------------------------------------
 info "ad-hoc 签名（本机运行足够；分发/公证见下方提示）…"
 codesign --force --deep --sign - "$APP_DIR"
+codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 ok "签名完成"
 
 # --- Step 7: 打包成 dmg ------------------------------------------------------
@@ -312,29 +343,39 @@ ok "签名完成"
 # 一个指向 /Applications 的快捷方式，拖拽安装，够用。
 info "打包成 dmg 安装镜像…"
 DMG_NAME="${APP_NAME}-${VERSION}.dmg"
-DMG_PATH="$DIST_DIR/$DMG_NAME"
-STAGING_DIR="$DIST_DIR/_dmg_staging"
-rm -rf "$STAGING_DIR"
-rm -f "$DMG_PATH"
+DMG_PATH="$BUILD_DIR/$DMG_NAME"
+STAGING_DIR="$BUILD_DIR/dmg-staging"
 mkdir -p "$STAGING_DIR"
 cp -R "$APP_DIR" "$STAGING_DIR/"
 ln -s /Applications "$STAGING_DIR/Applications"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -fs HFS+ -format UDZO -ov "$DMG_PATH" >/dev/null
-rm -rf "$STAGING_DIR"
+hdiutil verify "$DMG_PATH" >/dev/null
 ok "dmg 已生成（$(du -sh "$DMG_PATH" | cut -f1)）"
 
+# 所有验证通过后才替换公开产物，构建中途失败不会破坏上一版。
+FINAL_DMG_PATH="$DIST_DIR/$DMG_NAME"
+FINAL_SHA_PATH="$FINAL_DMG_PATH.sha256"
+rm -rf "$FINAL_APP_DIR"
+rm -f "$FINAL_DMG_PATH" "$FINAL_SHA_PATH"
+mv "$APP_DIR" "$FINAL_APP_DIR"
+mv "$DMG_PATH" "$FINAL_DMG_PATH"
+(cd "$DIST_DIR" && shasum -a 256 "$DMG_NAME" > "$DMG_NAME.sha256")
+codesign --verify --deep --strict --verbose=2 "$FINAL_APP_DIR"
+hdiutil verify "$FINAL_DMG_PATH" >/dev/null
+
 echo
-ok "构建完成：$APP_DIR"
-ok "安装镜像：$DMG_PATH"
-echo "测试运行： open \"$APP_DIR\""
-echo "测试安装： open \"$DMG_PATH\"（打开后把 App 拖进 Applications）"
+ok "构建完成：$FINAL_APP_DIR"
+ok "安装镜像：$FINAL_DMG_PATH"
+ok "校验文件：$FINAL_SHA_PATH"
+echo "测试运行： open \"$FINAL_APP_DIR\""
+echo "测试安装： open \"$FINAL_DMG_PATH\"（打开后把 App 拖进 Applications）"
 echo
 echo "提示："
-echo "  · App 和 dmg 里的签名都是 ad-hoc，不是 Apple Developer ID 签名/公证。给别人"
-echo "    分发前，对方首次打开需要右键 → 打开 绕过 Gatekeeper（或使用付费开发者证书重签）。"
+echo "  · App 是 ad-hoc 签名；dmg 当前未签名，二者均未公证。给别人分发前，对方首次"
+echo "    打开需要右键 → 打开 绕过 Gatekeeper（或使用付费开发者证书重签）。"
 echo "  · 如需正式签名分发，把 Step 6 的签名命令换成："
-echo '      codesign --force --deep --sign "Developer ID Application: 你的名字 (TEAMID)" "'"$APP_DIR"'"'
+echo '      codesign --force --deep --sign "Developer ID Application: 你的名字 (TEAMID)" "'"$FINAL_APP_DIR"'"'
 echo "    dmg 生成后再对 dmg 本身签名一次，然后走 notarytool 公证："
-echo '      codesign --force --sign "Developer ID Application: 你的名字 (TEAMID)" "'"$DMG_PATH"'"'
-echo '      xcrun notarytool submit "'"$DMG_PATH"'" --keychain-profile <profile> --wait'
-echo '      xcrun stapler staple "'"$DMG_PATH"'"'
+echo '      codesign --force --sign "Developer ID Application: 你的名字 (TEAMID)" "'"$FINAL_DMG_PATH"'"'
+echo '      xcrun notarytool submit "'"$FINAL_DMG_PATH"'" --keychain-profile <profile> --wait'
+echo '      xcrun stapler staple "'"$FINAL_DMG_PATH"'"'
