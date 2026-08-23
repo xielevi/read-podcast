@@ -48,9 +48,12 @@ RES="$APP_DIR/Contents/Resources"
 VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
 [ -n "$VERSION" ] || die "无法从 pyproject.toml 读取版本号。"
 
-# CFBundleVersion 只能使用数字构建号；Git 描述另存到显示信息和自定义字段。
+# CFBundleVersion 只能是「至多三段、每段不超过四位」的数字版本号；Git 描述另存到
+# 显示信息和自定义字段。有 Git 历史时用提交计数（单调递增的纯整数），否则退回
+# 到 YYYY.MM.DD —— 三段、每段 ≤4 位，仍是合法的 CFBundleVersion（12 位的
+# date +%Y%m%d%H%M 单段超过四位，会被 bundle 校验/分发工具拒绝）。
 BUILD_REV=$(git describe --tags --always --dirty 2>/dev/null || echo "unknown")
-BUILD_NUMBER=$(git rev-list --count HEAD 2>/dev/null || date +%Y%m%d%H%M)
+BUILD_NUMBER=$(git rev-list --count HEAD 2>/dev/null || date +%Y.%m.%d)
 BUILD_DATE=$(date +%Y-%m-%d)
 
 # --- Step 1: 下载可重定位的独立 CPython 运行时 -----------------------------
