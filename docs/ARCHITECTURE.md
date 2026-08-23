@@ -75,6 +75,8 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 **D14 云文档账号 OAuth。** 左栏 Google 文档与飞书文档入口是独立的账号连接流程，不再跳转通用设置面板。首次连接时，用户在专用抽屉填写各自开发者应用的 Client/App ID 与 Secret；服务端只回传「应用凭据是否已配置」「账号是否已连接」，机密沿用 D12 写入 `config/secrets.env`（0600），绝不回显。授权采用服务端 Authorization Code Flow：Google 请求 `drive.file` 与离线访问，飞书请求用户身份授权；回调必须校验一次性、十分钟过期的 `state`，并且 `redirect_uri` 必须与发起请求同源且路径严格匹配当前 API 回调。刷新令牌只在服务端保存，浏览器不接触 token；回调页仅向同源 opener 发送成功/失败状态后关闭。账号连接后，内置 Google/飞书连接器自动出现；显式 `connectors` 配置仍优先，保持旧 tenant token 与手工刷新令牌配置兼容。OAuth 应用未配置时前端必须显示凭据表单，不能伪装成可直接登录。
 
 
+**D17 配置与 RSS 失败必须显式。** YAML 为空或配置文件缺失时仍使用内置默认值；语法错误、非映射顶层、错误的段类型及网络资源限制中的无效整数不得静默降级为默认配置，相关模块启动时应返回带配置项名称的明确错误。RSS 默认只做证书校验请求；仅对显式标记 `insecure_tls` 的订阅执行一次不校验证书的兼容重试，重试失败须正常返回空结果且关闭响应，不得把预期网络异常逸出到任务流水线。RSS 与媒体下载共享统一的兼容 User-Agent，避免两处常量漂移。
+
 **D7 品牌与兼容标识。** 项目品牌统一为 Read Podcast，规范技术标识为 `/api/read-podcast`、`READ_PODCAST_*`、`read-podcast:` 与 `X-Read-Podcast-*`。既有 `/api/podcast2md`、`PODCAST2MD_*`、`podcast2md:`、`X-Podcast2MD-*` 和 `workspace/podcast2md.db` 只作为隐藏兼容接口继续保留，避免升级破坏现有配置、客户端与任务数据。
 
 ## 容错

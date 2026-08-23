@@ -35,6 +35,33 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("Config")
 
 
+class ConfigurationError(ValueError):
+    """Raised when persisted configuration cannot be parsed safely."""
+
+
+def read_int_config(config: dict, key: str, default: int) -> int:
+    """Read an integer setting without silently truncating or obscuring bad input."""
+    value = config.get(key, default)
+    if isinstance(value, bool):
+        raise ConfigurationError(f"配置项 {key} 必须是整数，不能是布尔值")
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError) as exc:
+        raise ConfigurationError(f"配置项 {key} 必须是整数，当前值为 {value!r}") from exc
+
+
+RUNTIME_INTEGER_DEFAULTS = {
+    "audio_retention_days": 7,
+    "cleanup_interval_seconds": 24 * 60 * 60,
+    "max_upload_bytes": 2 * 1024 * 1024 * 1024,
+    "max_download_bytes": 2 * 1024 * 1024 * 1024,
+    "max_rss_bytes": 10 * 1024 * 1024,
+    "download_timeout_seconds": 1800,
+    "download_concurrency": 2,
+    "refine_concurrency": 2,
+}
+
+
 class Settings:
     """
     配置管理类。
@@ -149,11 +176,30 @@ class Settings:
     def _read_yaml(path: Path) -> dict:
         try:
             with path.open('r', encoding='utf-8') as f:
-                full = yaml.safe_load(f) or {}
-            return full.get('read-podcast', full.get('podcast2md', full))
-        except Exception as e:
-            logger.error("解析配置文件失败 %s: %s", path, e)
+                full = yaml.safe_load(f)
+        except (OSError, UnicodeError, yaml.YAMLError) as exc:
+            raise ConfigurationError(f"无法读取配置文件 {path}: {exc}") from exc
+
+        if full is None:
             return {}
+        if not isinstance(full, dict):
+            raise ConfigurationError(f"配置文件 {path} 的顶层必须是映射")
+
+        config = full.get('read-podcast', full.get('podcast2md', full))
+        if config is None:
+            return {}
+        if not isinstance(config, dict):
+            raise ConfigurationError(f"配置文件 {path} 的命名空间必须是映射")
+
+        mapping_sections = ('paths', 'transcription', 'refiner', 'runtime', 'web', 'mlx')
+        list_sections = ('podcasts', 'prompt_templates', 'connectors')
+        for name in mapping_sections:
+            if name in config and not isinstance(config[name], dict):
+                raise ConfigurationError(f"配置段 {name} 必须是映射")
+        for name in list_sections:
+            if name in config and not isinstance(config[name], list):
+                raise ConfigurationError(f"配置段 {name} 必须是列表")
+        return config
 
     @classmethod
     def _merge_config(cls, base: dict, overrides: dict) -> dict:
@@ -266,7 +312,10 @@ class Settings:
         transcription["openai"] = openai_config
         self.TRANSCRIPTION_CONFIG = transcription
         self.REFINER_CONFIG = self._raw_config.get('refiner', {})
-        self.RUNTIME_CONFIG = self._raw_config.get('runtime', {})
+        runtime_config = dict(self._raw_config.get('runtime', {}))
+        for key, default in RUNTIME_INTEGER_DEFAULTS.items():
+            runtime_config[key] = read_int_config(runtime_config, key, default)
+        self.RUNTIME_CONFIG = runtime_config
         self.WEB_CONFIG = self._raw_config.get('web', {})
         self.MLX_CONFIG = self._raw_config.get('mlx', {})
 
