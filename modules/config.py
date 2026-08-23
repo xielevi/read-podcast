@@ -4,8 +4,9 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
+from modules.runtime_paths import PROJECT_ROOT, resolve_runtime_path, runtime_data_dir
+
 _THIS_DIR = Path(__file__).resolve().parent
-PROJECT_ROOT = _THIS_DIR.parent
 # 内置默认值与代码一起分发，放在 modules/ 下而不是项目根目录：它是随版本更新的
 # 只读基线，用户不该编辑（改了 git pull 会冲突）。用户配置只写 config/config.yaml。
 DEFAULT_CONFIG_PATH = _THIS_DIR / "config.default.yaml"
@@ -47,6 +48,7 @@ class Settings:
     """
     def __init__(self, config_path=None):
         self.PROJECT_ROOT = PROJECT_ROOT
+        self.DATA_DIR = runtime_data_dir()
 
         # 配置文件路径（默认持久化目录 config/config.yaml，可由环境变量覆盖）
         env_config = os.getenv("READ_PODCAST_CONFIG", os.getenv("PODCAST2MD_CONFIG"))
@@ -293,19 +295,16 @@ class Settings:
                 target_dir.mkdir(parents=True, exist_ok=True)
             except (PermissionError, OSError) as e:
                 logger.warning("无法创建 Obsidian Markdown 目录 %s (%s)，已自动降级回退至本地工作区", target_dir, e)
-                target_dir = self.PROJECT_ROOT / "workspace" / podcast_name / dir_name
+                target_dir = self.DATA_DIR / podcast_name / dir_name
                 target_dir.mkdir(parents=True, exist_ok=True)
         else:
-            target_dir = self.PROJECT_ROOT / "workspace" / podcast_name / dir_name
+            target_dir = self.DATA_DIR / podcast_name / dir_name
             target_dir.mkdir(parents=True, exist_ok=True)
 
         return target_dir
 
     def _to_abs_path(self, path_str):
-        p = Path(path_str).expanduser()
-        if p.is_absolute():
-            return p
-        return (self.PROJECT_ROOT / p).absolute()
+        return resolve_runtime_path(path_str, data_dir=self.DATA_DIR)
 
     def get_podcast_config(self, podcast_name):
         for p in self.PODCASTS:

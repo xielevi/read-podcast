@@ -5,9 +5,9 @@ from pathlib import Path
 
 import yaml
 
-logger = logging.getLogger(__name__)
+from modules.runtime_paths import runtime_data_dir
 
-_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+logger = logging.getLogger(__name__)
 
 
 def strip_leading_frontmatter(text):
@@ -49,7 +49,7 @@ class Formatter:
             target_path.write_text(content, encoding="utf-8")
             return str(target_path)
         except (PermissionError, OSError) as exc:
-            fallback_dir = _PROJECT_ROOT / "workspace" / (podcast_name or "unknown") / "markdown"
+            fallback_dir = runtime_data_dir() / (podcast_name or "unknown") / "markdown"
             fallback_dir.mkdir(parents=True, exist_ok=True)
             fallback_path = fallback_dir / safe_filename
             logger.warning("写入 %s 失败 (%s)，已降级保存到 %s", target_path, exc, fallback_path)

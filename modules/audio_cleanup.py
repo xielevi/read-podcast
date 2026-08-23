@@ -21,8 +21,7 @@ def _dedupe_paths(paths):
     return unique_paths
 
 
-def get_audio_cleanup_roots(project_root: Path, upload_dir: Path, download_dir: Path):
-    workspace_dir = project_root / "workspace"
+def get_audio_cleanup_roots(workspace_dir: Path, upload_dir: Path, download_dir: Path):
     candidate_paths = [upload_dir, download_dir]
 
     if workspace_dir.exists():
@@ -31,7 +30,7 @@ def get_audio_cleanup_roots(project_root: Path, upload_dir: Path, download_dir: 
     return [path for path in _dedupe_paths(candidate_paths) if path.exists() and path.is_dir()]
 
 
-def cleanup_expired_audio(project_root: Path, upload_dir: Path, download_dir: Path, retention_days: int = 7):
+def cleanup_expired_audio(workspace_dir: Path, upload_dir: Path, download_dir: Path, retention_days: int = 7):
     cutoff_ts = time.time() - (retention_days * 24 * 60 * 60)
     summary = {
         "retention_days": retention_days,
@@ -42,7 +41,7 @@ def cleanup_expired_audio(project_root: Path, upload_dir: Path, download_dir: Pa
         "errors": [],
     }
 
-    for root_dir in get_audio_cleanup_roots(project_root, upload_dir, download_dir):
+    for root_dir in get_audio_cleanup_roots(workspace_dir, upload_dir, download_dir):
         summary["checked_dirs"].append(str(root_dir))
         for file_path in root_dir.rglob("*"):
             if not file_path.is_file() or file_path.suffix.lower() not in AUDIO_EXTENSIONS:

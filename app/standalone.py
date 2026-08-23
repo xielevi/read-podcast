@@ -8,7 +8,6 @@ import logging
 import os
 import secrets
 from contextlib import asynccontextmanager, suppress
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
@@ -18,11 +17,11 @@ from app.database import close_db, init_db, reset_stale_tasks
 from app.router import router
 from modules.audio_cleanup import cleanup_expired_audio
 from modules.config import settings
+from modules.runtime_paths import PROJECT_ROOT
 
-READ_PODCAST_ROOT = Path(__file__).parent.parent.absolute()
-FRONTEND_FILE = READ_PODCAST_ROOT / "app" / "static" / "index.html"
-FRONTEND_CSS_FILE = READ_PODCAST_ROOT / "app" / "static" / "app.css"
-FRONTEND_JS_FILE = READ_PODCAST_ROOT / "app" / "static" / "app.js"
+FRONTEND_FILE = PROJECT_ROOT / "app" / "static" / "index.html"
+FRONTEND_CSS_FILE = PROJECT_ROOT / "app" / "static" / "app.css"
+FRONTEND_JS_FILE = PROJECT_ROOT / "app" / "static" / "app.js"
 AUDIO_RETENTION_DAYS = int(settings.RUNTIME_CONFIG.get("audio_retention_days", 7))
 CLEANUP_INTERVAL_SECONDS = max(
     60,
@@ -94,8 +93,8 @@ def _basic_auth_challenge() -> Response:
 async def _cleanup_once():
     return await asyncio.to_thread(
         cleanup_expired_audio,
-        READ_PODCAST_ROOT,
-        READ_PODCAST_ROOT / "workspace" / "uploads",
+        settings.DATA_DIR,
+        settings.DATA_DIR / "uploads",
         settings.DOWNLOAD_DIR,
         AUDIO_RETENTION_DAYS,
     )

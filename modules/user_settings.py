@@ -364,10 +364,7 @@ def _validate_number(value: str, field: Dict[str, Any]) -> Any:
 
 
 def _abs_path(value: str) -> Path:
-    candidate = Path(value).expanduser()
-    if candidate.is_absolute():
-        return candidate
-    return (settings.PROJECT_ROOT / candidate).absolute()
+    return settings._to_abs_path(value)
 
 
 def _validate_directory(value: str) -> str:

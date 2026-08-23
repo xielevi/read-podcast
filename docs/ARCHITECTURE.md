@@ -35,6 +35,7 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 - 下载与精修使用 `runtime.download_concurrency` / `runtime.refine_concurrency` 控制有限并发，Whisper 对外单请求；不同任务可跨阶段重叠。
 - 同机部署提交 workspace 相对路径（`/transcribe-path`，服务端 allowlist 约束）；分离部署回退 multipart 上传。
 - 运行数据全部位于 Compose 挂载的 `config/`、`workspace/`、`output/`；配置首次启动从镜像内置默认自动种子。
+- 可写工作数据由 `READ_PODCAST_DATA_DIR` 统一定位；未设置时保持仓库 `workspace/`，打包 App 则指向 Application Support，代码目录始终只读。
 
 ## HTTP 契约（MLX 后端）
 
@@ -75,7 +76,9 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 **D14 云文档账号 OAuth。** 左栏 Google 文档与飞书文档入口是独立的账号连接流程，不再跳转通用设置面板。首次连接时，用户在专用抽屉填写各自开发者应用的 Client/App ID 与 Secret；服务端只回传「应用凭据是否已配置」「账号是否已连接」，机密沿用 D12 写入 `config/secrets.env`（0600），绝不回显。授权采用服务端 Authorization Code Flow：Google 请求 `drive.file` 与离线访问，飞书请求用户身份授权；回调必须校验一次性、十分钟过期的 `state`，并且 `redirect_uri` 必须与发起请求同源且路径严格匹配当前 API 回调。刷新令牌只在服务端保存，浏览器不接触 token；回调页仅向同源 opener 发送成功/失败状态后关闭。账号连接后，内置 Google/飞书连接器自动出现；显式 `connectors` 配置仍优先，保持旧 tenant token 与手工刷新令牌配置兼容。OAuth 应用未配置时前端必须显示凭据表单，不能伪装成可直接登录。
 
 
-**D7 品牌与兼容标识。** 项目品牌统一为 Read Podcast，规范技术标识为 `/api/read-podcast`、`READ_PODCAST_*`、`read-podcast:` 与 `X-Read-Podcast-*`。既有 `/api/podcast2md`、`PODCAST2MD_*`、`podcast2md:`、`X-Podcast2MD-*` 和 `workspace/podcast2md.db` 只作为隐藏兼容接口继续保留，避免升级破坏现有配置、客户端与任务数据。
+**D15 代码目录与可写数据目录分离。** `modules.runtime_paths` 是代码根与工作数据根的唯一解析入口。源码、Docker 和旧部署未设置环境变量时继续使用仓库 `workspace/`；只读打包应用通过 `READ_PODCAST_DATA_DIR` 把数据库、上传、缓存、日志和默认稿件目录统一放到 Application Support，不在启动时删除或改写签名后的 `.app` 内容。旧 `workspace/...` 相对配置仍映射到新的数据根，其他相对路径保持项目根语义。所有任务状态与 SSE 事件只返回业务字段和任务 ID，绝不暴露数据根或输出文件绝对路径。
+
+**D7 品牌与兼容标识。** 项目品牌统一为 Read Podcast，规范技术标识为 `/api/read-podcast`、`READ_PODCAST_*`、`read-podcast:` 与 `X-Read-Podcast-*`。既有 `/api/podcast2md`、`PODCAST2MD_*`（包括 `PODCAST2MD_DATA_DIR`）、`podcast2md:`、`X-Podcast2MD-*` 和 `workspace/podcast2md.db` 只作为隐藏兼容接口继续保留，避免升级破坏现有配置、客户端与任务数据。
 
 ## 容错
 
