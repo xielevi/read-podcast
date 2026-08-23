@@ -69,6 +69,21 @@ cd read-podcast
 > 以后每次使用，只要在项目目录里运行 `./scripts/start.sh`。
 > 想关闭：回到运行脚本的终端窗口，按 `Control + C`。
 
+### 构建 macOS 安装镜像（维护者）
+
+发布前在 Apple 芯片 Mac 上运行：
+
+```bash
+bash scripts/pack_macos.sh
+```
+
+脚本固定独立 Python 资产及 SHA256，先在临时目录完成 import、签名和 DMG 完整性验证，
+全部通过后才替换 `dist/` 产物，并生成 `.dmg.sha256`。若要把真实语音转写也作为发布门禁：
+
+```bash
+READ_PODCAST_PACK_SMOKE_AUDIO=/path/to/short-speech.wav bash scripts/pack_macos.sh
+```
+
 ---
 
 ## 🐳 方式二：Docker
