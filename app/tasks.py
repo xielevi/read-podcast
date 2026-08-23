@@ -16,7 +16,6 @@ from modules.pipeline import PodcastPipeline
 
 
 logger = logging.getLogger(__name__)
-READ_PODCAST_ROOT = Path(__file__).parent.parent.absolute()
 
 DOWNLOAD_CONCURRENCY = max(1, int(settings.RUNTIME_CONFIG.get("download_concurrency", 2)))
 REFINE_CONCURRENCY = max(1, int(settings.RUNTIME_CONFIG.get("refine_concurrency", 2)))
@@ -238,7 +237,6 @@ async def _run_stages(
                 "progress": 100,
                 "stage": "done",
                 "status": "success",
-                "output_path": str(resolved_output),
             },
         )
     except asyncio.CancelledError:
@@ -363,7 +361,7 @@ async def run_custom_pipeline(
     loop = asyncio.get_running_loop()
     progress = _thread_reporter(task_id, loop)
     try:
-        workspace_dir = (READ_PODCAST_ROOT / "workspace").resolve()
+        workspace_dir = settings.DATA_DIR.resolve()
         candidate = Path(audio_path)
         resolved_audio = (
             workspace_dir / "uploads" / audio_path

@@ -3,9 +3,9 @@ from pathlib import Path
 from typing import List, Optional
 from datetime import datetime
 from app.models.task import Task, TaskStatus
+from modules.config import settings
 
-PROJECT_ROOT = Path(__file__).parent.parent.absolute()
-DB_PATH = PROJECT_ROOT / "workspace" / "podcast2md.db"
+DB_PATH = settings.DATA_DIR / "podcast2md.db"
 _db: aiosqlite.Connection | None = None
 _db_path: Path | None = None
 ALLOWED_COLUMNS = {

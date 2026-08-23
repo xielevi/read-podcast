@@ -122,7 +122,7 @@ def test_empty_value_removes_override_and_falls_back_to_default(temp_settings):
     stored = yaml.safe_load(temp_settings.read_text(encoding="utf-8"))
     section = stored.get("read-podcast", stored)
     assert "download_dir" not in section.get("paths", {})
-    assert settings.DOWNLOAD_DIR == settings.PROJECT_ROOT / "workspace" / "downloads"
+    assert settings.DOWNLOAD_DIR == settings.DATA_DIR / "downloads"
 
 
 def test_clearing_secret_removes_it_everywhere(temp_settings):

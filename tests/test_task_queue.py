@@ -150,6 +150,29 @@ def test_failure_preserves_last_real_progress_and_message(fresh_db, monkeypatch)
     asyncio.run(scenario())
 
 
+def test_success_sse_event_does_not_expose_output_path(tmp_path, monkeypatch):
+    async def scenario():
+        output_file = tmp_path / "finished.md"
+        output_file.write_text("done", encoding="utf-8")
+        events = []
+
+        async def ignore_update(*_args, **_kwargs):
+            return None
+
+        async def capture(_task_id, payload):
+            events.append(payload)
+
+        monkeypatch.setattr(tasks, "update_task", ignore_update)
+        monkeypatch.setattr(tasks.notifier, "push", capture)
+        await tasks._run_stages("safe-event", [], lambda: output_file, "完成")
+
+        assert events[-1]["status"] == "success"
+        assert "output_path" not in events[-1]
+        assert str(tmp_path) not in str(events[-1])
+
+    asyncio.run(scenario())
+
+
 def test_delete_task_only_removes_database_record(fresh_db):
     async def scenario():
         await database.init_db()

@@ -18,7 +18,8 @@ from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
-from modules.config import PROJECT_ROOT, settings
+from modules.config import settings
+from modules.runtime_paths import resolve_runtime_path
 
 
 MLX_CONFIG = settings.MLX_CONFIG
@@ -50,7 +51,7 @@ if _shared_audio_root_value:
     SHARED_AUDIO_ROOT = (
         _shared_audio_root
         if _shared_audio_root.is_absolute()
-        else PROJECT_ROOT / _shared_audio_root
+        else resolve_runtime_path(_shared_audio_root, data_dir=settings.DATA_DIR)
     ).resolve()
 else:
     SHARED_AUDIO_ROOT = None

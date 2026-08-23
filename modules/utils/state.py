@@ -2,7 +2,7 @@ import fcntl
 import json
 from pathlib import Path
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+from modules.runtime_paths import runtime_data_dir
 
 
 class StateManager:
@@ -50,7 +50,7 @@ class StateManager:
 
 def acquire_lock(lock_name="podcast_worker"):
     """使用文件锁防止多个脚本实例同时运行产生冲突。"""
-    lock_dir = PROJECT_ROOT / "workspace/data"
+    lock_dir = runtime_data_dir() / "data"
     lock_dir.mkdir(parents=True, exist_ok=True)
     lock_file = lock_dir / f"{lock_name}.lock"
     handle = lock_file.open("w")

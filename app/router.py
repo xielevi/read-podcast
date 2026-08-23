@@ -172,12 +172,11 @@ def _public_task(task: Task) -> PublicTask:
 
 # ── 路径常量 ──
 
-READ_PODCAST_ROOT = Path(__file__).parent.parent.absolute()
-CACHE_DIR = READ_PODCAST_ROOT / "workspace" / "data"
+CACHE_DIR = settings.DATA_DIR / "data"
 CACHE_FILE = CACHE_DIR / "episodes_cache.json"
 CACHE_TTL_SECONDS = 3600
 EPISODE_PREVIEW_LIMIT = 10
-UPLOAD_DIR = READ_PODCAST_ROOT / "workspace" / "uploads"
+UPLOAD_DIR = settings.DATA_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_AUDIO_EXTS = {".mp3", ".m4a", ".wav", ".flac", ".ogg", ".aac", ".opus", ".wma"}
 ALLOWED_TEXT_OUTPUT_EXTS = {".md", ".markdown", ".txt"}
@@ -672,7 +671,7 @@ async def create_custom_task(body: CustomTaskRequest) -> Dict[str, str]:
     if p.name != filename:
         raise HTTPException(status_code=400, detail="文件名非法")
 
-    workspace_dir = READ_PODCAST_ROOT / "workspace"
+    workspace_dir = settings.DATA_DIR
     resolved_audio = workspace_dir / "uploads" / filename
     resolved_output = workspace_dir / "custom_outputs"
     resolved_output.mkdir(parents=True, exist_ok=True)

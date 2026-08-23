@@ -40,7 +40,7 @@ def _find_raw_transcript(path: str | None, podcast: str | None, title: str | Non
         if candidate.is_file():
             return candidate
     if podcast and title:
-        transcript_dir = settings.PROJECT_ROOT / "workspace" / podcast / "transcripts"
+        transcript_dir = settings.DATA_DIR / podcast / "transcripts"
         matches = sorted(transcript_dir.glob(f"*{title}*_raw.txt"))
         if matches:
             return matches[0]
@@ -114,7 +114,7 @@ def _raw_for_markdown(source_dir: Path, filename_base: str) -> Path | None:
 
 def _batch(args: argparse.Namespace, logger) -> bool:
     podcast = _podcast_config(args.podcast)
-    source_dir = settings.PROJECT_ROOT / "workspace" / "transfer_txt"
+    source_dir = settings.DATA_DIR / "transfer_txt"
     episodes = RSSParser(podcast["rss_url"], podcast["name"]).fetch_episodes(limit=40)
     formatter = Formatter()
     failed = False
