@@ -7,7 +7,12 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from modules.config import settings
-from modules.network_security import redact_url, safe_get, validate_public_url
+from modules.network_security import (
+    OUTBOUND_USER_AGENT,
+    redact_url,
+    safe_get,
+    validate_public_url,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -27,11 +32,11 @@ AUDIO_EXTENSIONS = {
 MIN_AUDIO_BYTES = 100 * 1024
 MAX_DOWNLOAD_BYTES = max(
     MIN_AUDIO_BYTES + 1,
-    int(settings.RUNTIME_CONFIG.get("max_download_bytes", 2 * 1024 * 1024 * 1024)),
+    settings.RUNTIME_CONFIG["max_download_bytes"],
 )
 DOWNLOAD_TIMEOUT_SECONDS = max(
     60,
-    int(settings.RUNTIME_CONFIG.get("download_timeout_seconds", 1800)),
+    settings.RUNTIME_CONFIG["download_timeout_seconds"],
 )
 CONTENT_TYPE_EXTENSIONS = {
     "audio/aac": ".aac",
@@ -80,12 +85,7 @@ class Downloader:
     def _direct_download(self, url: str, filename_base: str) -> str | None:
         """优先直接保存 RSS enclosure 的源音频，不做转码。"""
         logger.info("正在直接下载源音频: %s", redact_url(url))
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
-        }
+        headers = {"User-Agent": OUTBOUND_USER_AGENT}
         temp_path: Path | None = None
         try:
             with safe_get(

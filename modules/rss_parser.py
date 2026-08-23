@@ -6,21 +6,31 @@ import feedparser
 from urllib3.exceptions import InsecureRequestWarning
 
 from modules.config import settings
-from modules.network_security import read_limited, redact_url, safe_get
+from modules.network_security import (
+    OUTBOUND_USER_AGENT,
+    read_limited,
+    redact_url,
+    safe_get,
+)
 
 logger = logging.getLogger(__name__)
 
 RE_BR = re.compile(r'<br\s*/?>', re.IGNORECASE)
 RE_P_CLOSE = re.compile(r'</p>', re.IGNORECASE)
 RE_TAGS = re.compile(r'<[^>]+>')
-MAX_RSS_BYTES = max(1024, int(settings.RUNTIME_CONFIG.get("max_rss_bytes", 10 * 1024 * 1024)))
+MAX_RSS_BYTES = max(
+    1024,
+    settings.RUNTIME_CONFIG["max_rss_bytes"],
+)
 
 
 class RSSParser:
     def __init__(self, rss_url, name, insecure_tls=False):
         self.rss_url = rss_url
         self.name = name
-        self.insecure_tls = bool(insecure_tls)
+        # 只有真正的布尔 True 才算显式开启：YAML 里写成 "false" 这类字符串
+        # 会被 bool(...) 判成真值，从而在管理员明确禁用时仍降级 TLS 校验。
+        self.insecure_tls = insecure_tls is True
         self.channel_image = ""
 
     @staticmethod
@@ -45,30 +55,25 @@ class RSSParser:
         logger.info("正在获取播客节目 [%s]: %s", self.name, redact_url(self.rss_url))
         
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'User-Agent': OUTBOUND_USER_AGENT,
             'Accept': 'application/rss+xml, application/xml;q=0.9, */*;q=0.8'
         }
 
         try:
-            response = self._get(headers, verify=True)
-            response.raise_for_status()
-            rss_content = read_limited(response, MAX_RSS_BYTES)
-            response.close()
-            feed = feedparser.parse(rss_content)
+            feed = self._fetch_feed(headers, verify=True)
         except requests.exceptions.SSLError:
             logger.warning("RSS 源证书校验失败 [%s]", self.name)
             if not self.insecure_tls:
                 return []
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore", InsecureRequestWarning)
-                response = self._get(headers, verify=False)
-            response.raise_for_status()
-            rss_content = read_limited(response, MAX_RSS_BYTES)
-            response.close()
-            feed = feedparser.parse(rss_content)
-        except Exception:
+            try:
+                with warnings.catch_warnings():
+                    warnings.simplefilter("ignore", InsecureRequestWarning)
+                    feed = self._fetch_feed(headers, verify=False)
+            except (requests.RequestException, ValueError, OSError):
+                logger.error("RSS TLS 降级重试失败 [%s]（URL 与异常详情未写入日志）", self.name)
+                return []
+        except (requests.RequestException, ValueError, OSError):
             logger.error("访问 RSS URL 失败 [%s]（URL 与异常详情未写入日志）", self.name)
-            # 如果是 stovol.club 这种经常超时的，尝试备选镜像或稍后重试逻辑
             return []
         
         self.channel_image = self._extract_channel_image(feed) or self.channel_image
@@ -167,6 +172,14 @@ class RSSParser:
             verify=verify,
             stream=True,
         )
+
+    def _fetch_feed(self, headers, *, verify):
+        response = self._get(headers, verify=verify)
+        try:
+            response.raise_for_status()
+            return feedparser.parse(read_limited(response, MAX_RSS_BYTES))
+        finally:
+            response.close()
 
     def _parse_duration(self, duration_str):
         # 解析多种格式的时长字符串为秒
