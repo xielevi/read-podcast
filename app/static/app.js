@@ -852,10 +852,12 @@
       if (button) button.disabled = true;
       setHidden(byId('task-card'), false);
       setTaskStatus('正在转录', 0);
-      var url = appUrl('/api/read-podcast/tasks?podcast_name=' + encodeURIComponent(sourceName)
-        + '&episode_title=' + encodeURIComponent(title)
-        + (force ? '&force=true' : ''));
-      fetch(url, { method: 'POST' })
+      var url = appUrl('/api/read-podcast/tasks');
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ podcast_name: sourceName, episode_title: title, force: !!force }),
+      })
         .then(function (response) {
           return response.json().then(function (data) {
             if (!response.ok) { var err = new Error(data.detail || ('HTTP ' + response.status)); err.status = response.status; throw err; }

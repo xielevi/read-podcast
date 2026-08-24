@@ -18,3 +18,25 @@ jobs:
           python-version: "3.12"
       - run: uv sync --locked --dev
       - run: uv run pytest -q
+
+  static-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          version: "0.11.29"
+          python-version: "3.12"
+      - name: Python bytecode compile
+        run: uv run python -m compileall -q app modules scripts services
+      - name: Shell syntax (bash -n)
+        run: for f in scripts/*.sh; do bash -n "$f"; done
+      - name: ShellCheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq shellcheck
+          # 门禁到 warning：warning/error 一律失败；info/style 级提示（如 SC2015
+          # 对 `A && B || C` 的说明，此处均为有意写法）不阻断构建。
+          shellcheck -x --severity=warning scripts/*.sh
+      - name: JavaScript syntax (node --check)
+        run: node --check app/static/app.js

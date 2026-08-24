@@ -260,3 +260,35 @@ def test_failed_task_retry_replaces_old_record(monkeypatch):
     assert response["task_id"] == "new-task"
     create.assert_awaited_once_with("东腔西调", "Vol.273", force=True)
     delete.assert_awaited_once_with("failed-task")
+
+
+def test_create_task_requires_json_body_not_query_params():
+    """稳定版收口：POST /tasks 只接受 JSON body，旧的纯 query 参数不再被接受。"""
+    with TestClient(app) as client:
+        # 只带 query 参数、没有 JSON body：应被 Pydantic 拒绝为 422，而不是静默建任务。
+        res = client.post(
+            "/api/read-podcast/tasks"
+            "?podcast_name=P&episode_title=E&force=true"
+        )
+        assert res.status_code == 422
+
+
+def test_create_task_accepts_json_body(monkeypatch):
+    with patch("app.router.create_and_start_task", new=AsyncMock(return_value="task-123")) as create:
+        with TestClient(app) as client:
+            res = client.post(
+                "/api/read-podcast/tasks",
+                json={"podcast_name": "东腔西调", "episode_title": "Vol.273", "force": True},
+            )
+    assert res.status_code == 200
+    assert res.json() == {"task_id": "task-123", "status": "created"}
+    create.assert_awaited_once_with("东腔西调", "Vol.273", force=True)
+
+
+def test_create_task_rejects_overlong_title():
+    with TestClient(app) as client:
+        res = client.post(
+            "/api/read-podcast/tasks",
+            json={"podcast_name": "P", "episode_title": "x" * 1001},
+        )
+        assert res.status_code == 422
