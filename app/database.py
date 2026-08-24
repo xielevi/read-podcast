@@ -179,18 +179,11 @@ async def has_successful_task(podcast_name: str, episode_title: str) -> bool:
         return await cursor.fetchone() is not None
 
 
-# 已完成/已读集合供前端渲染徽标。个人库通常只有几百到几千条，这里加一个宽松的
-# 安全上限（按时间倒序，只在极端体量下丢弃最旧的记录），避免一次性把无上限的结果
-# 读进内存与 JSON，同时对真实用户实际无损。
-LIST_KEYS_SAFETY_LIMIT = 10000
-
-
-async def list_completed_keys(limit: int = LIST_KEYS_SAFETY_LIMIT) -> list[dict[str, str]]:
+async def list_completed_keys() -> list[dict[str, str]]:
     db = await _connection()
     async with db.execute(
         "SELECT podcast_name, episode_title, id FROM tasks "
-        "WHERE status = 'success' ORDER BY created_at DESC, rowid DESC LIMIT ?",
-        (max(1, int(limit)),),
+        "WHERE status = 'success' ORDER BY created_at DESC"
     ) as cursor:
         rows = await cursor.fetchall()
 
@@ -221,12 +214,8 @@ async def set_episode_read(podcast_name: str, episode_title: str, read: bool) ->
     await db.commit()
 
 
-async def list_read_keys(limit: int = LIST_KEYS_SAFETY_LIMIT) -> list[str]:
+async def list_read_keys() -> list[str]:
     db = await _connection()
-    async with db.execute(
-        "SELECT podcast_name, episode_title FROM read_state "
-        "ORDER BY read_at DESC, rowid DESC LIMIT ?",
-        (max(1, int(limit)),),
-    ) as cursor:
+    async with db.execute("SELECT podcast_name, episode_title FROM read_state") as cursor:
         rows = await cursor.fetchall()
     return [f"{row['podcast_name']}::{row['episode_title']}" for row in rows]
