@@ -34,6 +34,7 @@ mlx = [
 [dependency-groups]
 dev = [
     "pytest>=9.0.3",
+    "ruff>=0.15.8",
 ]
 
 [[tool.uv.index]]
@@ -41,3 +42,18 @@ url = "https://pypi.org/simple"
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+[tool.ruff]
+target-version = "py312"
+extend-exclude = [".venv", "workspace", "dist"]
+
+[tool.ruff.lint]
+# 稳定线上刻意保守：显式钉住规则集（pyflakes F + pycodestyle E4/E7/E9），只抓真问题
+# （未用/未定义名、语法错误、明显缩进/语句错误），不做风格化改动、不强制行宽，
+# 避免冻结前的大面积 churn，也不随 ruff 默认集升级而漂移。需要更严时再逐步加规则。
+select = ["E4", "E7", "E9", "F"]
+
+[tool.ruff.lint.per-file-ignores]
+# CLI 入口脚本与测试在导入项目模块前需要先 sys.path 引导，E402 属预期。
+"scripts/**" = ["E402"]
+"tests/**" = ["E402"]
