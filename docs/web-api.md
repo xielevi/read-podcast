@@ -11,9 +11,9 @@
 
 根路径 `/` 返回 `app/static/index.html`；相对资源 `/app.css` 与 `/app.js` 由同一入口提供，支持代理子路径。前端是无构建工具的经典脚本（全局作用域，非 ES module）；为便于维护，源码按业务域拆分到 `app/static/js/NN-*.js`，由 `scripts/build_frontend.py` 按文件名顺序**逐字节拼接**成运行时实际加载的 `app/static/app.js`（运行时行为与拆分前完全一致）。改完分片后运行 `python scripts/build_frontend.py` 重新生成 `app.js`；CI 用 `--check` 校验二者一致，防止漂移。
 
-## app/router.py — HTTP API
+## app/router.py + app/routers/ — HTTP API
 
-前缀 `/api/read-podcast`。`PublicTask` 模型仅暴露安全字段（不含 `log_path`、`output_path`），并包含经过脱敏的最后一条 `message`。
+前缀 `/api/read-podcast`。`app/router.py` 现为聚合入口，把 `app/routers/` 下按业务域拆分的子路由（`episodes` / `tasks` / `assistant` / `connectors` / `settings`）并入同一 `router`，对外路径不变；请求/响应模型集中在 `app/schemas.py`。`PublicTask` 模型仅暴露安全字段（不含 `log_path`、`output_path`），并包含经过脱敏的最后一条 `message`。
 
 | 方法 | 路径 | 功能 |
 | :--- | :--- | :--- |

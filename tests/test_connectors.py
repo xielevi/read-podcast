@@ -11,7 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from app.standalone import app
-from app import router as router_module
+from app.routers import connectors as router_module
 from modules import connectors as connectors_module
 from modules.config import settings
 from modules.connectors import (
