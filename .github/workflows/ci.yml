@@ -27,6 +27,8 @@ jobs:
         with:
           version: "0.11.29"
           python-version: "3.12"
+      - name: Ruff lint
+        run: uv run ruff check .
       - name: Python bytecode compile
         run: uv run python -m compileall -q app modules scripts services
       - name: Shell syntax (bash -n)
@@ -39,4 +41,8 @@ jobs:
           # 对 `A && B || C` 的说明，此处均为有意写法）不阻断构建。
           shellcheck -x --severity=warning scripts/*.sh
       - name: JavaScript syntax (node --check)
-        run: node --check app/static/app.js
+        run: |
+          for f in app/static/js/*.js; do node --check "$f"; done
+          node --check app/static/app.js
+      - name: Frontend bundle up to date
+        run: uv run python scripts/build_frontend.py --check
