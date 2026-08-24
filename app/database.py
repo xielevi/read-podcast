@@ -179,23 +179,38 @@ async def has_successful_task(podcast_name: str, episode_title: str) -> bool:
         return await cursor.fetchone() is not None
 
 
-async def list_completed_keys() -> list[dict[str, str]]:
+async def list_completed_keys(
+    limit: int | None = None,
+    offset: int = 0,
+) -> list[dict[str, str]]:
     db = await _connection()
+    pagination = " LIMIT ? OFFSET ?" if limit is not None else ""
+    params: tuple[int, ...] = (
+        (max(1, int(limit)), max(0, int(offset))) if limit is not None else ()
+    )
     async with db.execute(
-        "SELECT podcast_name, episode_title, id FROM tasks "
-        "WHERE status = 'success' ORDER BY created_at DESC"
+        "WITH ranked AS ("
+        "SELECT podcast_name, episode_title, id, created_at, rowid AS task_rowid, "
+        "ROW_NUMBER() OVER ("
+        "PARTITION BY podcast_name, episode_title "
+        "ORDER BY created_at DESC, rowid DESC"
+        ") AS task_rank "
+        "FROM tasks WHERE status = 'success'"
+        ") "
+        "SELECT podcast_name, episode_title, id FROM ranked "
+        "WHERE task_rank = 1 ORDER BY created_at DESC, task_rowid DESC"
+        + pagination,
+        params,
     ) as cursor:
         rows = await cursor.fetchall()
 
-    completed: list[dict[str, str]] = []
-    seen: set[str] = set()
-    for row in rows:
-        key = f"{row['podcast_name']}::{row['episode_title']}"
-        if key in seen:
-            continue
-        seen.add(key)
-        completed.append({"key": key, "task_id": row["id"]})
-    return completed
+    return [
+        {
+            "key": f"{row['podcast_name']}::{row['episode_title']}",
+            "task_id": row["id"],
+        }
+        for row in rows
+    ]
 
 
 async def set_episode_read(podcast_name: str, episode_title: str, read: bool) -> None:
@@ -214,8 +229,16 @@ async def set_episode_read(podcast_name: str, episode_title: str, read: bool) ->
     await db.commit()
 
 
-async def list_read_keys() -> list[str]:
+async def list_read_keys(limit: int | None = None, offset: int = 0) -> list[str]:
     db = await _connection()
-    async with db.execute("SELECT podcast_name, episode_title FROM read_state") as cursor:
+    pagination = " LIMIT ? OFFSET ?" if limit is not None else ""
+    params: tuple[int, ...] = (
+        (max(1, int(limit)), max(0, int(offset))) if limit is not None else ()
+    )
+    async with db.execute(
+        "SELECT podcast_name, episode_title FROM read_state "
+        "ORDER BY read_at DESC, rowid DESC" + pagination,
+        params,
+    ) as cursor:
         rows = await cursor.fetchall()
     return [f"{row['podcast_name']}::{row['episode_title']}" for row in rows]

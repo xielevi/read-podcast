@@ -21,6 +21,8 @@ from modules.rss_parser import RSSParser
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Read Podcast"])
+KEY_PAGE_SIZE = 200
+KEY_PAGE_MAX = 500
 
 # ── 路径常量与内存缓存 ──
 CACHE_DIR = settings.DATA_DIR / "data"
@@ -422,9 +424,17 @@ async def delete_subscription(name: str) -> Dict:
 # ── 已读状态（服务端持久化，不依赖浏览器本地存储）──
 
 @router.get("/episodes/read")
-async def get_read_episodes() -> List[str]:
-    """已读单集的 `播客名::标题` key 列表。"""
-    return await list_read_keys()
+async def get_read_episodes(
+    limit: int = Query(KEY_PAGE_SIZE, ge=1, le=KEY_PAGE_MAX),
+    offset: int = Query(0, ge=0),
+) -> Dict:
+    """分页返回已读单集 key，避免一次构造无上限的数据库结果和 JSON。"""
+    rows = await list_read_keys(limit=limit + 1, offset=offset)
+    has_more = len(rows) > limit
+    return {
+        "items": rows[:limit],
+        "next_offset": offset + limit if has_more else None,
+    }
 
 
 @router.put("/episodes/read")

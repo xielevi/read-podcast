@@ -62,9 +62,31 @@
     }
     function setHidden(element, hidden) { if (element) element.hidden = hidden; }
 
+    function fetchAllPages(path) {
+      var items = [];
+      var pageSize = 500;
+      function fetchPage(offset) {
+        var separator = path.includes('?') ? '&' : '?';
+        return fetch(appUrl(path + separator + 'limit=' + pageSize + '&offset=' + offset))
+          .then(function (response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+          })
+          .then(function (payload) {
+            // 兼容前后端滚动更新期间仍返回旧数组格式的服务端。
+            if (Array.isArray(payload)) return payload;
+            var pageItems = payload && Array.isArray(payload.items) ? payload.items : [];
+            items.push.apply(items, pageItems);
+            var nextOffset = payload ? Number(payload.next_offset) : NaN;
+            if (Number.isInteger(nextOffset) && nextOffset > offset) return fetchPage(nextOffset);
+            return items;
+          });
+      }
+      return fetchPage(0);
+    }
+
     function loadReadEpisodes() {
-      return fetch(appUrl('/api/read-podcast/episodes/read'))
-        .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+      return fetchAllPages('/api/read-podcast/episodes/read')
         .then(function (keys) {
           _readEpisodes = {};
           (Array.isArray(keys) ? keys : []).forEach(function (key) { _readEpisodes[String(key)] = true; });
@@ -139,7 +161,6 @@
       var date = new Date();
       byId('edition-date').textContent = date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }) + ' · 编辑室';
     }());
-
     function switchMode(mode) {
       currentMode = mode;
       var podcastMode = mode === 'podcast';
@@ -1132,8 +1153,7 @@
             if (id !== 'local' && !visibleTaskIds[id] && _taskCards[id].status !== 'success') delete _taskCards[id];
           });
           renderTaskQueue();
-          fetch(appUrl('/api/read-podcast/tasks/completed-keys'))
-            .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+          fetchAllPages('/api/read-podcast/tasks/completed-keys')
             .then(function (completed) {
               _taskHistoryMap = {};
               (Array.isArray(completed) ? completed : []).forEach(function (item) { _taskHistoryMap[item.key] = _taskHistory.find(function (task) { return String(task.id) === String(item.task_id); }) || { id: item.task_id, status: 'success', podcast_name: item.key.split('::')[0], episode_title: item.key.split('::').slice(1).join('::') }; });
@@ -1226,7 +1246,6 @@
     function setTaskBadge(type, text) {
       var task = ensureTaskCard(_currentTaskId || 'local'); task.status = type === 'success' ? 'success' : type === 'error' ? 'failed' : 'running'; task.message = text; renderTaskQueue();
     }
-
     function openDrawer() {
       _savedScrollY = window.scrollY;
       document.body.style.position = 'fixed';

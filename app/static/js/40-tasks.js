@@ -291,8 +291,7 @@
             if (id !== 'local' && !visibleTaskIds[id] && _taskCards[id].status !== 'success') delete _taskCards[id];
           });
           renderTaskQueue();
-          fetch(appUrl('/api/read-podcast/tasks/completed-keys'))
-            .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+          fetchAllPages('/api/read-podcast/tasks/completed-keys')
             .then(function (completed) {
               _taskHistoryMap = {};
               (Array.isArray(completed) ? completed : []).forEach(function (item) { _taskHistoryMap[item.key] = _taskHistory.find(function (task) { return String(task.id) === String(item.task_id); }) || { id: item.task_id, status: 'success', podcast_name: item.key.split('::')[0], episode_title: item.key.split('::').slice(1).join('::') }; });
@@ -385,4 +384,3 @@
     function setTaskBadge(type, text) {
       var task = ensureTaskCard(_currentTaskId || 'local'); task.status = type === 'success' ? 'success' : type === 'error' ? 'failed' : 'running'; task.message = text; renderTaskQueue();
     }
-

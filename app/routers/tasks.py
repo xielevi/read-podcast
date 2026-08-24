@@ -40,6 +40,8 @@ MAX_UPLOAD_BYTES = max(
     1,
     int(settings.RUNTIME_CONFIG.get("max_upload_bytes", 2 * 1024 * 1024 * 1024)),
 )
+KEY_PAGE_SIZE = 200
+KEY_PAGE_MAX = 500
 
 
 def _public_task(task: Task) -> PublicTask:
@@ -138,8 +140,16 @@ async def get_all_tasks(limit: int = Query(20, ge=1, le=200)) -> List[PublicTask
 
 
 @router.get("/tasks/completed-keys")
-async def get_completed_task_keys() -> List[Dict[str, str]]:
-    return await list_completed_keys()
+async def get_completed_task_keys(
+    limit: int = Query(KEY_PAGE_SIZE, ge=1, le=KEY_PAGE_MAX),
+    offset: int = Query(0, ge=0),
+) -> Dict:
+    rows = await list_completed_keys(limit=limit + 1, offset=offset)
+    has_more = len(rows) > limit
+    return {
+        "items": rows[:limit],
+        "next_offset": offset + limit if has_more else None,
+    }
 
 
 @router.get("/tasks/stream")

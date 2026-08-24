@@ -62,9 +62,31 @@
     }
     function setHidden(element, hidden) { if (element) element.hidden = hidden; }
 
+    function fetchAllPages(path) {
+      var items = [];
+      var pageSize = 500;
+      function fetchPage(offset) {
+        var separator = path.includes('?') ? '&' : '?';
+        return fetch(appUrl(path + separator + 'limit=' + pageSize + '&offset=' + offset))
+          .then(function (response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+          })
+          .then(function (payload) {
+            // 兼容前后端滚动更新期间仍返回旧数组格式的服务端。
+            if (Array.isArray(payload)) return payload;
+            var pageItems = payload && Array.isArray(payload.items) ? payload.items : [];
+            items.push.apply(items, pageItems);
+            var nextOffset = payload ? Number(payload.next_offset) : NaN;
+            if (Number.isInteger(nextOffset) && nextOffset > offset) return fetchPage(nextOffset);
+            return items;
+          });
+      }
+      return fetchPage(0);
+    }
+
     function loadReadEpisodes() {
-      return fetch(appUrl('/api/read-podcast/episodes/read'))
-        .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
+      return fetchAllPages('/api/read-podcast/episodes/read')
         .then(function (keys) {
           _readEpisodes = {};
           (Array.isArray(keys) ? keys : []).forEach(function (key) { _readEpisodes[String(key)] = true; });
@@ -139,4 +161,3 @@
       var date = new Date();
       byId('edition-date').textContent = date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }) + ' · 编辑室';
     }());
-

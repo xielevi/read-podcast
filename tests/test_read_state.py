@@ -31,7 +31,10 @@ def test_set_episode_read_then_unread_round_trip():
 
 def test_read_episode_endpoints_round_trip():
     with TestClient(app) as client:
-        assert client.get("/api/read-podcast/episodes/read").json() == []
+        assert client.get("/api/read-podcast/episodes/read").json() == {
+            "items": [],
+            "next_offset": None,
+        }
 
         response = client.put(
             "/api/read-podcast/episodes/read",
@@ -39,14 +42,44 @@ def test_read_episode_endpoints_round_trip():
         )
         assert response.status_code == 200
         assert response.json() == {"ok": True}
-        assert client.get("/api/read-podcast/episodes/read").json() == ["播客B::第二期"]
+        assert client.get("/api/read-podcast/episodes/read").json() == {
+            "items": ["播客B::第二期"],
+            "next_offset": None,
+        }
 
         response = client.put(
             "/api/read-podcast/episodes/read",
             json={"podcast_name": "播客B", "episode_title": "第二期", "read": False},
         )
         assert response.status_code == 200
-        assert client.get("/api/read-podcast/episodes/read").json() == []
+        assert client.get("/api/read-podcast/episodes/read").json() == {
+            "items": [],
+            "next_offset": None,
+        }
+
+
+def test_read_episode_endpoint_pages_without_losing_old_keys():
+    async def seed():
+        await database.init_db()
+        for index in range(5):
+            await database.set_episode_read("播客C", f"第{index}期", True)
+
+    asyncio.run(seed())
+
+    with TestClient(app) as client:
+        first = client.get("/api/read-podcast/episodes/read?limit=2&offset=0")
+        second = client.get("/api/read-podcast/episodes/read?limit=2&offset=2")
+        third = client.get("/api/read-podcast/episodes/read?limit=2&offset=4")
+
+    assert first.json() == {
+        "items": ["播客C::第4期", "播客C::第3期"],
+        "next_offset": 2,
+    }
+    assert second.json() == {
+        "items": ["播客C::第2期", "播客C::第1期"],
+        "next_offset": 4,
+    }
+    assert third.json() == {"items": ["播客C::第0期"], "next_offset": None}
 
 
 def test_read_episode_endpoint_rejects_empty_fields():
