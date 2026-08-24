@@ -9,7 +9,7 @@
 - 可选 Basic Auth：`READ_PODCAST_BASIC_AUTH_USERNAME` 与 `READ_PODCAST_BASIC_AUTH_PASSWORD` 必须同时设置或同时留空（只设一个会启动失败）；健康检查路径始终免认证。
 - GZip 中间件压缩大响应。
 
-根路径 `/` 返回 `app/static/index.html`；相对资源 `/app.css` 与 `/app.js` 由同一入口提供，支持代理子路径。
+根路径 `/` 返回 `app/static/index.html`；相对资源 `/app.css` 与 `/app.js` 由同一入口提供，支持代理子路径。前端是无构建工具的经典脚本（全局作用域，非 ES module）；为便于维护，源码按业务域拆分到 `app/static/js/NN-*.js`，由 `scripts/build_frontend.py` 按文件名顺序**逐字节拼接**成运行时实际加载的 `app/static/app.js`（运行时行为与拆分前完全一致）。改完分片后运行 `python scripts/build_frontend.py` 重新生成 `app.js`；CI 用 `--check` 校验二者一致，防止漂移。
 
 ## app/router.py + app/routers/ — HTTP API
 
