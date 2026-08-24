@@ -10,7 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from app.standalone import app
-from app import router as router_module
+from app.routers import episodes as router_module
 from modules import network_security
 from modules.config import settings
 from modules.rss_parser import RSSParser
@@ -46,7 +46,7 @@ def test_add_subscription_persists_image(tmp_path, monkeypatch):
     fake_parser.fetch_episodes.return_value = [{"title": "Ep1"}]
     fake_parser.channel_image = "https://cdn.example.com/feedcover.jpg"
 
-    with patch("app.router.RSSParser", return_value=fake_parser):
+    with patch("app.routers.episodes.RSSParser", return_value=fake_parser):
         with TestClient(app) as client:
             res = client.post(
                 "/api/read-podcast/subscriptions",
@@ -69,7 +69,7 @@ def test_add_subscription_falls_back_to_channel_image(tmp_path, monkeypatch):
     fake_parser.fetch_episodes.return_value = [{"title": "Ep1"}]
     fake_parser.channel_image = "https://cdn.example.com/feedcover.jpg"
 
-    with patch("app.router.RSSParser", return_value=fake_parser):
+    with patch("app.routers.episodes.RSSParser", return_value=fake_parser):
         with TestClient(app) as client:
             res = client.post(
                 "/api/read-podcast/subscriptions",

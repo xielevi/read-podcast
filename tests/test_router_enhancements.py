@@ -10,7 +10,8 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from app.standalone import app
-from app import router as router_module
+from app.routers import episodes as episodes_module
+from app.routers import tasks as tasks_module
 from modules.config import settings
 
 
@@ -27,9 +28,9 @@ def test_search_podcast_with_direct_rss_url(monkeypatch):
             "id": "1",
         }
     ]
-    monkeypatch.setattr(router_module, "validate_public_url", lambda url: url)
+    monkeypatch.setattr(episodes_module, "validate_public_url", lambda url: url)
 
-    with patch("app.router.RSSParser") as MockRSSParser:
+    with patch("app.routers.episodes.RSSParser") as MockRSSParser:
         instance = MockRSSParser.return_value
         instance.fetch_episodes.return_value = fake_episodes
 
@@ -66,8 +67,8 @@ def test_delete_subscription(tmp_path, monkeypatch):
 def test_get_episodes_swr_cache(monkeypatch):
     monkeypatch.setattr(settings, "PODCASTS", [{"name": "SWRPodcast", "rss_url": "https://example.com/swr.xml"}])
     scheduled = []
-    monkeypatch.setattr(router_module, "_schedule_episode_refresh", lambda name, url: scheduled.append((name, url)))
-    router_module._episodes_cache["SWRPodcast"] = {
+    monkeypatch.setattr(episodes_module, "_schedule_episode_refresh", lambda name, url: scheduled.append((name, url)))
+    episodes_module._episodes_cache["SWRPodcast"] = {
         "data": [{"title": "Cached Ep 1", "published": "", "duration": "", "duration_seconds": 0, "audio_url": "", "link": "", "summary": ""}],
         "ts": 1000.0,  # Expired timestamp
         "min_duration": 0,
@@ -85,7 +86,7 @@ def test_get_episodes_swr_cache(monkeypatch):
 
 def test_get_episodes_cold_cache_returns_preview_and_schedules_full_refresh(monkeypatch):
     monkeypatch.setattr(settings, "PODCASTS", [{"name": "ColdPodcast", "rss_url": "https://example.com/cold.xml"}])
-    router_module._episodes_cache.pop("ColdPodcast", None)
+    episodes_module._episodes_cache.pop("ColdPodcast", None)
     fetch_limits = []
     scheduled = []
 
@@ -96,9 +97,9 @@ def test_get_episodes_cold_cache_returns_preview_and_schedules_full_refresh(monk
             for index in range(limit)
         ]
 
-    monkeypatch.setattr(router_module, "_fetch_episodes_sync", fake_fetch)
-    monkeypatch.setattr(router_module, "_save_persistent_cache", lambda cache: None)
-    monkeypatch.setattr(router_module, "_schedule_episode_refresh", lambda name, url: scheduled.append((name, url)))
+    monkeypatch.setattr(episodes_module, "_fetch_episodes_sync", fake_fetch)
+    monkeypatch.setattr(episodes_module, "_save_persistent_cache", lambda cache: None)
+    monkeypatch.setattr(episodes_module, "_schedule_episode_refresh", lambda name, url: scheduled.append((name, url)))
 
     with TestClient(app) as client:
         response = client.get("/api/read-podcast/episodes?podcast_name=ColdPodcast&limit=10")
@@ -107,13 +108,13 @@ def test_get_episodes_cold_cache_returns_preview_and_schedules_full_refresh(monk
     assert response.headers["x-read-podcast-cache-state"] == "warming"
     assert response.headers["x-podcast2md-cache-state"] == "warming"
     assert len(response.json()) == 10
-    assert fetch_limits == [router_module.EPISODE_PREVIEW_LIMIT]
+    assert fetch_limits == [episodes_module.EPISODE_PREVIEW_LIMIT]
     assert scheduled == [("ColdPodcast", "https://example.com/cold.xml")]
 
 
 def test_get_episodes_limits_cached_payload(monkeypatch):
     monkeypatch.setattr(settings, "PODCASTS", [{"name": "PagedPodcast", "rss_url": "https://example.com/paged.xml"}])
-    router_module._episodes_cache["PagedPodcast"] = {
+    episodes_module._episodes_cache["PagedPodcast"] = {
         "data": [{"title": f"Cached Ep {index}", "published": "", "duration": "", "duration_seconds": 0, "audio_url": "", "link": "", "summary": ""} for index in range(12)],
         "ts": 2_000_000_000.0,
         "complete": True,
@@ -130,23 +131,23 @@ def test_get_episodes_limits_cached_payload(monkeypatch):
 
 def test_get_episodes_resumes_incomplete_cache_refresh(monkeypatch):
     monkeypatch.setattr(settings, "PODCASTS", [{"name": "WarmingPodcast", "rss_url": "https://example.com/warming.xml"}])
-    router_module._episodes_cache["WarmingPodcast"] = {
+    episodes_module._episodes_cache["WarmingPodcast"] = {
         "data": [{"title": "Preview Ep", "published": "", "duration": "", "duration_seconds": 0, "audio_url": "", "link": "", "summary": ""}],
         "ts": 2_000_000_000.0,
         "complete": False,
         "min_duration": 0,
     }
-    router_module._episode_refresh_tasks.pop("WarmingPodcast", None)
+    episodes_module._episode_refresh_tasks.pop("WarmingPodcast", None)
 
     async def fake_refresh(podcast_name, rss_url):
         data = [
             {"title": "Preview Ep", "published": "", "duration": "", "duration_seconds": 0, "audio_url": "", "link": "", "summary": ""},
             {"title": "Older Ep", "published": "", "duration": "", "duration_seconds": 0, "audio_url": "", "link": "", "summary": ""},
         ]
-        router_module._episodes_cache[podcast_name] = {"data": data, "ts": 2_000_000_001.0, "complete": True, "min_duration": 0}
+        episodes_module._episodes_cache[podcast_name] = {"data": data, "ts": 2_000_000_001.0, "complete": True, "min_duration": 0}
         return data
 
-    monkeypatch.setattr(router_module, "refresh_episodes_cache", fake_refresh)
+    monkeypatch.setattr(episodes_module, "refresh_episodes_cache", fake_refresh)
 
     with TestClient(app) as client:
         response = client.get("/api/read-podcast/episodes?podcast_name=WarmingPodcast&limit=0")
@@ -163,7 +164,7 @@ def test_get_episodes_applies_duration_filter(monkeypatch):
         "PODCASTS",
         [{"name": podcast_name, "rss_url": "https://example.com/duration.xml", "filter": {"min_duration_seconds": 600}}],
     )
-    router_module._episodes_cache.pop(podcast_name, None)
+    episodes_module._episodes_cache.pop(podcast_name, None)
     episodes = [
         {"title": "短集", "duration_seconds": 300, "duration": "00:05:00", "audio_url": "https://example.com/short.mp3"},
         {"title": "长集", "duration_seconds": 1200, "duration": "00:20:00", "audio_url": "https://example.com/long.mp3"},
@@ -173,9 +174,9 @@ def test_get_episodes_applies_duration_filter(monkeypatch):
         assert min_duration_seconds == 600
         return [episode for episode in episodes if episode["duration_seconds"] >= min_duration_seconds][:limit]
 
-    monkeypatch.setattr(router_module, "_fetch_episodes_sync", fake_fetch)
-    monkeypatch.setattr(router_module, "_save_persistent_cache", lambda cache: None)
-    monkeypatch.setattr(router_module, "_schedule_episode_refresh", lambda name, url: None)
+    monkeypatch.setattr(episodes_module, "_fetch_episodes_sync", fake_fetch)
+    monkeypatch.setattr(episodes_module, "_save_persistent_cache", lambda cache: None)
+    monkeypatch.setattr(episodes_module, "_schedule_episode_refresh", lambda name, url: None)
 
     with TestClient(app) as client:
         response = client.get(f"/api/read-podcast/episodes?podcast_name={podcast_name}&limit=10")
@@ -209,7 +210,7 @@ def test_completed_keys_include_tasks_older_than_default_page(tmp_path, monkeypa
 
     import asyncio
     asyncio.run(seed())
-    monkeypatch.setattr(router_module, "list_completed_keys", database.list_completed_keys)
+    monkeypatch.setattr(tasks_module, "list_completed_keys", database.list_completed_keys)
 
     with TestClient(app) as client:
         response = client.get("/api/read-podcast/tasks/completed-keys")
@@ -231,10 +232,10 @@ def test_failed_task_can_be_cleared_without_touching_artifacts(monkeypatch):
         status=TaskStatus.FAILED,
     )
     delete = AsyncMock(return_value=True)
-    monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=failed))
-    monkeypatch.setattr(router_module, "delete_task", delete)
+    monkeypatch.setattr(tasks_module, "get_task", AsyncMock(return_value=failed))
+    monkeypatch.setattr(tasks_module, "delete_task", delete)
 
-    response = asyncio.run(router_module.cancel_task_endpoint("failed-task"))
+    response = asyncio.run(tasks_module.cancel_task_endpoint("failed-task"))
 
     assert response == {"task_id": "failed-task", "status": "deleted"}
     delete.assert_awaited_once_with("failed-task")
@@ -251,11 +252,11 @@ def test_failed_task_retry_replaces_old_record(monkeypatch):
     )
     create = AsyncMock(return_value="new-task")
     delete = AsyncMock(return_value=True)
-    monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=failed))
-    monkeypatch.setattr(router_module, "create_and_start_task", create)
-    monkeypatch.setattr(router_module, "delete_task", delete)
+    monkeypatch.setattr(tasks_module, "get_task", AsyncMock(return_value=failed))
+    monkeypatch.setattr(tasks_module, "create_and_start_task", create)
+    monkeypatch.setattr(tasks_module, "delete_task", delete)
 
-    response = asyncio.run(router_module.retry_task_endpoint("failed-task"))
+    response = asyncio.run(tasks_module.retry_task_endpoint("failed-task"))
 
     assert response["task_id"] == "new-task"
     create.assert_awaited_once_with("东腔西调", "Vol.273", force=True)
@@ -274,7 +275,7 @@ def test_create_task_requires_json_body_not_query_params():
 
 
 def test_create_task_accepts_json_body(monkeypatch):
-    with patch("app.router.create_and_start_task", new=AsyncMock(return_value="task-123")) as create:
+    with patch("app.routers.tasks.create_and_start_task", new=AsyncMock(return_value="task-123")) as create:
         with TestClient(app) as client:
             res = client.post(
                 "/api/read-podcast/tasks",
