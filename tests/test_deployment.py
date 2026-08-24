@@ -7,7 +7,7 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 
-from app import router as router_module
+from app.routers import tasks as router_module
 from app.models.task import Task
 from app.standalone import app
 from modules.config import Settings, settings

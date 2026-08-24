@@ -238,7 +238,7 @@ def test_concepts_endpoint_returns_verified_links(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
     from fastapi.testclient import TestClient
     from app.standalone import app
-    from app import router as router_module
+    from app.routers import assistant as router_module
 
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=_make_task(tmp_path)))
     captured = {}
@@ -280,7 +280,7 @@ def test_concepts_endpoint_caches_between_calls(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
     from fastapi.testclient import TestClient
     from app.standalone import app
-    from app import router as router_module
+    from app.routers import assistant as router_module
 
     router_module._concepts_cache.clear()
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=_make_task(tmp_path)))
@@ -307,7 +307,7 @@ def test_concepts_endpoint_rejects_out_of_range_limit(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
     from fastapi.testclient import TestClient
     from app.standalone import app
-    from app import router as router_module
+    from app.routers import assistant as router_module
 
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=_make_task(tmp_path)))
     with TestClient(app) as client:
@@ -319,7 +319,7 @@ def test_concepts_endpoint_empty_transcript_returns_422(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
     from fastapi.testclient import TestClient
     from app.standalone import app
-    from app import router as router_module
+    from app.routers import assistant as router_module
 
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=_make_task(tmp_path, body="")))
     with TestClient(app) as client:
@@ -331,7 +331,7 @@ def test_concepts_endpoint_unconfigured_ai_returns_503(tmp_path, monkeypatch):
     from unittest.mock import AsyncMock
     from fastapi.testclient import TestClient
     from app.standalone import app
-    from app import router as router_module
+    from app.routers import assistant as router_module
 
     router_module._concepts_cache.clear()
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=_make_task(tmp_path)))
@@ -349,7 +349,7 @@ def test_concepts_endpoint_unknown_task_returns_404(monkeypatch):
     from unittest.mock import AsyncMock
     from fastapi.testclient import TestClient
     from app.standalone import app
-    from app import router as router_module
+    from app.routers import assistant as router_module
 
     monkeypatch.setattr(router_module, "get_task", AsyncMock(return_value=None))
     with TestClient(app) as client:

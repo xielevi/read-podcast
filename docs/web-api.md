@@ -11,9 +11,9 @@
 
 根路径 `/` 返回 `app/static/index.html`；相对资源 `/app.css` 与 `/app.js` 由同一入口提供，支持代理子路径。
 
-## app/router.py — HTTP API
+## app/router.py + app/routers/ — HTTP API
 
-前缀 `/api/read-podcast`。`PublicTask` 模型仅暴露安全字段（不含 `log_path`、`output_path`），并包含经过脱敏的最后一条 `message`。
+前缀 `/api/read-podcast`。`app/router.py` 现为聚合入口，把 `app/routers/` 下按业务域拆分的子路由（`episodes` / `tasks` / `assistant` / `connectors` / `settings`）并入同一 `router`，对外路径不变；请求/响应模型集中在 `app/schemas.py`。`PublicTask` 模型仅暴露安全字段（不含 `log_path`、`output_path`），并包含经过脱敏的最后一条 `message`。
 
 | 方法 | 路径 | 功能 |
 | :--- | :--- | :--- |

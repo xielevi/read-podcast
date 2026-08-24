@@ -11,7 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
 
 from app.standalone import app
-from app import router as router_module
+from app.routers import assistant as router_module
 from modules.refiner import AssistantError, assistant_available, chat_completion
 
 
