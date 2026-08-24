@@ -22,13 +22,14 @@
 | GET | `/subscriptions` | 当前播客订阅列表（含持久化的 `image` 封面图，若有） |
 | GET | `/artwork` | SSRF 安全的封面图代理（`url` 参数；校验公网地址、限制类型 image/* 与体积 5MB，`Cache-Control` 一天） |
 | GET | `/episodes` | 剧集列表（SWR 缓存，`X-Read-Podcast-Cache-State` 头标识 complete/stale/warming） |
+| GET/PUT | `/episodes/read?limit=200&offset=0` | 分页查询已读 key（响应含 `items` 与 `next_offset`）/ 持久化单集已读状态 |
 | GET | `/search/podcast` | iTunes 检索 + 直连 RSS 解析 |
 | POST | `/subscriptions` | 添加订阅（校验 RSS 可达，写入 `config.yaml` 顶层 `podcasts`，预热缓存；可选 `image` 封面图，缺省回退 RSS 频道封面） |
 | DELETE | `/subscriptions/{name}` | 删除订阅（同步清理缓存） |
 | POST | `/tasks` | 创建 RSS 单集任务 |
 | POST | `/tasks/custom` | 创建自定义音频任务（prompt 必须来自预设模板，音频须在 uploads 内） |
 | GET | `/tasks` | 任务列表（`PublicTask`，`limit` 默认 20、最大 200） |
-| GET | `/tasks/completed-keys` | 全量成功稿件的节目/单集键与任务 ID |
+| GET | `/tasks/completed-keys?limit=200&offset=0` | 分页返回成功稿件的节目/单集键与任务 ID；响应含 `items` 与 `next_offset` |
 | GET | `/tasks/{id}` | 任务状态（`PublicTask`） |
 | DELETE | `/tasks/{id}` | 取消进行中任务；删除失败/取消记录（不删除音频、缓存或稿件） |
 | POST | `/tasks/{id}/retry` | 使用保留的原音频重试失败/取消任务，并替换旧记录 |

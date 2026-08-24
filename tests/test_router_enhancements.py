@@ -185,7 +185,7 @@ def test_get_episodes_applies_duration_filter(monkeypatch):
     assert [episode["title"] for episode in response.json()] == ["长集"]
 
 
-def test_completed_keys_include_tasks_older_than_default_page(tmp_path, monkeypatch):
+def test_completed_keys_pages_all_tasks_and_keeps_newest_duplicate(tmp_path, monkeypatch):
     import app.database as database
     from app.models.task import Task, TaskStatus
 
@@ -207,19 +207,34 @@ def test_completed_keys_include_tasks_older_than_default_page(tmp_path, monkeypa
                 created_at=created,
                 updated_at=created,
             ))
+        await database.save_task(Task(
+            id="task-0-newer",
+            podcast_name="Long Podcast",
+            episode_title="Episode 0",
+            status=TaskStatus.SUCCESS,
+            progress_pct=100,
+            stage="done",
+            created_at=base + timedelta(minutes=1),
+            updated_at=base + timedelta(minutes=1),
+        ))
 
     import asyncio
     asyncio.run(seed())
     monkeypatch.setattr(tasks_module, "list_completed_keys", database.list_completed_keys)
 
     with TestClient(app) as client:
-        response = client.get("/api/read-podcast/tasks/completed-keys")
+        first = client.get("/api/read-podcast/tasks/completed-keys?limit=10&offset=0")
+        second = client.get("/api/read-podcast/tasks/completed-keys?limit=10&offset=10")
+        third = client.get("/api/read-podcast/tasks/completed-keys?limit=10&offset=20")
 
-    assert response.status_code == 200
-    keys = response.json()
+    assert first.status_code == 200
+    assert first.json()["next_offset"] == 10
+    assert second.json()["next_offset"] == 20
+    assert third.json()["next_offset"] is None
+    keys = first.json()["items"] + second.json()["items"] + third.json()["items"]
     assert len(keys) == 25
     assert {item["key"] for item in keys}.__contains__("Long Podcast::Episode 0")
-    assert keys[0]["task_id"] == "task-24"
+    assert keys[0] == {"key": "Long Podcast::Episode 0", "task_id": "task-0-newer"}
 
 
 def test_failed_task_can_be_cleared_without_touching_artifacts(monkeypatch):
