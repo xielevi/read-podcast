@@ -99,7 +99,8 @@ class AddPodcastRequest(BaseModel):
 
 class CreateTaskRequest(BaseModel):
     podcast_name: str = Field(min_length=1, max_length=200)
-    episode_title: str = Field(min_length=1, max_length=500)
+    # 与 EpisodeReadStateRequest 对齐，给个别超长的节目标题留足余量。
+    episode_title: str = Field(min_length=1, max_length=1000)
     force: bool = False
 
 class CustomTaskRequest(BaseModel):
@@ -545,7 +546,7 @@ async def add_subscription(body: AddPodcastRequest) -> Dict:
     if settings.get_podcast_config(name):
         raise HTTPException(status_code=409, detail=f"节目 '{name}' 已存在于订阅列表中。")
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     parser = RSSParser(rss_url=rss_url, name=name)
 
     def _validate():
@@ -591,23 +592,14 @@ async def delete_subscription(name: str) -> Dict:
 
 
 @api_router.post("/tasks")
-async def create_task(
-    body: CreateTaskRequest = None,
-    podcast_name: str = None,
-    episode_title: str = None,
-    force: bool = False,
-) -> Dict[str, str]:
-    pn = podcast_name
-    et = episode_title
-    rerun = force
-    if body:
-        pn = body.podcast_name
-        et = body.episode_title
-        rerun = body.force
-    if not pn or not et:
-        raise HTTPException(status_code=400, detail="podcast_name 和 episode_title 均为必填项")
+async def create_task(body: CreateTaskRequest) -> Dict[str, str]:
+    # 只收 JSON body：统一走 Pydantic 的长度/类型校验，杜绝旧 query 分支绕过校验。
     try:
-        task_id = await create_and_start_task(pn, et, force=rerun)
+        task_id = await create_and_start_task(
+            body.podcast_name,
+            body.episode_title,
+            force=body.force,
+        )
     except DuplicateTaskError as exc:
         # 同一节目已在处理中：回传既有任务，前端据此复用而非重复排队。
         return {"task_id": exc.task_id, "status": "existing"}
