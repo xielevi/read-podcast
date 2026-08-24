@@ -56,3 +56,16 @@ def test_read_episode_endpoint_rejects_empty_fields():
             json={"podcast_name": "", "episode_title": "第二期", "read": True},
         )
         assert response.status_code == 422
+
+
+def test_list_read_keys_respects_safety_limit():
+    """安全上限：只返回最近的 N 条（按 read_at 倒序），不一次性读入全部。"""
+    async def scenario():
+        await database.init_db()
+        for i in range(5):
+            await database.set_episode_read("播客C", f"第{i}期", True)
+        # limit=2 应只返回最近标记的两期（第4、第3期）。
+        keys = await database.list_read_keys(limit=2)
+        assert keys == ["播客C::第4期", "播客C::第3期"]
+
+    asyncio.run(scenario())
