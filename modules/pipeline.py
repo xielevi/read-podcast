@@ -11,6 +11,7 @@ from modules.downloader import Downloader
 from modules.formatter import Formatter
 from modules.refiner import get_refiner, build_refine_prompt
 from modules.rss_parser import RSSParser
+from modules.runtime_paths import safe_storage_component
 from modules.transcriber import TranscriptionResult, get_transcriber
 from modules.utils import StateManager, datetime_to_str, verify_refinement_quality
 
@@ -73,11 +74,16 @@ def build_filename_base(podcast_name: str, date_str: str, episode_title: str) ->
 
     numeric = re.match(r"^(\d+)\s+(.*)", episode_title)
     if numeric:
-        return f"{date_str}_{podcast_name}_{numeric.group(1)}_{numeric.group(2).strip()}"
+        value = f"{date_str}_{podcast_name}_{numeric.group(1)}_{numeric.group(2).strip()}"
+        return safe_storage_component(value, fallback="episode")
     volume = re.match(r"^(Vol\.\d+)\s*[｜|]\s*(.*)", episode_title)
     if volume:
-        return f"{date_str}_{podcast_name}_{volume.group(1)}_{volume.group(2).strip()}"
-    return f"{date_str}_{podcast_name}_{episode_title}"
+        value = f"{date_str}_{podcast_name}_{volume.group(1)}_{volume.group(2).strip()}"
+        return safe_storage_component(value, fallback="episode")
+    return safe_storage_component(
+        f"{date_str}_{podcast_name}_{episode_title}",
+        fallback="episode",
+    )
 
 
 class PodcastPipeline:

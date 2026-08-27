@@ -531,3 +531,48 @@ def test_macos_packaging_is_pinned_and_keeps_signed_bundle_read_only():
     assert 'hdiutil verify "$DMG_PATH"' in script
     assert '<key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>' in script
     assert '<key>ReadPodcastGitRevision</key><string>${BUILD_REV}</string>' in script
+    assert "--no-hashes" not in script
+    for package in ("torch", "sympy", "networkx", "numba", "llvmlite", "scipy"):
+        assert f"--prune {package}" in script
+    assert "--require-hashes --no-deps" in script
+
+
+def test_install_and_builtin_service_require_secret_and_dependency_integrity():
+    project_root = Path(__file__).parent.parent
+    installer = (project_root / "scripts" / "install.sh").read_text(encoding="utf-8")
+    dockerfile = (
+        project_root / "services" / "builtin_transcription" / "Dockerfile"
+    ).read_text(encoding="utf-8")
+    requirements = (
+        project_root / "services" / "builtin_transcription" / "requirements.txt"
+    ).read_text(encoding="utf-8")
+    direct_requirements = (
+        project_root / "services" / "builtin_transcription" / "requirements.in"
+    ).read_text(encoding="utf-8")
+
+    assert "install -m 600 .env.example .env" in installer
+    assert "chmod 600 .env" in installer
+    assert "--require-hashes -r requirements.txt" in dockerfile
+    assert direct_requirements.splitlines() == [
+        "fastapi==0.135.3",
+        "faster-whisper==1.2.1",
+        "python-multipart==0.0.32",
+        "uvicorn==0.42.0",
+    ]
+
+    requirement_starts = [
+        index
+        for index, line in enumerate(requirements.splitlines())
+        if line and not line[0].isspace() and not line.startswith("#")
+    ]
+    requirement_lines = requirements.splitlines()
+    assert requirement_starts
+    for position, start in enumerate(requirement_starts):
+        end = (
+            requirement_starts[position + 1]
+            if position + 1 < len(requirement_starts)
+            else len(requirement_lines)
+        )
+        block = "\n".join(requirement_lines[start:end])
+        assert "==" in requirement_lines[start]
+        assert "--hash=sha256:" in block

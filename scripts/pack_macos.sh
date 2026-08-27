@@ -85,13 +85,19 @@ ok "Python 运行时已就绪"
 # 用 --no-deps 严格按 uv.lock 装，再排除上面这些。默认构建会验证完整 import 链；
 # 如设置 READ_PODCAST_PACK_SMOKE_AUDIO，还会用该音频执行一次真实 MLX 转写。
 info "按 uv.lock 安装依赖（含 mlx-whisper）…"
-REQUIREMENTS_LOCK="$BUILD_DIR/requirements.lock.txt"
 REQUIREMENTS_TRIMMED="$BUILD_DIR/requirements.trimmed.txt"
-uv export --extra mlx --no-dev --frozen --no-hashes -o "$REQUIREMENTS_LOCK"
-grep -vE '^(torch|sympy|networkx|numba|llvmlite|scipy)==' "$REQUIREMENTS_LOCK" \
-  > "$REQUIREMENTS_TRIMMED"
+uv export --extra mlx --no-dev --frozen \
+  --prune torch \
+  --prune sympy \
+  --prune networkx \
+  --prune numba \
+  --prune llvmlite \
+  --prune scipy \
+  -o "$REQUIREMENTS_TRIMMED"
 "$PYTHON_BIN" -m ensurepip --upgrade >/dev/null 2>&1 || true
-"$PYTHON_BIN" -m pip install --no-deps --no-cache-dir --quiet -r "$REQUIREMENTS_TRIMMED"
+"$PYTHON_BIN" -m pip install \
+  --require-hashes --no-deps --no-cache-dir --quiet \
+  -r "$REQUIREMENTS_TRIMMED"
 ok "依赖安装完成"
 
 # --- Step 2c: 让 mlx-whisper 的词级时间戳依赖变成惰性 ------------------------

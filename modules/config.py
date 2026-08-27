@@ -1,7 +1,8 @@
 import os
+import re
 import yaml
 import logging
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from dotenv import load_dotenv
 
 from modules.runtime_paths import PROJECT_ROOT, resolve_runtime_path, runtime_data_dir
@@ -38,6 +39,32 @@ logger = logging.getLogger("Config")
 
 class ConfigurationError(ValueError):
     """Raised when persisted configuration cannot be parsed safely."""
+
+
+_PODCAST_NAME_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+_WINDOWS_RESERVED_NAMES = {
+    "CON", "PRN", "AUX", "NUL",
+    *(f"COM{i}" for i in range(1, 10)),
+    *(f"LPT{i}" for i in range(1, 10)),
+}
+
+
+def validate_podcast_name(value: str) -> str:
+    """Validate a display name before it is also used as a storage directory."""
+    name = str(value or "").strip()
+    windows_path = PureWindowsPath(name)
+    reserved_stem = name.split(".", 1)[0].upper()
+    if not name:
+        raise ValueError("节目名称不能为空")
+    if name in {".", ".."} or "/" in name or "\\" in name:
+        raise ValueError("节目名称不能包含路径字符")
+    if Path(name).is_absolute() or windows_path.is_absolute() or windows_path.drive:
+        raise ValueError("节目名称不能是绝对路径")
+    if _PODCAST_NAME_CONTROL_CHARS.search(name):
+        raise ValueError("节目名称不能包含控制字符")
+    if name.endswith((" ", ".")) or reserved_stem in _WINDOWS_RESERVED_NAMES:
+        raise ValueError("节目名称不能使用系统保留名称")
+    return name
 
 
 def read_int_config(config: dict, key: str, default: int) -> int:
@@ -328,6 +355,13 @@ class Settings:
 
         # --- [3. 播客列表] ---
         self.PODCASTS = self._raw_config.get('podcasts', [])
+        for podcast in self.PODCASTS:
+            if not isinstance(podcast, dict):
+                raise ConfigurationError("配置段 podcasts 的条目必须是映射")
+            try:
+                validate_podcast_name(podcast.get("name", ""))
+            except ValueError as exc:
+                raise ConfigurationError(f"无效的节目名称：{exc}") from exc
 
         # --- [4. Prompt 模板列表] ---
         self.PROMPT_TEMPLATES = self._raw_config.get('prompt_templates', [])
@@ -341,7 +375,22 @@ class Settings:
             'transcripts': 'transcripts',
             'markdown': 'markdown'
         }
-        dir_name = mapping.get(sub_type, sub_type)
+        if sub_type not in mapping:
+            raise ValueError(f"不支持的播客目录类型: {sub_type}")
+        dir_name = mapping[sub_type]
+        safe_name = validate_podcast_name(podcast_name)
+
+        def workspace_target() -> Path:
+            root = self.DATA_DIR.expanduser().resolve()
+            root.mkdir(parents=True, exist_ok=True)
+            target = (root / safe_name / dir_name).resolve()
+            if not target.is_relative_to(root):
+                raise ConfigurationError("播客目录必须位于数据目录内")
+            target.mkdir(parents=True, exist_ok=True)
+            resolved = target.resolve()
+            if not resolved.is_relative_to(root):
+                raise ConfigurationError("播客目录不能通过符号链接越过数据目录")
+            return resolved
 
         if sub_type == 'markdown' and self.OBSIDIAN_MARKDOWN_DIR:
             target_dir = self.OBSIDIAN_MARKDOWN_DIR
@@ -349,11 +398,9 @@ class Settings:
                 target_dir.mkdir(parents=True, exist_ok=True)
             except (PermissionError, OSError) as e:
                 logger.warning("无法创建 Obsidian Markdown 目录 %s (%s)，已自动降级回退至本地工作区", target_dir, e)
-                target_dir = self.DATA_DIR / podcast_name / dir_name
-                target_dir.mkdir(parents=True, exist_ok=True)
+                target_dir = workspace_target()
         else:
-            target_dir = self.DATA_DIR / podcast_name / dir_name
-            target_dir.mkdir(parents=True, exist_ok=True)
+            target_dir = workspace_target()
 
         return target_dir
 

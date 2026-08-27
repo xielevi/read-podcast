@@ -40,7 +40,11 @@ uv sync --extra mlx
 ok "依赖安装完成"
 
 info "生成配置文件…"
-[ -f .env ] || cp .env.example .env
+if [ ! -e .env ]; then
+  install -m 600 .env.example .env
+else
+  chmod 600 .env
+fi
 mkdir -p config
 ok "配置文件已生成"
 

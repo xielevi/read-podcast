@@ -81,6 +81,29 @@ def test_add_subscription_falls_back_to_channel_image(tmp_path, monkeypatch):
     assert saved and saved[0]["image"] == "https://cdn.example.com/feedcover.jpg"
 
 
+def test_add_subscription_rejects_storage_escape_before_network(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.yaml"
+    original = "read-podcast:\n  podcasts: []\n"
+    config_path.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(settings, "CONFIG_PATH", config_path)
+    monkeypatch.setattr(settings, "PODCASTS", [])
+    validate = MagicMock()
+    monkeypatch.setattr(router_module, "validate_public_url", validate)
+
+    with patch("app.routers.episodes.RSSParser") as parser:
+        with TestClient(app) as client:
+            response = client.post(
+                "/api/read-podcast/subscriptions",
+                json={"name": "..", "rss_url": "https://example.com/feed.xml"},
+            )
+
+    assert response.status_code == 400
+    assert "路径字符" in response.json()["detail"]
+    validate.assert_not_called()
+    parser.assert_not_called()
+    assert config_path.read_text(encoding="utf-8") == original
+
+
 # ── 封面图代理 ──
 
 

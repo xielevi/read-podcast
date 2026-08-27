@@ -67,6 +67,15 @@ def test_downloader_preserves_source_audio_format(tmp_path, monkeypatch):
     yt_dlp.assert_not_called()
 
 
+def test_downloader_does_not_treat_episode_name_as_glob_pattern(tmp_path):
+    existing = tmp_path / "2026-08-27_Show_secret.mp3"
+    existing.write_bytes(b"audio" * 30_000)
+    downloader = Downloader(tmp_path)
+
+    assert downloader._existing_audio("2026-08-27_Show_*") is None
+    assert downloader._existing_audio("2026-08-27_Show_secret") == existing
+
+
 def test_transcriber_uses_shared_path_and_atomically_caches(tmp_path, monkeypatch):
     shared_root = tmp_path / "workspace"
     audio = shared_root / "show" / "downloads" / "episode.m4a"
