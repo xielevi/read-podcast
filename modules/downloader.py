@@ -60,8 +60,9 @@ class Downloader:
         candidates = sorted(
             (
                 path
-                for path in self.download_dir.glob(f"{filename_base}.*")
+                for path in self.download_dir.iterdir()
                 if path.is_file()
+                and path.stem == filename_base
                 and path.suffix.lower() in AUDIO_EXTENSIONS
                 and path.stat().st_size > MIN_AUDIO_BYTES
             ),

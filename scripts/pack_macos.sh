@@ -4,8 +4,8 @@
 # 做法参考了 QwenPaw 等项目的"轻量版"桌面打包方式：不用 PyInstaller 冻结
 # Python（mlx-whisper 这类带 Metal/Accelerate 原生扩展的包冻结后容易出问题），
 # 而是把一个可重定位的独立 CPython（python-build-standalone）连同按 uv.lock
-# 精确安装好的依赖，整个塞进 .app/Contents/Resources，再用一个 bash 启动器
-# 设置 PYTHONHOME 后原地跑 —— 等价于把 start.sh 的流程包进一个可双击的壳。
+# 精确安装好的依赖，整个塞进 .app/Contents/Resources。系统 AppKit + WKWebView
+# 提供独立桌面窗口，内部 shell 启动器只负责托管 Web/MLX 子进程。
 # 最后用系统自带的 hdiutil 把 .app 连同一个 /Applications 快捷方式封进 dmg。
 #
 # 产物：dist/Read Podcast.app、dist/Read Podcast-<version>.dmg 与 SHA256 文件。
@@ -19,6 +19,7 @@ DIST_DIR="${DIST_DIR:-$REPO_ROOT/dist}"
 APP_NAME="Read Podcast"
 FINAL_APP_DIR="$DIST_DIR/$APP_NAME.app"
 BUNDLE_ID="${READ_PODCAST_BUNDLE_ID:-com.xielevi.read-podcast}"
+ICON_SOURCE="$REPO_ROOT/assets/macos/AppIcon-1024.png"
 PYTHON_XY="3.12"
 PYTHON_VERSION="3.12.14"
 PBS_RELEASE="20260814"
@@ -33,9 +34,10 @@ die()  { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] || \
   die "本工具只支持 Apple 芯片的 Mac（M1/M2/M3/M4）。"
 command -v uv >/dev/null 2>&1 || die "找不到 uv，请先运行 ./scripts/install.sh"
-for tool in curl shasum codesign hdiutil; do
+for tool in curl shasum codesign hdiutil iconutil sips xcrun; do
   command -v "$tool" >/dev/null 2>&1 || die "缺少构建工具：$tool"
 done
+[ -f "$ICON_SOURCE" ] || die "找不到 App 图标母版：$ICON_SOURCE"
 mkdir -p "$DIST_DIR"
 
 BUILD_DIR=$(mktemp -d "$DIST_DIR/.pack-macos.XXXXXX")
@@ -85,13 +87,19 @@ ok "Python 运行时已就绪"
 # 用 --no-deps 严格按 uv.lock 装，再排除上面这些。默认构建会验证完整 import 链；
 # 如设置 READ_PODCAST_PACK_SMOKE_AUDIO，还会用该音频执行一次真实 MLX 转写。
 info "按 uv.lock 安装依赖（含 mlx-whisper）…"
-REQUIREMENTS_LOCK="$BUILD_DIR/requirements.lock.txt"
 REQUIREMENTS_TRIMMED="$BUILD_DIR/requirements.trimmed.txt"
-uv export --extra mlx --no-dev --frozen --no-hashes -o "$REQUIREMENTS_LOCK"
-grep -vE '^(torch|sympy|networkx|numba|llvmlite|scipy)==' "$REQUIREMENTS_LOCK" \
-  > "$REQUIREMENTS_TRIMMED"
+uv export --extra mlx --no-dev --frozen \
+  --prune torch \
+  --prune sympy \
+  --prune networkx \
+  --prune numba \
+  --prune llvmlite \
+  --prune scipy \
+  -o "$REQUIREMENTS_TRIMMED"
 "$PYTHON_BIN" -m ensurepip --upgrade >/dev/null 2>&1 || true
-"$PYTHON_BIN" -m pip install --no-deps --no-cache-dir --quiet -r "$REQUIREMENTS_TRIMMED"
+"$PYTHON_BIN" -m pip install \
+  --require-hashes --no-deps --no-cache-dir --quiet \
+  -r "$REQUIREMENTS_TRIMMED"
 ok "依赖安装完成"
 
 # --- Step 2c: 让 mlx-whisper 的词级时间戳依赖变成惰性 ------------------------
@@ -166,6 +174,7 @@ cp -R modules "$RES/modules"
 cp -R scripts "$RES/scripts"
 # 打包脚本自身对 App 没用，跟进去只会让人误以为能在 App 里重新构建。
 rm -f "$RES/scripts/pack_macos.sh"
+rm -rf "$RES/scripts/macos"
 # 源码目录可能带有宿主 Python 生成的缓存；它们不可进入可复现产物。
 find "$RES/app" "$RES/modules" "$RES/scripts" -type d -name "__pycache__" -prune -exec rm -rf {} +
 find "$RES/app" "$RES/modules" "$RES/scripts" -type f -name "*.pyc" -delete
@@ -216,15 +225,15 @@ SMOKE
   ) || die "真实 MLX 音频转写验证失败。"
 fi
 
-# --- Step 4: 生成启动器 -----------------------------------------------------
-info "生成启动器…"
-cat > "$APP_DIR/Contents/MacOS/$APP_NAME" <<'LAUNCHER'
+# --- Step 4: 生成服务启动器与原生 App 窗口 ---------------------------------
+info "生成服务启动器与原生 App 窗口…"
+cat > "$RES/launcher.sh" <<'LAUNCHER'
 #!/usr/bin/env bash
-# Read Podcast 桌面启动器：拉起语音转录后端（MLX）与网页应用，打开浏览器。
-# 逻辑照搬 scripts/start.sh，只是把 `uv run` 换成了打包进 App 的独立 Python。
+# Read Podcast 安装版服务启动器：只托管 MLX 与 Web 子进程。
+# AppKit/WKWebView 原生壳负责窗口与用户可见的启动状态。
 set -euo pipefail
 
-RES="$(cd "$(dirname "$0")/../Resources" && pwd)"
+RES="$(cd "$(dirname "$0")" && pwd)"
 PYTHON_BIN="$RES/python-runtime/bin/python3"
 APP_SUPPORT="$HOME/Library/Application Support/Read Podcast"
 LOG="$APP_SUPPORT/app.log"
@@ -239,13 +248,12 @@ export PYTHONHOME="$RES/python-runtime"
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$RES"
-export PATH="$RES/python-runtime/bin:$PATH"
+export PATH="/opt/homebrew/bin:/usr/local/bin:$RES/python-runtime/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export READ_PODCAST_CONFIG="$APP_SUPPORT/config/config.yaml"
 export READ_PODCAST_DATA_DIR="$APP_SUPPORT/workspace"
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
-  osascript -e 'display alert "缺少 ffmpeg" message "Read Podcast 需要 ffmpeg 处理音频。请打开终端运行：\n\nbrew install ffmpeg\n\n（没有 Homebrew？先到 https://brew.sh 安装）" as critical' || true
-  echo "ERROR: ffmpeg 未安装，已提示用户，退出。"
+  echo "ERROR: ffmpeg 未安装。请先运行 brew install ffmpeg。"
   exit 1
 fi
 
@@ -283,12 +291,14 @@ YAML
 fi
 
 MLX_PID=""
+WEB_PID=""
 cleanup() {
   echo "正在停止服务…"
+  [ -n "$WEB_PID" ] && kill "$WEB_PID" 2>/dev/null || true
   [ -n "$MLX_PID" ] && kill "$MLX_PID" 2>/dev/null || true
   wait 2>/dev/null || true
 }
-trap cleanup EXIT INT TERM
+trap cleanup EXIT INT TERM HUP
 
 echo "启动语音转录后端（首次会下载模型，可能需要几分钟）…"
 "$PYTHON_BIN" -m scripts.mlx_backend &
@@ -305,15 +315,44 @@ for _ in $(seq 1 60); do
 done
 [ "$MLX_READY" -eq 1 ] || { echo "转录后端在 60 秒内未就绪。"; exit 1; }
 
-( sleep 2; open "http://127.0.0.1:${APP_PORT}/" ) &
-
 echo "启动网页应用，监听 127.0.0.1:${APP_PORT}"
-"$PYTHON_BIN" -m uvicorn app.standalone:app --host 127.0.0.1 --port "$APP_PORT"
+"$PYTHON_BIN" -m uvicorn app.standalone:app --host 127.0.0.1 --port "$APP_PORT" &
+WEB_PID=$!
+wait "$WEB_PID"
 LAUNCHER
-chmod +x "$APP_DIR/Contents/MacOS/$APP_NAME"
-ok "启动器已生成"
+chmod +x "$RES/launcher.sh"
 
-# --- Step 5: Info.plist -----------------------------------------------------
+xcrun --find swiftc >/dev/null || die "找不到 swiftc；请先安装 Xcode Command Line Tools。"
+xcrun swiftc -parse-as-library -swift-version 5 -O -whole-module-optimization \
+  -target arm64-apple-macosx13.5 \
+  -framework AppKit -framework WebKit \
+  "$REPO_ROOT/scripts/macos/ReadPodcastApp.swift" \
+  -o "$APP_DIR/Contents/MacOS/$APP_NAME"
+ok "服务启动器与原生 App 窗口已生成"
+
+# --- Step 5: App 图标与 Info.plist -----------------------------------------
+info "生成高分辨率 macOS App 图标…"
+ICONSET_DIR="$BUILD_DIR/AppIcon.iconset"
+mkdir -p "$ICONSET_DIR"
+while read -r pixels filename; do
+  sips -z "$pixels" "$pixels" "$ICON_SOURCE" \
+    --out "$ICONSET_DIR/$filename" >/dev/null
+done <<'ICON_SIZES'
+16 icon_16x16.png
+32 icon_16x16@2x.png
+32 icon_32x32.png
+64 icon_32x32@2x.png
+128 icon_128x128.png
+256 icon_128x128@2x.png
+256 icon_256x256.png
+512 icon_256x256@2x.png
+512 icon_512x512.png
+1024 icon_512x512@2x.png
+ICON_SIZES
+iconutil -c icns "$ICONSET_DIR" -o "$RES/AppIcon.icns"
+[ -s "$RES/AppIcon.icns" ] || die "AppIcon.icns 生成失败。"
+ok "App 图标已生成"
+
 info "生成 Info.plist…"
 cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -322,6 +361,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <dict>
   <key>CFBundleExecutable</key><string>${APP_NAME}</string>
   <key>CFBundleIdentifier</key><string>${BUNDLE_ID}</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundleName</key><string>${APP_NAME}</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>
@@ -329,6 +369,9 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
   <key>CFBundleGetInfoString</key><string>${VERSION} (${BUILD_REV}, 构建于 ${BUILD_DATE})</string>
   <key>ReadPodcastGitRevision</key><string>${BUILD_REV}</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAppTransportSecurity</key>
+  <dict><key>NSAllowsLocalNetworking</key><true/></dict>
+  <key>LSMultipleInstancesProhibited</key><true/>
   <key>LSMinimumSystemVersion</key><string>13.5</string>
 </dict>
 </plist>

@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, Response
 from app.database import list_read_keys, set_episode_read
 from app.routers._shared import config_lock
 from app.schemas import AddPodcastRequest, EpisodeReadStateRequest
-from modules.config import settings
+from modules.config import settings, validate_podcast_name
 from modules.network_security import UnsafeUrlError, validate_public_url
 from modules.rss_parser import RSSParser
 
@@ -369,6 +369,10 @@ async def add_subscription(body: AddPodcastRequest) -> Dict:
     rss_url = body.rss_url.strip()
     if not name or not rss_url:
         raise HTTPException(status_code=400, detail="name 和 rss_url 均为必填项。")
+    try:
+        name = validate_podcast_name(name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
         validate_public_url(rss_url)
     except UnsafeUrlError as exc:
