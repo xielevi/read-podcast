@@ -519,7 +519,10 @@ def test_task_content_rejects_non_text_output(tmp_path: Path, monkeypatch):
 def test_macos_packaging_is_pinned_and_keeps_signed_bundle_read_only():
     project_root = Path(__file__).parent.parent
     script = (project_root / "scripts" / "pack_macos.sh").read_text(encoding="utf-8")
+    icon_source = project_root / "assets" / "macos" / "AppIcon-1024.png"
 
+    assert icon_source.is_file()
+    assert icon_source.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
     assert 'PYTHON_VERSION="3.12.14"' in script
     assert 'PBS_RELEASE="20260814"' in script
     assert 'PBS_SHA256="4572133a5542f306b9bdb155da5800f9e38950cd0a98d469b832ce256fe299ea"' in script
@@ -527,9 +530,21 @@ def test_macos_packaging_is_pinned_and_keeps_signed_bundle_read_only():
     assert 'export READ_PODCAST_DATA_DIR="$APP_SUPPORT/workspace"' in script
     assert 'ln -s "$APP_SUPPORT/workspace"' not in script
     assert "PYTHONDONTWRITEBYTECODE=1" in script
+    desktop_source = (project_root / "scripts" / "macos" / "ReadPodcastApp.swift").read_text(encoding="utf-8")
+    assert "WKWebView" in desktop_source
+    assert "NSURLErrorCancelled" in desktop_source
+    assert 'open "http://127.0.0.1:${APP_PORT}/"' not in script
+    assert 'WEB_PID=""' in script
+    assert 'kill "$WEB_PID"' in script
+    assert "-parse-as-library" in script
+    assert '-framework AppKit -framework WebKit' in script
+    assert '<key>NSAllowsLocalNetworking</key><true/>' in script
     assert 'codesign --verify --deep --strict' in script
     assert 'hdiutil verify "$DMG_PATH"' in script
     assert '<key>CFBundleVersion</key><string>${BUILD_NUMBER}</string>' in script
+    assert '<key>CFBundleIconFile</key><string>AppIcon</string>' in script
+    assert 'iconutil -c icns "$ICONSET_DIR" -o "$RES/AppIcon.icns"' in script
+    assert "1024 icon_512x512@2x.png" in script
     assert '<key>ReadPodcastGitRevision</key><string>${BUILD_REV}</string>' in script
     assert "--no-hashes" not in script
     for package in ("torch", "sympy", "networkx", "numba", "llvmlite", "scipy"):
