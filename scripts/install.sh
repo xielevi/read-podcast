@@ -46,6 +46,16 @@ else
   chmod 600 .env
 fi
 mkdir -p config
+if [ ! -f config/secrets.env ]; then
+  install -m 600 /dev/null config/secrets.env
+  cat > config/secrets.env <<'SECRETS'
+# 密钥只写在这个文件里，不会进 Git。
+# 也可以启动后在网页右上角「设置」面板里填，两者作用于同一份文件。
+REFINER_API_KEY=
+SECRETS
+else
+  chmod 600 config/secrets.env
+fi
 ok "配置文件已生成"
 
 cat <<'MSG'
@@ -53,8 +63,9 @@ cat <<'MSG'
 ──────────────────────────────────────────────
 安装完成！还差最后一步：填入 AI 精修服务的 Key。
 
-1. 用文本编辑器打开项目里的 .env 文件。
+1. 用文本编辑器打开项目里的 config/secrets.env 文件。
 2. 在 REFINER_API_KEY= 后面粘贴你的 Key（如何申请见 README「申请 AI Key」一节）。
+   也可以先跳过，启动后在网页右上角「设置」面板里填。
 3. 保存后运行：  ./scripts/start.sh
 ──────────────────────────────────────────────
 MSG

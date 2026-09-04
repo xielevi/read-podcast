@@ -46,3 +46,14 @@ jobs:
           node --check app/static/app.js
       - name: Frontend bundle up to date
         run: uv run python scripts/build_frontend.py --check
+      - name: Release version format
+        run: uv run python scripts/check_release.py --version-only
+
+  packaging-dry-run:
+    # 打包本身要在维护者的 Apple Silicon Mac 上带证书跑（见 docs/release.md）。
+    # CI 只做无签名的静态校验，确保打包脚本不会在发布当天才炸。
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Packaging script dry run
+        run: bash scripts/pack_macos.sh --check

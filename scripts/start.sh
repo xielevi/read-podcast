@@ -19,8 +19,17 @@ export READ_PODCAST_TRANSCRIPTION_SHARED_AUDIO_ROOT=""
 command -v uv >/dev/null 2>&1 || die "找不到 uv，请先运行 ./scripts/install.sh"
 
 # 首次运行时补全配置，保证脚本可独立使用
+# .env 是旧版密钥位置，modules/config.py 仍会读取，保留以兼容既有安装。
 [ -f .env ] || cp .env.example .env
 mkdir -p config
+if [ ! -f config/secrets.env ]; then
+  cat > config/secrets.env <<'SECRETS'
+# 密钥只写在这个文件里，不会进 Git。
+# 也可以在网页右上角「设置」面板里填，两者作用于同一份文件。
+REFINER_API_KEY=
+SECRETS
+  chmod 600 config/secrets.env
+fi
 if [ ! -f config/config.yaml ]; then
   cat > config/config.yaml <<YAML
 # ── 你的配置就写在这个文件里 ──────────────────────────────

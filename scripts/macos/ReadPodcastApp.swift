@@ -198,7 +198,7 @@ final class ReadPodcastAppDelegate: NSObject, NSApplicationDelegate, WKNavigatio
         guard !isTerminating else { return }
         showLocalPage(
             title: "Read Podcast 未能启动",
-            message: details + " 请确认 ffmpeg 已安装，且 28000、21567 端口没有被其他程序占用。",
+            message: details + " 请确认安装包完整，且 28000、21567 端口没有被其他程序占用。",
             showLogLink: true
         )
     }

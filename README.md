@@ -22,13 +22,38 @@ Read Podcast 是一个在你自己电脑上运行的小工具：给它一个播�
 
 3. **联网。** 下载播客、调用 AI 都需要网络。
 
-满足以上三点，就可以开始了。二选一，**推荐第一种**。
+满足以上三点，就可以开始了。三选一，**推荐第一种**。
 
 ---
 
-## 🚀 方式一：一键脚本（推荐，最简单）
+## 📦 方式一：下载安装包（推荐，不用开终端）
 
-适合个人在自己的 Mac 上使用。一条命令搞定，不需要安装 Docker。
+**从 1.0 起**，[Releases 页面](https://github.com/xielevi/read-podcast/releases)
+提供已签名并经 Apple 公证的安装包，不需要终端、不需要 Homebrew，也不需要单独装
+ffmpeg —— 音频处理组件已经随应用一起分发。
+
+1. 下载 `Read Podcast-<版本>.dmg`。
+2. 双击打开，把 **Read Podcast** 拖进 **应用程序**。
+3. 从启动台打开它。**不需要**右键→打开，也不需要改任何安全设置。
+
+> 想核对下载是否完整：`shasum -a 256 ~/Downloads/Read\ Podcast-<版本>.dmg`，
+> 结果应与 Release 页公布的 SHA256 一致。
+
+**第一次打开会做两件事**，都需要等一会儿：
+
+- 下载语音识别模型，约 **1～2 GB**；
+- 需要你填一个 AI 服务的 Key（在网页右上角「设置」里填，见
+  [「申请 AI Key」](#-申请-ai-key)）。**精修这一步会按你选的服务商计费**，通常
+  几毛到几块钱一篇。
+
+数据存放在 `~/Library/Application Support/Read Podcast/`，卸载、备份和升级见
+[「数据、升级与回滚」](#-数据升级与回滚)。
+
+---
+
+## 🚀 方式二：源码一键脚本（想改代码或用开发版）
+
+适合开发者，或者想跟着 `main` 用最新改动的人。需要用终端。
 
 ### 第 1 步：下载项目
 
@@ -71,14 +96,19 @@ cd read-podcast
 
 ### 构建 macOS 安装镜像（维护者）
 
-发布前在 Apple 芯片 Mac 上运行：
+发布构建需要 Developer ID 证书与公证凭据，完整流程、门禁与发布物清单见
+[docs/release.md](docs/release.md)；发布前要跑的验收矩阵见
+[docs/release-acceptance.md](docs/release-acceptance.md)。
 
 ```bash
-bash scripts/pack_macos.sh
+bash scripts/pack_macos.sh --dev    # 开发自用：ad-hoc 签名、不公证，不可分发
+bash scripts/pack_macos.sh --preview # 未公证预览版：首次启动需右键打开
+bash scripts/pack_macos.sh          # 发布：签名 + 公证 + staple，全通过才写 dist/
 ```
 
-脚本固定独立 Python 资产及 SHA256，先在临时目录完成 import、签名和 DMG 完整性验证，
-全部通过后才替换 `dist/` 产物，并生成 `.dmg.sha256`。若要把真实语音转写也作为发布门禁：
+脚本固定独立 Python 与 ffmpeg 资产及其 SHA256，先在临时目录完成 import、签名、
+公证和 DMG 完整性验证，全部通过后才替换 `dist/` 产物，并生成 `.dmg.sha256`。
+若要把真实语音转写也作为发布门禁：
 
 ```bash
 READ_PODCAST_PACK_SMOKE_AUDIO=/path/to/short-speech.wav bash scripts/pack_macos.sh
@@ -86,7 +116,7 @@ READ_PODCAST_PACK_SMOKE_AUDIO=/path/to/short-speech.wav bash scripts/pack_macos.
 
 ---
 
-## 🐳 方式二：Docker
+## 🐳 方式三：Docker
 
 适合已经装了 Docker、或喜欢容器化管理的人。注意：**语音转录仍然要在 Mac 本机跑一个小服务**（它没法放进容器）。所以需要开两个终端窗口。
 
@@ -121,20 +151,20 @@ docker compose up -d
 
 **每种服务都要做的两件事：**
 
-1. 把拿到的 Key 填进项目的 `.env`：`REFINER_API_KEY=你的key`。
+1. 把拿到的 Key 填进 `config/secrets.env`：`REFINER_API_KEY=你的key`（用安装包的话，直接在网页「设置」面板里填即可）。
 2. 在 `config/config.yaml` 里填服务商的 `refiner.api_base` 和 `refiner.model`（可用选项对照 `modules/config.default.yaml` 的注释，那是只读参考，别直接改它）。
 
 ### 路线 A：OpenCode Zen（新手推荐，免费模型无需充值）
 
 1. 打开 <https://opencode.ai/auth> 注册账号（免费模型无需绑卡）。
-2. 在控制台创建并复制 API Key，填进 `.env`。
+2. 在控制台创建并复制 API Key，填进 `config/secrets.env`（或网页「设置」面板）。
 3. 配置里填：`api_base: https://opencode.ai/zen/v1`，`model` 从其[模型列表](https://opencode.ai/docs/zen/)里挑一个标注免费的填入。
    > 注意：免费模型会不定期更新或下线，若报“模型不存在”，回官网换一个当前可用的免费模型名即可。
 
 ### 路线 B：DeepSeek（便宜付费，稳定）
 
 1. 打开 <https://platform.deepseek.com/> 注册账号并充值一点余额（通常几元起）。
-2. 在「API Keys」创建并复制以 `sk-` 开头的 Key，填进 `.env`。
+2. 在「API Keys」创建并复制以 `sk-` 开头的 Key，填进 `config/secrets.env`（或网页「设置」面板）。
 3. 配置里填：`api_base: https://api.deepseek.com/v1`，`model: deepseek-chat`。
 
 其他任何 OpenAI 兼容服务（OpenAI、通义千问等）同理，改这两处即可。
@@ -151,7 +181,9 @@ docker compose up -d
 
 也可以直接上传一个音频文件来处理。
 
-生成的文章保存在项目的 `output/` 目录里。
+生成的文章保存在 `workspace/<节目名>/markdown/` 里（安装包版在
+`~/Library/Application Support/Read Podcast/workspace/` 下的同名位置）。
+想改到别处，在网页「设置 → 文件存放位置」里指定即可。
 
 ---
 
@@ -173,16 +205,58 @@ docker compose up -d
 
 ---
 
-## 🔄 更新到新版本
+## 💾 数据、升级与回滚
 
-**一键脚本方式：**
+### 你的数据在哪
+
+| 安装方式 | 数据位置 |
+| :--- | :--- |
+| 安装包（DMG） | `~/Library/Application Support/Read Podcast/`（下含 `config/` 与 `workspace/`） |
+| 源码 / Docker | 项目目录下的 `config/` 与 `workspace/` |
+
+订阅、成稿、已读状态、任务记录、API Key 全都在这里，**不在应用本身里**。所以替换
+应用不会丢数据，删掉这个目录才会。
+
+源码方式想改数据位置：启动前设 `READ_PODCAST_DATA_DIR=/可写目录`，数据库、上传、
+缓存和默认输出会统一改写到该目录。
+
+### 备份
+
+升级前建议先复制一份，这也是回滚时唯一可靠的退路：
 
 ```bash
-git pull
-./scripts/start.sh
+cp -R ~/Library/Application\ Support/Read\ Podcast \
+      ~/Desktop/read-podcast-backup-$(date +%Y%m%d)
 ```
 
-**Docker 方式：** `git pull` 后 `docker compose pull && docker compose up -d`。
+### 升级
+
+- **安装包：** 下载新版 DMG，退出应用，把新的 **Read Podcast** 拖进
+  **应用程序** 覆盖旧的。数据目录不动，订阅与稿件原样保留。应用内没有自动更新，
+  需要自己回 Releases 页看有没有新版。
+- **源码：** `git pull` 后 `./scripts/start.sh`。
+- **Docker：** `git pull` 后 `docker compose pull && docker compose up -d`。
+
+### 从源码版迁到安装包
+
+把项目目录里的 `config/` 和 `workspace/` 整个复制到
+`~/Library/Application Support/Read Podcast/` 下的同名位置即可。如果你在网页
+「设置 → 文件存放位置」里指定过绝对路径，迁移后要回设置面板确认那些路径仍然存在。
+
+### 回滚
+
+1. 退出应用；
+2. 把 `/Applications/Read Podcast.app` 换回旧版本（从旧 DMG 重新拖一次）；
+3. 数据目录保持不动即可继续用。若新版本改过数据格式导致旧版打不开，就用升级前
+   那份备份覆盖回去。
+
+所以**旧版 DMG 请留着**，回滚需要它。
+
+### 彻底卸载
+
+把 `/Applications/Read Podcast.app` 拖进废纸篓，再删掉
+`~/Library/Application Support/Read Podcast/`（**这一步会连同订阅和全部成稿一起
+删除，删之前先确认已经备份**）。
 
 ---
 
@@ -204,8 +278,8 @@ git pull
 
 其余目录：
 
-- `workspace/`：下载的音频、转录缓存、日志、任务记录。
-- `output/`：最终生成的 Markdown 文章。
+- `workspace/`：下载的音频、转录缓存、日志、任务记录，以及成稿
+  （`workspace/<节目名>/markdown/`）。
 - `.env`：旧版密钥位置，仍可用；建议搬到 `config/secrets.env` 统一到一处。
 
 默认工作数据仍写入仓库 `workspace/`。打包应用或其他只读代码目录可在启动前设置
@@ -232,7 +306,7 @@ git pull
 
 - 一键原生模式默认只监听 `127.0.0.1`。Docker 模式的 MLX 辅助脚本会监听宿主机网络，但强制要求 Token。
 - 语音服务端口 `21567` 不要暴露到公网；跨设备访问时还应配置防火墙或可信网络。
-- 如需从外网访问网页，应同时启用 HTTPS 和 Basic Auth（在 `.env` 里填写用户名与密码），或使用 Tailscale／受控反向代理。Basic Auth 本身不加密传输。
+- 如需从外网访问网页，应同时启用 HTTPS 和 Basic Auth（在 `config/secrets.env` 里填写用户名与密码），或使用 Tailscale／受控反向代理。Basic Auth 本身不加密传输。
 - 默认拒绝指向回环、内网和链路本地地址的 RSS/媒体 URL，防止服务器被用来访问本机服务。
 - 不要把 `.env`、真实订阅、音频、转录稿或数据库提交到 Git。
 
@@ -279,7 +353,7 @@ transcription:
     max_upload_bytes: 0                          # 0 不限制；云端一般限制 25MB（26214400）
 ```
 
-并在 `.env` 里填 `READ_PODCAST_TRANSCRIPTION_API_KEY=你的key`。这样在
+并在 `config/secrets.env` 里填 `READ_PODCAST_TRANSCRIPTION_API_KEY=你的key`。这样在
 Windows／Linux／Intel Mac 上也能转录。云端接口通常限制单文件 25MB，处理一两个小时的长节目
 建议改用方案 A 或指向你自建的服务。默认 `backend: mlx-api` 行为不变。
 
@@ -349,7 +423,7 @@ https://你的站点[/子路径]/api/read-podcast/integrations/feishu/callback
 Google 应用需启用 Drive API 并允许 `drive.file`；飞书应用需开通创建、编辑云文档所需权限。
 原有手工 `connectors` 配置仍然兼容，并且优先于内置 OAuth 连接器。
 
-在 `config/config.yaml` 里声明连接器，凭据只填在 `.env`：
+在 `config/config.yaml` 里声明连接器，凭据只填在 `config/secrets.env`：
 
 ```yaml
 connectors:
@@ -373,8 +447,8 @@ connectors:
     # doc_format: gdoc             # gdoc（默认，可直接编辑）或 markdown（存 .md）
 ```
 
-凭据（Webhook 地址 / Notion token / 飞书 App Secret / Google 刷新令牌，均属机密）只填在 `.env` 的
-对应变量里，代码不硬编码任何服务商；`/connectors` 接口也绝不回传地址或凭据。没配置连接器时，
+凭据（Webhook 地址 / Notion token / 飞书 App Secret / Google 刷新令牌，均属机密）只填在 `config/secrets.env`
+的对应变量里，代码不硬编码任何服务商；`/connectors` 接口也绝不回传地址或凭据。没配置连接器时，
 「发送到…」入口会自动隐藏。
 
 <details>
@@ -387,7 +461,7 @@ connectors:
    即只能访问本应用自己创建的文件），换到 `refresh_token`。可用
    [OAuth 2.0 Playground](https://developers.google.com/oauthplayground/)，在设置里勾选
    「Use your own OAuth credentials」填入上面两个值。
-5. 三个值分别填进 `.env` 的 `READ_PODCAST_CONNECTOR_GDRIVE_*`，回页面点「测试」验证。
+5. 三个值分别填进 `config/secrets.env` 的 `READ_PODCAST_CONNECTOR_GDRIVE_*`，回页面点「测试」验证。
 
 用刷新令牌而不是服务账号，是因为个人 Google 账号下服务账号没有独立存储配额，
 上传会失败，且文件不归属你本人。

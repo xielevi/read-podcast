@@ -9,12 +9,27 @@
 # 最后用系统自带的 hdiutil 把 .app 连同一个 /Applications 快捷方式封进 dmg。
 #
 # 产物：dist/Read Podcast.app、dist/Read Podcast-<version>.dmg 与 SHA256 文件。
-# App 为 ad-hoc 签名；dmg 未签名、未公证，仅供本机运行 / 信任的人之间分发。
-# 用法：bash scripts/pack_macos.sh
+#
+# 用法：
+#   bash scripts/pack_macos.sh            Developer ID 签名、公证并 staple。
+#   bash scripts/pack_macos.sh --preview  固定资产 + 完整校验，但 ad-hoc 签名且不公证。
+#   bash scripts/pack_macos.sh --dev      本机开发构建；允许未配置随包 ffmpeg。
+#   bash scripts/pack_macos.sh --check    静态自检，不下载、不构建（CI 用）。
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 REPO_ROOT="$(pwd)"
+
+MODE="release"
+for arg in "$@"; do
+  case "$arg" in
+    --preview) MODE="preview" ;;
+    --dev)     MODE="dev" ;;
+    --check)   MODE="check" ;;
+    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
+    *) printf '未知参数：%s（可用：--preview、--dev、--check）\n' "$arg" >&2; exit 1 ;;
+  esac
+done
 DIST_DIR="${DIST_DIR:-$REPO_ROOT/dist}"
 APP_NAME="Read Podcast"
 FINAL_APP_DIR="$DIST_DIR/$APP_NAME.app"
@@ -27,14 +42,51 @@ PBS_ASSET="cpython-${PYTHON_VERSION}+${PBS_RELEASE}-aarch64-apple-darwin-install
 PBS_SHA256="4572133a5542f306b9bdb155da5800f9e38950cd0a98d469b832ce256fe299ea"
 PBS_URL="https://github.com/astral-sh/python-build-standalone/releases/download/${PBS_RELEASE}/${PBS_ASSET}"
 
+# FFmpeg 从官方固定源码构建，避免依赖来源和 configure 选项不透明的第三方静态包。
+# --disable-autodetect 且不传 --enable-gpl/--enable-nonfree，保持 LGPL 边界。
+FFMPEG_ASSET_ENV="$REPO_ROOT/scripts/ffmpeg-asset.env"
+# shellcheck source=/dev/null
+[ -f "$FFMPEG_ASSET_ENV" ] && . "$FFMPEG_ASSET_ENV"
+FFMPEG_VERSION="${READ_PODCAST_FFMPEG_VERSION:-}"
+FFMPEG_URL="${READ_PODCAST_FFMPEG_URL:-}"
+FFMPEG_SHA256="${READ_PODCAST_FFMPEG_SHA256:-}"
+
 info() { printf '\033[1;34m▶ %s\033[0m\n' "$1"; }
 ok()   { printf '\033[1;32m✓ %s\033[0m\n' "$1"; }
 die()  { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; exit 1; }
 
+is_sha256() { printf '%s' "$1" | grep -Eq '^[0-9a-f]{64}$'; }
+
+if [ "$MODE" = "check" ]; then
+  fails=0
+  note_fail() { printf '\033[1;31m✗ %s\033[0m\n' "$1" >&2; fails=$((fails + 1)); }
+  is_sha256 "$PBS_SHA256" || note_fail "PBS_SHA256 不是合法的 SHA256。"
+  case "$PBS_URL" in *"$PBS_ASSET") : ;; *) note_fail "PBS_URL 与 PBS_ASSET 不一致。" ;; esac
+  [ -n "$FFMPEG_VERSION" ] || note_fail "缺少固定的 FFmpeg 版本。"
+  case "$FFMPEG_URL" in https://ffmpeg.org/releases/*) : ;; *) note_fail "FFmpeg 必须来自 ffmpeg.org 官方发布目录。" ;; esac
+  is_sha256 "$FFMPEG_SHA256" || note_fail "FFMPEG_SHA256 不是合法的 SHA256。"
+  _v=$(sed -n 's/^version = "\(.*\)"/\1/p' pyproject.toml | head -1)
+  [ -n "$_v" ] || note_fail "无法从 pyproject.toml 读取版本号。"
+  [ -f "$REPO_ROOT/THIRD-PARTY-LICENSES.md" ] || note_fail "缺少 THIRD-PARTY-LICENSES.md。"
+  [ "$fails" -eq 0 ] || die "打包脚本自检未通过（$fails 项）。"
+  ok "打包脚本自检通过（version=${_v}，ffmpeg=${FFMPEG_VERSION}）"
+  exit 0
+fi
+
 [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ] || \
   die "本工具只支持 Apple 芯片的 Mac（M1/M2/M3/M4）。"
 command -v uv >/dev/null 2>&1 || die "找不到 uv，请先运行 ./scripts/install.sh"
-for tool in curl shasum codesign hdiutil iconutil sips xcrun; do
+if [ "$MODE" = "release" ]; then
+  [ -n "${DEVELOPER_ID:-}" ] || die "发布构建需要 DEVELOPER_ID；没有证书时用 --preview。"
+  [ -n "${NOTARY_PROFILE:-}" ] || die "发布构建需要 NOTARY_PROFILE；没有证书时用 --preview。"
+  security find-identity -v -p codesigning | grep -qF "$DEVELOPER_ID" || \
+    die "钥匙串里找不到签名身份：$DEVELOPER_ID"
+fi
+if [ "$MODE" != "dev" ]; then
+  is_sha256 "$FFMPEG_SHA256" || die "构建必须固定 FFmpeg 官方源码，见 scripts/ffmpeg-asset.env。"
+  "$REPO_ROOT/scripts/check_release.py" || die "发布一致性检查未通过。"
+fi
+for tool in curl shasum codesign hdiutil iconutil sips xcrun make; do
   command -v "$tool" >/dev/null 2>&1 || die "缺少构建工具：$tool"
 done
 [ -f "$ICON_SOURCE" ] || die "找不到 App 图标母版：$ICON_SOURCE"
@@ -70,6 +122,52 @@ mv "$RES/python" "$RES/python-runtime"
 PYTHON_BIN="$RES/python-runtime/bin/python3"
 [ -x "$PYTHON_BIN" ] || die "解压后找不到 Python 可执行文件：$PYTHON_BIN"
 ok "Python 运行时已就绪"
+
+# --- Step 1b: 从官方源码构建并内嵌 LGPL FFmpeg -----------------------------
+if [ -n "$FFMPEG_URL" ]; then
+  info "构建固定的 FFmpeg ${FFMPEG_VERSION}（官方源码，LGPL）…"
+  FFMPEG_ARCHIVE="$BUILD_DIR/ffmpeg-${FFMPEG_VERSION}.tar.xz"
+  curl -fL --retry 3 --retry-delay 2 "$FFMPEG_URL" -o "$FFMPEG_ARCHIVE"
+  FFMPEG_ACTUAL_SHA256=$(shasum -a 256 "$FFMPEG_ARCHIVE" | awk '{print $1}')
+  [ "$FFMPEG_ACTUAL_SHA256" = "$FFMPEG_SHA256" ] || \
+    die "FFmpeg 源码 SHA256 不匹配：expected=$FFMPEG_SHA256 actual=$FFMPEG_ACTUAL_SHA256"
+
+  FFMPEG_SOURCE="$BUILD_DIR/ffmpeg-source"
+  mkdir -p "$FFMPEG_SOURCE"
+  tar -xJf "$FFMPEG_ARCHIVE" -C "$FFMPEG_SOURCE" --strip-components=1
+  (
+    cd "$FFMPEG_SOURCE"
+    ./configure \
+      --prefix="$BUILD_DIR/ffmpeg-install" \
+      --arch=arm64 \
+      --cc=clang \
+      --disable-autodetect \
+      --disable-debug \
+      --disable-doc \
+      --disable-shared \
+      --enable-static
+    make -j"$(sysctl -n hw.logicalcpu)" >/dev/null
+    make install >/dev/null
+  )
+  mkdir -p "$RES/bin"
+  cp "$BUILD_DIR/ffmpeg-install/bin/ffmpeg" "$RES/bin/ffmpeg"
+  cp "$BUILD_DIR/ffmpeg-install/bin/ffprobe" "$RES/bin/ffprobe"
+  chmod +x "$RES/bin/ffmpeg" "$RES/bin/ffprobe"
+  file "$RES/bin/ffmpeg" | grep -q 'arm64' || die "随包 FFmpeg 不是 arm64 构建。"
+  "$RES/bin/ffmpeg" -version 2>&1 | grep -qv -- '--enable-gpl' || die "FFmpeg 构建意外启用了 GPL。"
+  "$RES/bin/ffmpeg" -version 2>&1 | grep -qv -- '--enable-nonfree' || die "FFmpeg 构建意外启用了 nonfree。"
+  "$RES/bin/ffmpeg" -hide_banner -formats 2>/dev/null | grep -q '^  E  segment ' || \
+    die "随包 FFmpeg 缺少 segment muxer。"
+  "$RES/bin/ffprobe" -version >/dev/null 2>&1 || die "随包 ffprobe 无法运行。"
+  ok "FFmpeg / ffprobe 已内嵌"
+elif [ "$MODE" = "dev" ]; then
+  info "开发构建未内嵌 FFmpeg，将回退到系统命令。"
+else
+  die "缺少固定的 FFmpeg 源码配置。"
+fi
+
+cp "$REPO_ROOT/THIRD-PARTY-LICENSES.md" "$RES/THIRD-PARTY-LICENSES.md"
+cp "$REPO_ROOT/LICENSE" "$RES/LICENSE"
 
 # --- Step 2: 按 uv.lock 精确安装依赖到该运行时里 ----------------------------
 # mlx-whisper 的 METADATA 声明了一批这个 App 根本走不到的重依赖，逐个说明：
@@ -248,12 +346,12 @@ export PYTHONHOME="$RES/python-runtime"
 export PYTHONNOUSERSITE=1
 export PYTHONDONTWRITEBYTECODE=1
 export PYTHONPATH="$RES"
-export PATH="/opt/homebrew/bin:/usr/local/bin:$RES/python-runtime/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+export PATH="$RES/bin:/opt/homebrew/bin:/usr/local/bin:$RES/python-runtime/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export READ_PODCAST_CONFIG="$APP_SUPPORT/config/config.yaml"
 export READ_PODCAST_DATA_DIR="$APP_SUPPORT/workspace"
 
 if ! command -v ffmpeg >/dev/null 2>&1; then
-  echo "ERROR: ffmpeg 未安装。请先运行 brew install ffmpeg。"
+  echo "ERROR: 找不到 ffmpeg。正式安装包应自带该组件，请重新下载安装包。"
   exit 1
 fi
 
@@ -378,11 +476,33 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 PLIST
 ok "Info.plist 已生成"
 
-# --- Step 6: ad-hoc 签名 -----------------------------------------------------
-info "ad-hoc 签名（本机运行足够；分发/公证见下方提示）…"
-codesign --force --deep --sign - "$APP_DIR"
+# --- Step 6: 签名 ------------------------------------------------------------
+if [ "$MODE" = "release" ]; then
+  ENTITLEMENTS="$BUILD_DIR/entitlements.plist"
+  cat > "$ENTITLEMENTS" <<'ENT'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>com.apple.security.cs.allow-jit</key><true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
+  <key>com.apple.security.cs.disable-library-validation</key><true/>
+</dict></plist>
+ENT
+  info "Developer ID 签名（由内向外）…"
+  while IFS= read -r -d '' _nested; do
+    codesign --force --options runtime --timestamp \
+      --entitlements "$ENTITLEMENTS" --sign "$DEVELOPER_ID" "$_nested"
+  done < <(find "$RES" \( -name '*.dylib' -o -name '*.so' -o -path "$RES/bin/*" \
+    -o -path "$RES/python-runtime/bin/*" \) -type f -print0)
+  codesign --force --options runtime --timestamp \
+    --entitlements "$ENTITLEMENTS" --sign "$DEVELOPER_ID" "$APP_DIR"
+  ok "Developer ID 签名完成"
+else
+  info "ad-hoc 签名（未公证）…"
+  codesign --force --deep --sign - "$APP_DIR"
+  ok "ad-hoc 签名完成"
+fi
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
-ok "签名完成"
 
 # --- Step 7: 打包成 dmg ------------------------------------------------------
 # 纯用系统自带的 hdiutil，不引入 create-dmg 之类的第三方依赖：一个 App 图标 +
@@ -397,6 +517,20 @@ ln -s /Applications "$STAGING_DIR/Applications"
 hdiutil create -volname "$APP_NAME" -srcfolder "$STAGING_DIR" -fs HFS+ -format UDZO -ov "$DMG_PATH" >/dev/null
 hdiutil verify "$DMG_PATH" >/dev/null
 ok "dmg 已生成（$(du -sh "$DMG_PATH" | cut -f1)）"
+
+if [ "$MODE" = "release" ]; then
+  info "签名并提交 Apple 公证…"
+  codesign --force --timestamp --sign "$DEVELOPER_ID" "$DMG_PATH"
+  xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --wait \
+    || die "公证失败。"
+  xcrun stapler staple "$APP_DIR" || die "App staple 失败。"
+  xcrun stapler staple "$DMG_PATH" || die "DMG staple 失败。"
+  spctl -a -t exec -vv "$APP_DIR" || die "App 未通过 Gatekeeper。"
+  spctl -a -t open --context context:primary-signature -vv "$DMG_PATH" || \
+    die "DMG 未通过 Gatekeeper。"
+  xcrun stapler validate "$DMG_PATH" >/dev/null || die "DMG 公证票据校验失败。"
+  ok "签名、公证与 Gatekeeper 校验全部通过"
+fi
 
 # 所有验证通过后才替换公开产物，构建中途失败不会破坏上一版。
 FINAL_DMG_PATH="$DIST_DIR/$DMG_NAME"
@@ -416,12 +550,10 @@ ok "校验文件：$FINAL_SHA_PATH"
 echo "测试运行： open \"$FINAL_APP_DIR\""
 echo "测试安装： open \"$FINAL_DMG_PATH\"（打开后把 App 拖进 Applications）"
 echo
-echo "提示："
-echo "  · App 是 ad-hoc 签名；dmg 当前未签名，二者均未公证。给别人分发前，对方首次"
-echo "    打开需要右键 → 打开 绕过 Gatekeeper（或使用付费开发者证书重签）。"
-echo "  · 如需正式签名分发，把 Step 6 的签名命令换成："
-echo '      codesign --force --deep --sign "Developer ID Application: 你的名字 (TEAMID)" "'"$FINAL_APP_DIR"'"'
-echo "    dmg 生成后再对 dmg 本身签名一次，然后走 notarytool 公证："
-echo '      codesign --force --sign "Developer ID Application: 你的名字 (TEAMID)" "'"$FINAL_DMG_PATH"'"'
-echo '      xcrun notarytool submit "'"$FINAL_DMG_PATH"'" --keychain-profile <profile> --wait'
-echo '      xcrun stapler staple "'"$FINAL_DMG_PATH"'"'
+if [ "$MODE" = "release" ]; then
+  echo "这是已签名、已公证的正式发布构建。"
+elif [ "$MODE" = "preview" ]; then
+  echo "这是未公证预览版：可以上传 Release，但必须明确提示首次打开需右键 → 打开。"
+else
+  echo "这是本机开发构建，不应作为 Release 发布。"
+fi

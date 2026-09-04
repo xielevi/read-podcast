@@ -1,6 +1,6 @@
 [project]
 name = "read-podcast"
-version = "0.2.0"
+version = "0.3.0"
 description = "Turn podcasts and audio into readable Markdown with local MLX Whisper."
 readme = "README.md"
 license = "MIT"

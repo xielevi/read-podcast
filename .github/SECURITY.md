@@ -1,8 +1,18 @@
 # Security Policy
 
-## Supported version
+## Supported versions
 
-Security fixes are applied to the latest code on `main`.
+| Version | Supported |
+|---|---|
+| Latest 1.x release | Yes |
+| Older 1.x releases | No — upgrade to the latest 1.x first |
+| 0.x | No |
+
+Security fixes land on `main` and are delivered to end users as a new signed and
+notarized 1.x DMG release. There is no in-app auto-update: when a security
+release is published, download the new DMG from the Releases page and replace
+`/Applications/Read Podcast.app`. Users who run from source should update to the
+tag of the latest 1.x release.
 
 ## Reporting a vulnerability
 
