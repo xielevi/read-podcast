@@ -26,13 +26,15 @@
 
 ## 验收
 
+按改动涉及的代码与部署方式选择检查；纯文档修改检查内容与差异。以下是对应场景的验收入口，不要求每次任务都构建镜像或调用转录模型。
+
 ```bash
 uv sync --dev
 uv run pytest -q
 docker build -t read-podcast:test .
 ```
 
-至少验证：
+涉及相应功能或部署时验证：
 
 - `GET /`、配置的子路径与 `GET /api/read-podcast/health` 返回 `200`。
 - Basic Auth 关闭时不拦截；同时配置用户名和密码时保护 WebUI 与业务 API。
