@@ -154,8 +154,16 @@ if [ -n "$FFMPEG_URL" ]; then
   cp "$BUILD_DIR/ffmpeg-install/bin/ffprobe" "$RES/bin/ffprobe"
   chmod +x "$RES/bin/ffmpeg" "$RES/bin/ffprobe"
   file "$RES/bin/ffmpeg" | grep -q 'arm64' || die "随包 FFmpeg 不是 arm64 构建。"
-  "$RES/bin/ffmpeg" -version 2>&1 | grep -qv -- '--enable-gpl' || die "FFmpeg 构建意外启用了 GPL。"
-  "$RES/bin/ffmpeg" -version 2>&1 | grep -qv -- '--enable-nonfree' || die "FFmpeg 构建意外启用了 nonfree。"
+  # 许可证闸门只认 configuration 那一行。这里不能用 `grep -qv`：它的语义是「有任意
+  # 一行不含该模式」，而 -version 是多行输出，无论是否启用 GPL 都恒为真。
+  FFMPEG_CONFIG_LINE=$("$RES/bin/ffmpeg" -version 2>&1 | grep '^configuration:') || \
+    die "读不到随包 FFmpeg 的 configuration 行，无法确认许可证边界。"
+  case "$FFMPEG_CONFIG_LINE" in
+    *--enable-gpl*)     die "FFmpeg 构建意外启用了 GPL。" ;;
+  esac
+  case "$FFMPEG_CONFIG_LINE" in
+    *--enable-nonfree*) die "FFmpeg 构建意外启用了 nonfree。" ;;
+  esac
   "$RES/bin/ffmpeg" -hide_banner -formats 2>/dev/null | grep -q '^  E  segment ' || \
     die "随包 FFmpeg 缺少 segment muxer。"
   "$RES/bin/ffprobe" -version >/dev/null 2>&1 || die "随包 ffprobe 无法运行。"
