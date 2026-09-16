@@ -16,6 +16,7 @@
 from __future__ import annotations
 
 import logging
+import math
 import os
 import re
 import tempfile
@@ -354,6 +355,8 @@ def _validate_number(value: str, field: Dict[str, Any]) -> Any:
         number = int(value) if field["type"] == "int" else float(value)
     except ValueError as exc:
         raise SettingsError("必须是数字") from exc
+    if isinstance(number, float) and not math.isfinite(number):
+        raise SettingsError("必须是有限数字")
     minimum = field.get("min")
     maximum = field.get("max")
     if minimum is not None and number < minimum:
@@ -426,6 +429,8 @@ def _write_config_values(updates: Dict[str, Any], deletions: List[str]) -> None:
             loaded = yaml.safe_load(path.read_text(encoding="utf-8"))
         except yaml.YAMLError as exc:
             raise SettingsError("持久化配置文件不是合法 YAML，请先修复后重试") from exc
+        if loaded is not None and not isinstance(loaded, dict):
+            raise SettingsError("持久化配置文件结构异常，请先修复后重试")
         if isinstance(loaded, dict):
             raw = loaded
     service = raw.get("read-podcast", raw.get("podcast2md", raw))

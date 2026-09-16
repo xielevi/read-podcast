@@ -50,6 +50,27 @@ def _find_field(payload, key):
     raise AssertionError(f"字段 {key} 不在设置面板中")
 
 
+@pytest.mark.parametrize("value", ["nan", "NaN", "inf", "-inf"])
+def test_nonfinite_settings_are_rejected_without_writing(temp_settings, value):
+    with TestClient(app) as client:
+        response = client.put("/api/read-podcast/settings", json={
+            "values": {"refiner.temperature": value}, "secrets": {},
+        })
+    assert response.status_code == 400
+    assert not temp_settings.exists()
+
+
+@pytest.mark.parametrize("raw", ["- keep this\n", "42\n", "false\n"])
+def test_settings_preserve_invalid_config_structure(temp_settings, raw):
+    temp_settings.write_text(raw, encoding="utf-8")
+    with TestClient(app) as client:
+        response = client.put("/api/read-podcast/settings", json={
+            "values": {"refiner.model": "new-model"}, "secrets": {},
+        })
+    assert response.status_code == 400
+    assert temp_settings.read_text(encoding="utf-8") == raw
+
+
 def test_get_settings_never_returns_secret_values(temp_settings, monkeypatch):
     monkeypatch.setenv("REFINER_API_KEY", "sk-super-secret-value")
     with TestClient(app) as client:
