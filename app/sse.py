@@ -39,15 +39,15 @@ class Notifier:
                 self.global_queues.remove(queue)
 
     async def push(self, task_id: str, message: dict):
-        task_queues = list(self.queues.get(task_id, []))
         global_message = {"task_id": task_id, **message}
-        for queue in [*task_queues, *self.global_queues]:
-            try:
+        for queues, payload in (
+            (self.queues.get(task_id, ()), message),
+            (self.global_queues, global_message),
+        ):
+            for queue in queues:
                 if queue.full():
                     # Drop the oldest message to make room
                     queue.get_nowait()
-                queue.put_nowait(message if queue in task_queues else global_message)
-            except Exception:
-                pass
+                queue.put_nowait(payload)
 
 notifier = Notifier()

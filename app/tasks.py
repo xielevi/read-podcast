@@ -150,36 +150,26 @@ def _thread_reporter(task_id: str, loop: asyncio.AbstractEventLoop):
 
 async def _mark_cancelled(task_id: str) -> None:
     logger.info("Task %s cancelled", task_id)
-    task = await get_task(task_id)
-    progress = task.progress_pct if task else 0
-    stage = task.stage if task else "cancelled"
-    await update_task(
-        task_id,
-        status=TaskStatus.CANCELLED,
-        message="任务已取消；原音频已保留，可直接重试。",
-        output_path=None,
-    )
-    await notifier.push(
-        task_id,
-        {
-            "level": "error",
-            "message": "任务已取消；原音频已保留，可直接重试。",
-            "progress": progress,
-            "stage": stage,
-            "status": "cancelled",
-        },
+    await _mark_stopped(
+        task_id, TaskStatus.CANCELLED, "任务已取消；原音频已保留，可直接重试。",
     )
 
 
 async def _mark_failed(task_id: str, exc: Exception) -> None:
     logger.error("Task %s failed: %s", task_id, exc, exc_info=True)
+    await _mark_stopped(
+        task_id, TaskStatus.FAILED, "转录或整理未成功；原音频已保留，可直接重试。",
+    )
+
+
+async def _mark_stopped(task_id: str, status: TaskStatus, message: str) -> None:
+    """失败与取消共用终态写入，保留最后一次真实进度。"""
     task = await get_task(task_id)
-    stage = task.stage if task else "error"
+    stage = task.stage if task else ("cancelled" if status == TaskStatus.CANCELLED else "error")
     progress = task.progress_pct if task else 0
-    message = "转录或整理未成功；原音频已保留，可直接重试。"
     await update_task(
         task_id,
-        status=TaskStatus.FAILED,
+        status=status,
         message=message,
         output_path=None,
     )
@@ -190,9 +180,27 @@ async def _mark_failed(task_id: str, exc: Exception) -> None:
             "message": message,
             "progress": progress,
             "stage": stage,
-            "status": "failed",
+            "status": status.value,
         },
     )
+
+
+async def _finish_stage(runner: Callable[[], Awaitable[None]]) -> None:
+    """取消不能终止工作线程；等待当前阶段结束，防止过早释放资源槽位。"""
+    running = asyncio.create_task(runner())
+    try:
+        await asyncio.shield(running)
+    except asyncio.CancelledError:
+        while not running.done():
+            try:
+                await asyncio.shield(running)
+            except asyncio.CancelledError:
+                continue  # 重复取消也不能释放仍在使用的槽位。
+            except Exception:
+                break
+        if not running.cancelled():
+            running.exception()  # 消费后台异常；用户取消优先于阶段结果。
+        raise
 
 
 async def _run_stages(
@@ -201,22 +209,22 @@ async def _run_stages(
     output_path: Callable[[], Path | None],
     success_message: str,
 ) -> None:
-    await update_task(
-        task_id,
-        status=TaskStatus.PENDING,
-        stage="queued",
-        progress_pct=2,
-        message="已加入整理流水线…",
-    )
-    await notifier.push(
-        task_id,
-        {"level": "info", "message": "已加入整理流水线…", "progress": 2, "stage": "queued", "status": "pending"},
-    )
     try:
+        await update_task(
+            task_id,
+            status=TaskStatus.PENDING,
+            stage="queued",
+            progress_pct=2,
+            message="已加入整理流水线…",
+        )
+        await notifier.push(
+            task_id,
+            {"level": "info", "message": "已加入整理流水线…", "progress": 2, "stage": "queued", "status": "pending"},
+        )
         for slot, stage, message, runner in stages:
             async with slot:
                 await _publish_progress(task_id, stage, 0, message)
-                await runner()
+                await _finish_stage(runner)
 
         resolved_output = output_path()
         if not resolved_output or not resolved_output.is_file():
@@ -343,7 +351,7 @@ async def cancel_task(task_id: str) -> bool:
     """取消进行中的任务；返回 True 表示已发出取消信号。
 
     正在执行的宿主机 Whisper 线程无法强杀，会自然跑完后被丢弃；
-    但事件循环侧的任务会立即进入取消流程并释放并发槽位。
+    当前阶段结束后才释放并发槽位与去重键，不再进入后续阶段。
     """
     background = _task_registry.get(task_id)
     if background is None or background.done():

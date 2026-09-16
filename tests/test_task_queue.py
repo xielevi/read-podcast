@@ -1,6 +1,7 @@
 """任务排队去重、重复防护与取消逻辑的回归测试。"""
 import asyncio
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,65 @@ if str(PROJECT_ROOT) not in sys.path:
 import app.database as database
 import app.tasks as tasks
 from app.models.task import Task, TaskStatus
+
+
+@pytest.mark.parametrize("worker_fails", [False, True])
+def test_cancellation_keeps_slot_and_key_until_thread_finishes(fresh_db, monkeypatch, worker_fails):
+    async def scenario():
+        started = asyncio.Event()
+        release = threading.Event()
+        slot = asyncio.Lock()
+        loop = asyncio.get_running_loop()
+        events = []
+
+        def worker():
+            loop.call_soon_threadsafe(started.set)
+            if not release.wait(timeout=3):
+                raise TimeoutError("test did not release worker")
+            if worker_fails:
+                raise RuntimeError("late worker failure")
+
+        async def runner():
+            await asyncio.to_thread(worker)
+
+        async def unexpected_stage():
+            pytest.fail("cancelled task entered its next stage")
+
+        async def capture(_task_id, payload):
+            events.append(payload)
+
+        async def pipeline(task_id, *_args, **_kwargs):
+            await tasks._run_stages(task_id, [
+                (slot, "transcribing", "转录中", runner),
+                (slot, "refining", "精修中", unexpected_stage),
+            ], lambda: None, "完成")
+
+        monkeypatch.setattr(tasks, "run_pipeline", pipeline)
+        monkeypatch.setattr(tasks.notifier, "push", capture)
+        task_id = await tasks.create_and_start_task("播客", "取消测试")
+        background = tasks._task_registry[task_id]
+        try:
+            await asyncio.wait_for(started.wait(), timeout=1)
+            for _ in range(2):
+                assert await tasks.cancel_task(task_id)
+                await asyncio.sleep(0)
+                assert slot.locked()
+                assert not background.done()
+            with pytest.raises(tasks.DuplicateTaskError):
+                await tasks.create_and_start_task("播客", "取消测试")
+        finally:
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await asyncio.wait_for(background, timeout=2)
+
+        assert not slot.locked()
+        assert "播客::取消测试" not in tasks._active_keys
+        stored = await database.get_task(task_id)
+        assert stored.status == TaskStatus.CANCELLED
+        assert events[-1]["status"] == "cancelled"
+        assert not any(event["stage"] == "refining" for event in events)
+
+    asyncio.run(scenario())
 
 
 @pytest.fixture

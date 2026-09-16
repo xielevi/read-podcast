@@ -54,7 +54,7 @@ Read Podcast Web :28000（原生）或 Docker :8080 → :28000
 
 **D2 WebUI-only 与反向代理访问。** WebUI 是唯一正式入口，CLI 仅保留为维护包装层。Compose 默认只绑定回环地址。WebUI 按浏览器可见路径生成 API/SSE/上传/下载 URL，根路径与任意子路径共用同一镜像；保留前缀的代理用 `web.base_path`。默认无鉴权，可选 Basic Auth（用户名与密码同时设置），健康检查免认证，不开放跨域。
 
-**D3 Web 原生分阶段流水线 + 共享音频路径。** `modules.pipeline.PodcastPipeline` 是唯一业务实现，WebUI 进程内调用并消费结构化阶段事件。下载/精修有限并发，Whisper 单请求，可跨阶段重叠。RSS enclosure 保留源格式，下载用临时文件 + 原子重命名。原始转录缓存命中则跳过下载与转录；音频由统一保留期清理，任务失败不立即删除。同机启用 `/transcribe-path` 提交相对路径，服务端 allowlist 解析；分离部署回退 multipart。转录失败必须使任务失败；只有输出文件真实存在才标记成功。MLX 分片并发默认降为 2，模型空闲保温后释放。
+**D3 Web 原生分阶段流水线 + 共享音频路径。** `modules.pipeline.PodcastPipeline` 是唯一业务实现，WebUI 进程内调用并消费结构化阶段事件。下载/精修有限并发，Whisper 单请求，可跨阶段重叠。取消任务时当前后台阶段自然结束后再释放资源与去重键，不进入后续阶段。RSS enclosure 保留源格式，下载用临时文件 + 原子重命名。原始转录缓存命中则跳过下载与转录；音频由统一保留期清理，任务失败不立即删除。同机启用 `/transcribe-path` 提交相对路径，服务端 allowlist 解析；分离部署回退 multipart。转录失败必须使任务失败；只有输出文件真实存在才标记成功。MLX 分片并发默认降为 2，模型空闲保温后释放。
 
 **D4 配置分层。** `modules/config.default.yaml` 保存普通运行默认值、Prompt 与空播客列表，持久化 `config/config.yaml` 保存用户覆盖和 WebUI 写入内容；机密统一写入 `config/secrets.env`（0600），**手动编辑与 WebUI 面板作用于同一文件**；根目录 `.env` 保留为向后兼容的旧位置与 Docker Compose 的 `${VAR}` 替换来源，优先级低于 `secrets.env`。Compose 只描述本地构建、端口、挂载、资源限制和凭据注入，不重复应用默认值。
 
