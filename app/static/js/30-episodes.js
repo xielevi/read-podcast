@@ -107,8 +107,12 @@
 
     function updateFilterCounts() {
       var scoped = getScopedEpisodes();
-      var readable = scoped.filter(function (episode) { return Boolean(completedTaskForEpisode(episode)); }).length;
-      var unread = scoped.filter(function (episode) { return !isEpisodeRead(episode); }).length;
+      var readable = 0;
+      var unread = 0;
+      scoped.forEach(function (episode) {
+        if (completedTaskForEpisode(episode)) readable += 1;
+        if (!isEpisodeRead(episode)) unread += 1;
+      });
       var read = scoped.length - unread;
       var allCount = byId('filter-all-count');
       var readableCount = byId('filter-readable-count');

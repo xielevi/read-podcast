@@ -90,9 +90,7 @@
         .then(function (keys) {
           _readEpisodes = {};
           (Array.isArray(keys) ? keys : []).forEach(function (key) { _readEpisodes[String(key)] = true; });
-          updateReaderReadState();
-          updateFilterCounts();
-          if (allEpisodes.length) renderEpisodeList(getFilteredEpisodes());
+          refreshReadViews();
           return _readEpisodes;
         })
         .catch(function () { return _readEpisodes; });
@@ -124,9 +122,7 @@
       // 乐观更新：先改本地状态刷新界面，服务端保存失败再回滚。
       if (read) _readEpisodes[key] = true;
       else delete _readEpisodes[key];
-      updateReaderReadState();
-      updateFilterCounts();
-      if (allEpisodes.length) renderEpisodeList(getFilteredEpisodes());
+      refreshReadViews();
       fetch(appUrl('/api/read-podcast/episodes/read'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -136,11 +132,15 @@
         .catch(function (error) {
           if (read) delete _readEpisodes[key];
           else _readEpisodes[key] = true;
-          updateReaderReadState();
-          updateFilterCounts();
-          if (allEpisodes.length) renderEpisodeList(getFilteredEpisodes());
+          refreshReadViews();
           addLog('保存已读状态失败：' + errorMessage(error), 'error');
         });
+    }
+
+    function refreshReadViews() {
+      updateReaderReadState();
+      if (allEpisodes.length) renderEpisodeList(getFilteredEpisodes());
+      else updateFilterCounts();
     }
 
     function updateReaderReadState() {
@@ -652,8 +652,12 @@
 
     function updateFilterCounts() {
       var scoped = getScopedEpisodes();
-      var readable = scoped.filter(function (episode) { return Boolean(completedTaskForEpisode(episode)); }).length;
-      var unread = scoped.filter(function (episode) { return !isEpisodeRead(episode); }).length;
+      var readable = 0;
+      var unread = 0;
+      scoped.forEach(function (episode) {
+        if (completedTaskForEpisode(episode)) readable += 1;
+        if (!isEpisodeRead(episode)) unread += 1;
+      });
       var read = scoped.length - unread;
       var allCount = byId('filter-all-count');
       var readableCount = byId('filter-readable-count');
