@@ -8,6 +8,18 @@ if str(PROJECT_ROOT) not in sys.path:
 from modules.utils import verify_refinement_quality
 
 
+def test_refiner_rate_limit_only_waits_before_another_attempt(monkeypatch):
+    import httpx
+    from modules import refiner
+
+    waits = []
+    monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: httpx.Response(429))
+    monkeypatch.setattr(refiner.time, "sleep", waits.append)
+    engine = refiner.OpenaiCompatRefiner({"api_base": "https://x/v1", "model": "m", "max_retries": 3})
+    assert engine.call("整理", "正文") is None
+    assert waits == [10, 20]
+
+
 def test_refinement_quality_rejects_over_compressed_output():
     raw_text = "原始内容" * 1000
     short_markdown = "## 摘要\n\n主持人：这是一个很短的总结。"

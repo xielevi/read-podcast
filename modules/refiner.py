@@ -48,6 +48,18 @@ def build_chat_request(model: str, api_key: str, messages: list[dict], *, max_to
     return headers, body
 
 
+def _chat_result(response) -> tuple[str, str]:
+    """统一解析文本回答；缺失或非文本内容按空回答处理。"""
+    data = response.json()
+    choices = data.get("choices") if isinstance(data, dict) else None
+    choice = choices[0] if isinstance(choices, list) and choices else None
+    if not isinstance(choice, dict):
+        return "", "stop"
+    message = choice.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    return content.strip() if isinstance(content, str) else "", choice.get("finish_reason", "stop")
+
+
 # ── 抽象基类 ──────────────────────────────────────────────
 
 
@@ -154,21 +166,7 @@ class OpenaiCompatRefiner(BaseRefiner):
 
                 # ── 响应状态处理 ──
                 if resp.status_code == 200:
-                    data = resp.json()
-
-                    # 解析 OpenAI 标准响应格式
-                    output = (
-                        data.get("choices", [{}])[0]
-                        .get("message", {})
-                        .get("content", "")
-                        .strip()
-                    )
-
-                    # 检查 finish_reason（如被截断则记录）
-                    finish_reason = (
-                        data.get("choices", [{}])[0]
-                        .get("finish_reason", "stop")
-                    )
+                    output, finish_reason = _chat_result(resp)
                     if finish_reason == "length":
                         logger.warning("模型输出达到 max_tokens 上限，文本可能被截断")
                         if progress_callback:
@@ -184,12 +182,13 @@ class OpenaiCompatRefiner(BaseRefiner):
 
                 elif resp.status_code == 429:
                     # 速率限制：指数退避
-                    wait = 2 ** attempt * 10
-                    logger.warning("触发频率限制 (429)，等待 %ds (attempt %d/%d)", wait, attempt + 1, self.max_retries)
-                    if progress_callback:
-                        progress_callback("refining", -1, f"触发频率限制，等待 {wait}s ({attempt + 1}/{self.max_retries})")
-                    time.sleep(wait)
                     last_error = "速率限制 (429)"
+                    if attempt < self.max_retries - 1:
+                        wait = 2 ** attempt * 10
+                        logger.warning("触发频率限制 (429)，等待 %ds (attempt %d/%d)", wait, attempt + 1, self.max_retries)
+                        if progress_callback:
+                            progress_callback("refining", -1, f"触发频率限制，等待 {wait}s ({attempt + 1}/{self.max_retries})")
+                        time.sleep(wait)
                     continue
 
                 elif resp.status_code == 401:
@@ -314,13 +313,11 @@ def chat_completion(
             continue
 
         if resp.status_code == 200:
-            content = (
-                resp.json()
-                .get("choices", [{}])[0]
-                .get("message", {})
-                .get("content", "")
-                .strip()
-            )
+            try:
+                content, _ = _chat_result(resp)
+            except ValueError:
+                last_error = "API 返回无效 JSON"
+                continue
             if content:
                 return content
             last_error = "API 返回空内容"

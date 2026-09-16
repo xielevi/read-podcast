@@ -54,6 +54,33 @@ def test_chat_completion_returns_content(monkeypatch):
     assert out == "回答内容"
 
 
+@pytest.mark.parametrize("payload", [
+    {}, [], {"choices": []}, {"choices": None}, {"choices": [None]},
+    {"choices": [{"message": None}]},
+    {"choices": [{"message": {"content": None}}]},
+    {"choices": [{"message": {"content": []}}]},
+])
+def test_chat_completion_retries_empty_or_malformed_answers(monkeypatch, payload):
+    import httpx
+
+    monkeypatch.setenv("REFINER_API_KEY", "test-key")
+    replies = iter([
+        httpx.Response(200, json=payload),
+        httpx.Response(200, json={"choices": [{"message": {"content": " 恢复回答 "}}]}),
+    ])
+    monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: next(replies))
+    assert chat_completion([], {"api_base": "https://x/v1", "model": "m", "max_retries": 2}) == "恢复回答"
+
+
+def test_chat_completion_invalid_json_returns_domain_error(monkeypatch):
+    import httpx
+
+    monkeypatch.setenv("REFINER_API_KEY", "test-key")
+    monkeypatch.setattr(httpx, "post", lambda *args, **kwargs: httpx.Response(200, text="not json"))
+    with pytest.raises(AssistantError, match="无效 JSON"):
+        chat_completion([], {"api_base": "https://x/v1", "model": "m", "max_retries": 1})
+
+
 def test_chat_completion_raises_without_key(monkeypatch):
     monkeypatch.delenv("REFINER_API_KEY", raising=False)
     with pytest.raises(AssistantError, match="REFINER_API_KEY"):
