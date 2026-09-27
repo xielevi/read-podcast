@@ -3,11 +3,11 @@
 [English](README.md) · **简体中文**
 
 > [!NOTE]
-> **Cloudflare Free 计划即可运行**：整个 Cloudflare 应用（Workers、D1、Workflows、R2）都在 Workers Free 额度内，Cloudflare 侧无需付费。你仍需要一个托管在 Cloudflare DNS 上的域名、一台运行转录服务的机器（或云端转录服务商），以及一个 OpenAI 兼容的 LLM API 用于精修（按该服务商计费）。
+> **Cloudflare Free 为目标，部分发布边界待核验**：维护者的 Cloudflare 部署使用 Workers Free。大 RSS 和长节目已经实际跑过；单次 cron 恢复多任务及 CPU／子请求余量还需在 [#30](https://github.com/xielevi/read-podcast/issues/30) 留下验证依据。转录与精修可能产生额外服务商费用。也可以在单机上用 Docker / Node、SQLite、本地对象存储和本地稿件目录运行同一套代码，无需 Cloudflare 账号。
 >
-> **与 v0.x（Python / macOS App）的关系**：Read Podcast 最初是一个使用 Python 开发、带 DMG 打包与本地图形界面的 macOS 原生桌面应用（v0.x）。原生桌面版开发目前已暂停，v0.x 完整代码已归档至 [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python) 分支。从 v1.0 开始，项目彻底转向 Cloudflare 原生云端架构（Workers / D1 / Workflows / R2 + 外部独立算力），将阅读界面带到手机、平板与桌面所有浏览器中。
+> **与 v0.x（Python / macOS App）的关系**：Read Podcast 最初是使用 Python、MLX Whisper 并以 DMG 分发的 macOS 原生桌面应用。桌面版开发目前暂停，v0.x 源码归档于 [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python)。从 v1.0 开始，同一套 TypeScript 代码支持 Cloudflare 与单机 Docker / Node 两种部署，提供响应式浏览器界面。
 
-**一个可在 Cloudflare Free 计划上运行的个人播客阅读系统。** 挑出值得留下的单集，Read Podcast 会把每一集整理成一份完整、可读的长文稿——
+**一个可部署在 Cloudflare 或 Docker 的个人播客阅读系统。** 挑出值得留下的单集，Read Podcast 会把每一集整理成一份完整、可读的长文稿——
 不是摘要。你可以在任何设备上阅读它、以公开页面分享它，并以 Markdown 形式保存在你自己拥有的稿件存储里。
 
 <p align="center">
@@ -35,8 +35,7 @@ Read Podcast 走相反的路。它的产出是一份**稿件**：完整的对话
 3. **阅读。** 专注的阅读器，带大纲目录、排版与主题设置；主人还有阅读进度与已读 / 未读状态。
    **关键概念**在主人首次打开稿件时由模型提名，只有能对上真实中文维基百科词条的才会保留，
    所以每个概念链接都指向真实页面。每份稿件都可以下载为 Markdown。
-4. **分享。** 同一个工作区在 `/` 公开只读：任何人都能浏览你的订阅、阅读已发布的稿件。所有会改变
-   状态的操作——订阅、生成、设置、已读状态——都在 `/manage` 下，由 Cloudflare Access 保护。
+4. **分享。** 同一个工作区的 `/` 是公开只读面，可以浏览订阅与已发布稿件。变更状态的操作在 `/manage` 和 `/api/control/*`：Cloudflare 部署用 Access 保护，Docker 默认只绑定本机，可按需启用 Basic Auth。
 
 <p align="center">
   <img src="docs/assets/readme/reader.webp" alt="Read Podcast 阅读器：带大纲与维基百科核验关键概念的稿件" width="920">
@@ -57,10 +56,7 @@ Read Podcast 走相反的路。它的产出是一份**稿件**：完整的对话
 把一集两小时的节目变成稿件，需要几十分钟的转写和一次很长的 LLM 调用。一口气跑完的脚本，
 在中途出错之前都能用。Read Podcast 的设计目标是：每个昂贵步骤只做一次。
 
-- **持久化管线，而不是脚本。** 每次生成都是一个带持久化 checkpoint 的 Cloudflare Workflow。
-  原始转录一产生就存入 R2，因此整理失败重试时不会重新转写，保存失败重试时不会再次调用模型。
-  定时任务会为没有 Workflow 的排队任务启动执行，并把 Workflow 已意外结束的任务标记为失败，
-  不会有任务无声地挂起。
+- **持久化管线，而不是脚本。** Cloudflare 部署用 Workflows 和 R2 检查点；Docker 部署用进程内执行器、SQLite 检查点和本地对象存储。整理失败可复用原始转录，发布失败可复用精修结果，不必重复昂贵步骤。
 - **自带算力。** 转写运行在你选择的机器上——参考实现是一台 Apple Silicon Mac，本机运行 MLX Whisper——
   通过一个小型 HTTP 协议对接。它不持有凭据、没有持久的业务状态，只需要在单集转写期间在线。
   整理使用你配置的任意 OpenAI 兼容 API。
@@ -75,6 +71,8 @@ Read Podcast 走相反的路。它的产出是一份**稿件**：完整的对话
 
 ## 架构概览
 
+下图是 Cloudflare 部署。Docker / Node 使用同一套应用代码，以 SQLite 代替 D1、进程内带检查点的执行器代替 Workflows、本地文件代替 R2，并默认使用本地稿件目录。见 [Docker 部署](docs/DEPLOYMENT.md#7-local-docker-deployment)。
+
 ```mermaid
 flowchart LR
     Browser["Browser / Mobile"] <--> CF
@@ -88,13 +86,12 @@ flowchart LR
     TS -->|"raw transcript"| CF
     CF -->|"refine request"| RP["Refinement Provider<br/>(OpenAI-compatible API)"]
     RP -->|"refined text"| CF
-    CF -->|"publish"| CMS["Canonical Manuscript Store<br/>(your GitHub repository,<br/>or a local directory on Docker)"]
+    CF -->|"publish"| CMS["Canonical Manuscript Store<br/>(your GitHub repository)"]
 ```
 
-Cloudflare 拥有每个任务从创建到发布的完整生命周期；另外三个方框都是它调用的、可替换的依赖。
-读者始终只与 Cloudflare 应用交互。
+Cloudflare 路径由 Cloudflare 管理任务从创建到发布的生命周期；Docker 路径则由本地 Node 进程负责。读者只与应用交互。
 
-**数据存放在哪里**
+**数据存放在哪里（除注明外为 Cloudflare 路径）**
 
 | 内容 | 位置 | 保留时长 |
 |---|---|---|
@@ -111,20 +108,16 @@ Cloudflare 拥有每个任务从创建到发布的完整生命周期；另外三
 
 ## 运行它需要什么
 
-- **一个 Cloudflare 账号**，以及托管在 Cloudflare DNS 上的域名。Read Podcast 使用 Workers（含静态资源）、
-  D1、R2、Workflows、一个 Cron Trigger、Cloudflare Access 和 Cloudflare Tunnel。
-- **一台转写机器。** 参考服务需要一台 Apple Silicon Mac（macOS 14+），在转写单集期间保持开机。
-  任何实现了[转录协议](docs/ARCHITECTURE.md#transcription-service-contract)的机器或服务都可以替换它。
-- **一个 OpenAI 兼容的 LLM API** 及其 API key。
-- **一个用于存放稿件的 GitHub 仓库**（私有即可），以及一个能写入该仓库的 fine-grained token。
-  （Docker 部署默认使用本地稿件目录，GitHub 仓库在那里是可选的。）
+二选一：
 
-**费用。** **Workers Free 计划可用**，维护者的生产部署一直使用该计划（Workers $0/月）。
+- **Cloudflare**：Cloudflare 账号与接入 DNS 的域名、转录机器或云端提供商、OpenAI 兼容 LLM API key，以及有 fine-grained 写入令牌的 GitHub 稿件仓库。使用 Workers（含静态资源）、D1、R2、Workflows、Cron、Access，按需使用 Tunnel。见 [Cloudflare 部署](docs/DEPLOYMENT.md#2-cloudflare-application)。
+- **Docker / Node**：单机 Docker Compose、OpenAI 兼容 LLM API key，以及存放 SQLite、临时对象和稿件的磁盘空间。Compose 包含 Faster-Whisper 转录容器；不需要 Cloudflare 账号、域名或 GitHub 仓库。见 [Docker 部署](docs/DEPLOYMENT.md#7-local-docker-deployment)。
+
+**Cloudflare 费用。** 维护者的生产部署使用 Workers Free，但仍有部分发布边界待核验。
 Free 上限包括：每次调用 10 ms CPU（I/O 等待不计入）、每次调用 50 个外部子请求和 1,000 个
 Cloudflare 服务子请求、每天 3,000 个 Workflow step、每账号 5 个 Cron Trigger，以及 Workflow
-完成后 3 天的实例状态保留期。本应用使用 1 个 Cron Trigger。几百集的大 RSS 源、2–3 小时长节目、
-GitHub 发布及单次 cron 恢复多条任务，仍需在具体部署中检查 `exceededCpu` 和子请求超限错误；
-已有生产使用不能证明这些边界均已通过。请以 Cloudflare 当前的
+完成后 3 天的实例状态保留期。本应用使用 1 个 Cron Trigger。大 RSS 和长节目已经实际跑过，
+但不能仅据此量化 CPU／子请求余量；单次 cron 恢复多条任务仍待生产验证。请以 Cloudflare 当前的
 [Workers 限制](https://developers.cloudflare.com/workers/platform/limits/)、
 [Workflows 限制](https://developers.cloudflare.com/workflows/reference/limits/)及
 [Workflows 定价](https://developers.cloudflare.com/workflows/reference/pricing/)为准。LLM 费用主要由作为输入的转录

@@ -10,16 +10,18 @@ steps are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Architecture and Upgrade Principles
 
-A Read Podcast deployment consists of two decoupled components:
+Read Podcast has two supported deployment paths:
 
-1. **Cloudflare Application**: Cloudflare Worker, D1 database, Workflows engine, and R2 object storage.
-2. **Transcription Service Host**: An independent, stateless speech-to-text compute node (reference: macOS Apple Silicon running MLX Whisper).
+1. **Cloudflare**: Worker + D1 + Workflows + R2, with a GitHub manuscript store and either self-hosted or cloud transcription.
+2. **Docker / Node**: Node.js + SQLite + local object storage + a local manuscript directory by default, with the same application code and an in-process checkpointed workflow runner.
+
+The Cloudflare procedure below applies only to the first path; Docker has its own procedure later in this guide.
 
 When upgrading, the following core principles must be maintained:
 
-- **Zero Data Loss for Published Manuscripts**: Articles recorded in D1 and saved as Markdown files in your GitHub repository are durable and must never be altered or cascade-deleted by an upgrade.
-- **Graceful In-flight Task Handling**: Database migrations and workflow upgrades must handle active tasks gracefully. Completed raw transcripts in R2 are preserved so that upgrading never forces already-transcribed audio to be re-transcribed.
-- **Idempotent and Tracked Migrations**: D1 migrations are sequential, version-controlled SQL files tracked in the `d1_migrations` table by Wrangler.
+- **Zero Data Loss for Published Manuscripts**: published Markdown in the configured Manuscript Store is durable and must never be altered or cascade-deleted by an upgrade.
+- **Graceful In-flight Task Handling**: inspect active tasks before schema or workflow changes and follow the target release notes for any migration-specific handling.
+- **Idempotent and Tracked Migrations**: D1 migrations are sequential SQL files tracked by Wrangler; SQLite applies the same migration set locally on Node startup.
 
 ---
 
@@ -40,14 +42,14 @@ scripts/preflight_upgrade.sh
 scripts/preflight_upgrade.sh --local
 ```
 
-`scripts/preflight_upgrade.sh` lists all tasks in active processing states (`waiting_worker`,
-`downloading`, `transcribing`, `refining`).
+`scripts/preflight_upgrade.sh` lists all current active task states (`queued`, `transcribing`,
+`refining`, `finalizing`).
 
 > [!TIP]
 > **Why wait for active tasks?**
-> Schema migrations are designed to safely requeue active tasks rather than letting them fail
-> silently or become orphaned. However, requeued tasks will re-run the current processing step.
-> Waiting for in-flight tasks to complete avoids re-consuming transcription or LLM refinement compute.
+> Migration behavior is version-specific. Some releases can safely preserve or requeue active work,
+> while others may require waiting for a checkpoint boundary. The preflight is intentionally read-only:
+> inspect the listed tasks, then follow the target release notes before applying migrations.
 
 ### 2. Apply D1 Database Migrations
 
@@ -135,6 +137,25 @@ Verify that the upgrade succeeded:
 3. **Browse Mode**:
    Open `https://your-domain.example/` in a private window to verify that Public Browse Mode loads
    without requiring authentication.
+
+---
+
+## Docker / Node Upgrade Procedure
+
+The Cloudflare D1 / R2 / Wrangler steps above do **not** apply to Docker. On a single-host
+Docker deployment, stop creating new tasks and wait for active tasks to finish where possible.
+Back up the Compose `web-data` volume (SQLite database, signing key and temporary checkpoints),
+`./manuscripts/` (including `.versions/`), and your `.env` securely before changing images or
+schema. Keep `transcription-data` if you do not want Faster-Whisper to download its models again.
+
+Update the checkout, then run `docker compose up -d --build` to rebuild the web image and
+recreate services while retaining the existing volumes and bind mount. The Node server applies
+SQLite migrations on startup and resumes unfinished local workflows. Check
+`docker compose ps`, `docker compose logs web`, and
+`curl -fsS http://127.0.0.1:3000/api/public/health`, then verify existing manuscripts are
+readable and a newly started task progresses. Never run `docker compose down -v` during an
+upgrade: it removes the named data volumes. If changing the manuscript store from local to
+GitHub, plan a separate data migration; switching configuration alone does not move manuscripts.
 
 ---
 
