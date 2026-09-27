@@ -80,6 +80,7 @@ environment variables, which take precedence:
 | `READ_PODCAST_GITHUB_BRANCH` | no | `GITHUB_BRANCH`, default `main` |
 | `READ_PODCAST_GITHUB_PATH` | no | `GITHUB_PODCAST_PATH`, default `podcasts/transcripts` |
 | `READ_PODCAST_TRANSCRIPTION_LANGUAGE` | no | `TRANSCRIPTION_LANGUAGE`, for example `zh`, to pin the language instead of auto-detection |
+| `READ_PODCAST_TRANSCRIPTION_PROVIDER` | no | `TRANSCRIPTION_PROVIDER`, `self-hosted` (default) or `dashscope` — see [Cloud transcription (DashScope Paraformer)](#cloud-transcription-dashscope-paraformer) |
 | `READ_PODCAST_TIME_ZONE` | no | `MANUSCRIPT_TIME_ZONE`, the IANA time zone of `processed_at` in manuscript front matter, default `Asia/Shanghai` |
 
 `node scripts/deploy.mjs --print-args` shows the resulting `wrangler deploy` arguments without
@@ -98,6 +99,7 @@ npx wrangler secret put R2_ACCESS_KEY_ID
 npx wrangler secret put R2_SECRET_ACCESS_KEY
 npx wrangler secret put CF_ACCESS_CLIENT_ID   # Access service token for the transcription hostname
 npx wrangler secret put CF_ACCESS_CLIENT_SECRET
+npx wrangler secret put DASHSCOPE_API_KEY     # only for TRANSCRIPTION_PROVIDER=dashscope
 ```
 
 Cloudflare is the only side that holds credentials. The reference production path protects the
@@ -180,7 +182,45 @@ origin (`http://127.0.0.1:28100`) and the Access policy are configured on the Cl
 and the host runs only the connector. Tunnel bootstrap credentials belong to the host's
 cloudflared installation, not to this application.
 
-## 4. Smoke test
+## 4. Cloud transcription (DashScope Paraformer)
+
+Instead of running the Transcription Service on your own hardware, transcription can be
+delegated to Alibaba Cloud Model Studio (百炼) Paraformer recorded-speech recognition. The
+default stays `self-hosted`: a deployment that does not set
+`READ_PODCAST_TRANSCRIPTION_PROVIDER` behaves exactly as before.
+
+To switch this deployment to the cloud provider:
+
+```bash
+# in .deploy.env (or as environment variables):
+READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope
+# READ_PODCAST_TRANSCRIPTION_URL becomes optional in this mode (no transcription host exists)
+npx wrangler secret put DASHSCOPE_API_KEY      # from the Alibaba Cloud Model Studio console
+npm run deploy
+```
+
+What changes and what does not:
+
+- The Workflow, task lifecycle, raw/refined R2 checkpoints and publishing are identical for
+  both providers; only the transcription client differs (see *Cloud transcription adapter*
+  in [ARCHITECTURE.md](ARCHITECTURE.md)). Submission replay reuses the provider handle
+  recorded in D1; a submission whose response was lost mid-flight can still create a second
+  provider task (the provider has no idempotency key) — results expire after 24 hours and
+  no business state is affected.
+- **Privacy: audio leaves your deployment.** The Worker sends the audio URL to Alibaba
+  Cloud, which fetches and processes the audio. RSS audio is handed over as its final,
+  redirect-resolved public URL; uploaded audio is handed over as a presigned R2 GET URL that
+  is read-only, bound to that single object and expires after 2 hours. If this is
+  unacceptable for a feed, remove the subscription or switch back to `self-hosted`
+  (unset `READ_PODCAST_TRANSCRIPTION_PROVIDER` and redeploy).
+- **It is a paid provider.** Every processed task consumes quota according to the provider's
+  pricing (per audio duration); the Settings probe for `dashscope` only verifies that the
+  API key is configured and never calls the provider. The provider choice has not been
+  benchmark-verified yet (evaluation issue pending): if episodes fail with
+  `provider_audio_fetch_failed` — the provider could not fetch hotlink-protected audio —
+  or the accuracy does not hold up, switch back to the self-hosted service.
+
+## 5. Smoke test
 
 ```bash
 curl -fsS http://127.0.0.1:28100/health        # on the transcription host
@@ -223,7 +263,7 @@ fetch('/api/control/settings/test', { method: 'POST', headers: { 'content-type':
    must still complete; retry a task whose refinement failed with the service offline — it must
    re-refine without transcribing.
 
-## 5. Operations
+## 6. Operations
 
 Scripts in `deploy/macos/`:
 

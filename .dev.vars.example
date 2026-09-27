@@ -19,3 +19,7 @@ REFINER_API_KEY=replace-with-refiner-api-key
 # TRANSCRIPTION_LANGUAGE=zh
 # 可选：稿件 frontmatter 中 processed_at 使用的 IANA 时区（默认 Asia/Shanghai）。
 # MANUSCRIPT_TIME_ZONE=Asia/Shanghai
+# 可选：转录实现（self-hosted 默认 | dashscope 百炼 Paraformer）。
+# 选 dashscope 时还需要 DASHSCOPE_API_KEY（本地开发直接写在这里；生产用 wrangler secret）。
+# TRANSCRIPTION_PROVIDER=self-hosted
+# DASHSCOPE_API_KEY=

@@ -88,6 +88,8 @@ export const NON_RETRYABLE_PROVIDER_ERRORS: ReadonlySet<string> = new Set([
   "transcription_empty", // 引擎返回空文本
   "unsupported_source",
   "invalid_request",
+  "provider_fetch_failed", // 云端服务商取不到音频（防盗链 / 已失效 / 格式不支持）
+  "provider_quota_exhausted", // 云端服务商额度不足或已用尽
 ]);
 
 /** provider 错误码 → 任务错误码（用户可见的稳定归因）。 */
@@ -99,6 +101,10 @@ export function taskErrorCodeForProvider(code: string): string {
       return "source_too_large";
     case "source_fetch_failed":
       return "audio_download_failed";
+    case "provider_fetch_failed":
+      return "provider_audio_fetch_failed";
+    case "provider_quota_exhausted":
+      return "provider_quota_exhausted";
     case "transcription_empty":
       return "transcription_invalid";
     case "unsupported_source":

@@ -56,6 +56,9 @@
     "APP_ENV": "production",
     // 转录服务 endpoint：部署时由 READ_PODCAST_TRANSCRIPTION_URL 注入；本地开发在 .dev.vars 中设置。
     "TRANSCRIPTION_SERVICE_URL": "",
+    // 转录实现：self-hosted（默认，自托管 Transcription Service）| dashscope（百炼 Paraformer）。
+    // 部署时由 READ_PODCAST_TRANSCRIPTION_PROVIDER 注入；dashscope 需另注入 secret DASHSCOPE_API_KEY。
+    "TRANSCRIPTION_PROVIDER": "self-hosted",
     // 自定义上传音频的 presigned GET 目标桶（与上面 r2_buckets[].bucket_name 同一个值，不是机密）。
     "R2_BUCKET_NAME": "read-podcast-edge-raw",
     // ── 必须单独注入的 secret（刻意不写进仓库）──
