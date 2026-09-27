@@ -221,6 +221,7 @@ repository only.
 | [docs/design.md](docs/design.md) | WebUI product language and visual system (Chinese) |
 | [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) | Local development, validation commands, and PR guidelines |
 | [.github/SECURITY.md](.github/SECURITY.md) | Vulnerability reporting and security architecture boundaries |
+| [CHANGELOG.md](CHANGELOG.md) | Release history and version migration notes |
 | [AGENTS.md](AGENTS.md) | Maintainer and agent guide |
 
 ## License

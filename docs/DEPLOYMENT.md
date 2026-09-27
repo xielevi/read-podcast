@@ -53,6 +53,25 @@ The script cannot do these parts; finish them by hand using the matching section
 After deploying, `npm run setup -- --smoke` runs the Access-boundary smoke test (section 4) against
 your domain. The subsections below document the same steps without the script.
 
+### Evaluation: Why not a "Deploy to Cloudflare" one-click button?
+
+A [Deploy to Cloudflare button](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
+can provision the D1 database and R2 bucket, run `wrangler d1 migrations apply DB --remote` as part
+of the `deploy` script, and prompt for secrets listed in `.dev.vars.example`. It still cannot finish
+a working Read Podcast deployment, so the button is not offered:
+
+1. **R2 lifecycle rules**: the button creates the bucket but not its lifecycle rules (`raw-7d`,
+   `refined-7d`, `uploads-1d`). Without them temporary uploads and transcripts are never expired.
+2. **Cloudflare Access and Tunnel**: the Access application for `/manage*` and `/api/control/*`, the
+   service token and the Tunnel live in the Zero Trust dashboard, outside any Worker deploy flow.
+   A Worker deployed without the Access application exposes the control plane.
+3. **Deployment values**: the custom domain, transcription URL and manuscript repository are
+   injected by `scripts/deploy.mjs` (`npm run deploy`), which refuses documentation placeholders;
+   `wrangler.jsonc` deliberately stays deployment-neutral.
+
+`npm run setup` is therefore the supported setup path: it automates every step that the Cloudflare
+API allows, idempotently, and prints a checklist for the Zero Trust steps.
+
 ### D1
 
 ```bash
@@ -137,20 +156,85 @@ Service Tokens) plus a Service Auth policy bound to it, and give Cloudflare only
 
 ### Cloudflare Access (Authenticated Control Mode)
 
-The application has no login of its own. Create **one** self-hosted Access application
-(Zero Trust → Access → Applications) on your hostname that covers exactly the control plane:
+The application has no login or session management of its own. Access control is delegated to
+Cloudflare Access. You will create **one** self-hosted Access application in your Zero Trust dashboard
+(`https://one.dash.cloudflare.com/`) that covers exactly the control plane:
+
+```mermaid
+flowchart TD
+    Req["Incoming Request to your-domain.example"] --> Path{"Requested Path?"}
+    Path -->|"/" or "/api/public/*"| Public["Public Browse Mode<br/>(Worker & D1 snapshot, no auth)"]
+    Path -->|"/manage*" or "/api/control/*"| AccessCheck{"Cloudflare Access"}
+    AccessCheck -->|"Valid identity (Owner)"| Control["Authenticated Control Mode<br/>(Manage subscriptions & jobs)"]
+    AccessCheck -->|"Anonymous / unauthorized"| Login["302 Redirect to Access Login<br/>(Email OTP / SSO)"]
+```
+
+#### Step-by-step Access setup
+
+1. Navigate to **Zero Trust Dashboard** → **Access** → **Applications**.
+2. Click **Add an application**, then select **Self-hosted**.
+3. **Step 1: Application Configuration**:
+   - **Application name**: `Read Podcast Control` (or any friendly name).
+   - **Session Duration**: `24 Hours` (or your preferred session duration).
+   - **Application domain**:
+     - **Domain**: Select your domain from the dropdown (`your-domain.example`).
+     - **Path**: Add two path rules:
+       - Rule 1: `manage*`
+       - Rule 2: `api/control/*`
+
+   ```text
+   ┌────────────────────────────────────────────────────────────────────────┐
+   │ Cloudflare Zero Trust → Add Application → Self-hosted                  │
+   ├────────────────────────────────────────────────────────────────────────┤
+   │ Application name:  [ Read Podcast Control                            ] │
+   │ Session Duration:  [ 24 Hours                                      ▼ ] │
+   │                                                                        │
+   │ Application domain:                                                    │
+   │   Domain:          [ your-domain.example                           ▼ ] │
+   │   Path (Rule 1):   [ manage*                                         ] │
+   │   Path (Rule 2):   [ api/control/*                                   ] │
+   └────────────────────────────────────────────────────────────────────────┘
+   ```
+
+4. **Step 2: Policies**:
+   - Click **Add a policy** (or configure the default policy):
+     - **Policy name**: `Allow Owner`
+     - **Action**: `Allow`
+     - **Session duration**: Same as application
+     - **Configure rules** (Include):
+       - **Selector**: `Emails`
+       - **Value**: `your-email@example.com` (the email where Cloudflare will send one-time login pins)
+
+   ```text
+   ┌────────────────────────────────────────────────────────────────────────┐
+   │ Policy: Allow Owner                                                    │
+   ├────────────────────────────────────────────────────────────────────────┤
+   │ Policy name:       [ Allow Owner                                     ] │
+   │ Action:            [ Allow                                         ▼ ] │
+   │                                                                        │
+   │ Rules (Include):                                                       │
+   │   Selector: [ Emails          ▼ ]  Value: [ your-email@example.com   ] │
+   └────────────────────────────────────────────────────────────────────────┘
+   ```
+
+5. Click **Next** through additional settings (CORS and cookie settings keep default values) and click **Save application**.
 
 | Public hostname path | Purpose |
 |---|---|
 | `your-domain.example/manage*` | workspace pages in Authenticated Control Mode |
 | `your-domain.example/api/control/*` | every control-plane API |
 
-Attach an Allow policy for your own identity. Do **not** cover `/` or `/api/public/*`: those
-serve the read-only Public Browse Mode. An existing Access application that protects the whole
-hostname keeps working but hides Public Browse Mode; narrow it to the two paths above to open
-browsing to the public. Every control in Public Browse Mode that would change state navigates
-to `/manage`, so Access prompts for login exactly when it is needed. Keep `workers_dev: false` and `preview_urls: false` in `wrangler.jsonc`
-so the Worker is not reachable on a hostname Access does not guard.
+> [!CAUTION]
+> **Do NOT cover `/` or `/api/public/*`**:
+> Those paths serve the read-only Public Browse Mode. If you configure Access to guard the entire
+> root (`/` or wildcard `*`), public visitors will be blocked from browsing published manuscripts.
+> An existing Access application that protects the whole hostname keeps working but hides Public
+> Browse Mode; narrow it to the two paths above to open browsing to the public. Every control in
+> Public Browse Mode that would change state navigates to `/manage`, so Access prompts for login
+> exactly when it is needed.
+>
+> Keep `workers_dev: false` and `preview_urls: false` in `wrangler.jsonc` so the Worker is not
+> reachable on a hostname Access does not guard.
 
 ### Deploy
 
@@ -203,12 +287,124 @@ bin/run-service                   # 127.0.0.1:28100
 bin/run-mlx                       # 127.0.0.1:21567
 ```
 
-### Cloudflare Tunnel
+### Cloudflare Tunnel and Service Token (Transcription Host Protection)
 
-The reference deployment uses a **remotely-managed** Cloudflare Tunnel: hostname, route,
-origin (`http://127.0.0.1:28100`) and the Access policy are configured on the Cloudflare side,
-and the host runs only the connector. Tunnel bootstrap credentials belong to the host's
-cloudflared installation, not to this application.
+The reference deployment uses a **remotely-managed** Cloudflare Tunnel combined with an Access
+**Service Token**:
+
+```mermaid
+sequenceDiagram
+    participant Worker as Cloudflare Worker (Workflows)
+    participant Edge as Cloudflare Edge (Access)
+    participant Tunnel as Cloudflare Tunnel (cloudflared)
+    participant Service as Local Host (127.0.0.1:28100)
+
+    Worker->>Edge: POST https://transcribe.your-domain.example/v1/transcriptions<br/>CF-Access-Client-Id & CF-Access-Client-Secret
+    Note over Edge: Access verifies Service Auth policy<br/>validates Service Token
+    Edge->>Tunnel: Forward encrypted request over Tunnel
+    Tunnel->>Service: Forward to http://127.0.0.1:28100/v1/transcriptions
+    Service-->>Tunnel: 202 Accepted (request snapshot)
+    Tunnel-->>Edge: Return response
+    Edge-->>Worker: 202 Accepted
+```
+
+The host requires zero port-forwarding and holds no Cloudflare credentials; `cloudflared` securely
+maintains an outbound-only connection to Cloudflare's edge.
+
+#### Step 1: Create an Access Service Token
+
+1. Navigate to **Zero Trust Dashboard** (`https://one.dash.cloudflare.com/`) → **Access** → **Service Tokens**.
+2. Click **Create Service Token**.
+3. Set **Service Token Name**: `read-podcast-transcription`.
+4. Set **Service Token Duration**: `Non-expiring` (recommended).
+5. Click **Save**:
+   - **CRITICAL**: Copy both **Client ID** and **Client Secret** immediately. Cloudflare will **never** display the Client Secret again.
+   - Enter them when prompted by `npm run setup -- --step secrets` (or save as `CF_ACCESS_CLIENT_ID` and `CF_ACCESS_CLIENT_SECRET` via `npx wrangler secret put`).
+
+#### Step 2: Create the Access Application for the Transcription Hostname
+
+1. Navigate to **Access** → **Applications** → **Add an application** → **Self-hosted**.
+2. **Application Configuration**:
+   - **Application name**: `Read Podcast Transcription Service`.
+   - **Application domain**:
+     - **Subdomain**: `transcribe` (matches `READ_PODCAST_TRANSCRIPTION_URL`).
+     - **Domain**: `your-domain.example`.
+     - **Path**: Leave blank (protects all endpoints on the transcription hostname).
+3. **Policy Configuration**:
+   - **Policy name**: `Service Auth Policy`.
+   - **Action**: Select **Service Auth** from the dropdown (⚠️ **NOT** `Allow`!).
+   - **Configure rules** (Include):
+     - **Selector**: `Service Token`.
+     - **Value**: Select `read-podcast-transcription`.
+
+   ```text
+   ┌────────────────────────────────────────────────────────────────────────┐
+   │ Cloudflare Access: Transcription Host Protection                       │
+   ├────────────────────────────────────────────────────────────────────────┤
+   │ Application name:    [ Read Podcast Transcription Service            ] │
+   │ Domain:              [ transcribe ].[ your-domain.example            ] │
+   │ Path:                [ (empty)                                       ] │
+   │                                                                        │
+   │ Policy:                                                                │
+   │   Policy name:       [ Service Auth Policy                           ] │
+   │   Action:            [ Service Auth                                ▼ ] │
+   │   Include rule:      [ Service Token  ▼ ] = [ read-podcast-transc...▼] │
+   └────────────────────────────────────────────────────────────────────────┘
+   ```
+
+4. Click **Next** through additional settings and click **Save application**.
+
+#### Step 3: Create and Connect the Cloudflare Tunnel
+
+1. Navigate to **Networks** → **Tunnels**.
+2. Click **Add a tunnel** (or **Create a tunnel**), select **Cloudflare** as the tunnel type, and click **Next**.
+3. **Name your tunnel**: e.g., `read-podcast-transcription`, then click **Save tunnel**.
+4. **Install and run a connector**:
+   - Select your host OS (e.g. **macOS** or **Linux**).
+   - Cloudflare will provide an installation command containing your tunnel token.
+   - Run the command on your transcription machine:
+     ```bash
+     # macOS example:
+     brew install cloudflared
+     sudo cloudflared service install <your-tunnel-token>
+     ```
+   - Once running, the dashboard shows connector status as **HEALTHY** (Active). Click **Next**.
+5. **Route public hostname**:
+   - **Subdomain**: `transcribe`
+   - **Domain**: `your-domain.example`
+   - **Path**: Leave blank
+   - **Service**:
+     - **Type**: `HTTP`
+     - **URL**: `127.0.0.1:28100` (or `localhost:28100`)
+
+   ```text
+   ┌────────────────────────────────────────────────────────────────────────┐
+   │ Cloudflare Tunnel: Public Hostname Configuration                       │
+   ├────────────────────────────────────────────────────────────────────────┤
+   │ Public hostname:                                                       │
+   │   Subdomain:         [ transcribe                                    ] │
+   │   Domain:            [ your-domain.example                         ▼ ] │
+   │   Path:              [ (empty)                                       ] │
+   │                                                                        │
+   │ Service:                                                               │
+   │   Type:              [ HTTP                                        ▼ ] │
+   │   URL:               [ 127.0.0.1:28100                               ] │
+   └────────────────────────────────────────────────────────────────────────┘
+   ```
+
+6. Click **Save hostname**.
+
+#### Step 4: Verify Host Connectivity
+
+On your local machine or from any terminal, test the complete path (Access Service Auth → Tunnel → local service) using curl:
+
+```bash
+curl -fsS -H "CF-Access-Client-Id: your-client-id" \
+          -H "CF-Access-Client-Secret: your-client-secret" \
+          https://transcribe.your-domain.example/health
+```
+
+A healthy service returns JSON with `"status": "ok"`. The deployed Worker uses these same headers to communicate with the service during transcription jobs.
 
 ### OpenAI-compatible upload proxy engine (`openai-proxy`)
 
@@ -363,12 +559,55 @@ the public repository import. They are implementation identifiers, not personal 
 values. Renaming cloud resources is a separate migration; changing a name can create a new
 resource instead of reusing the production data.
 
-On Workers Free, verify large RSS feeds (several hundred episodes), 2–3 hour transcripts,
-GitHub publication and recovery of several tasks in one cron invocation against Workers
-observability logs. Check for `exceededCpu` and subrequest-limit errors, and record the
-feed size, transcript size and task count with each result. Local tests and Wrangler dry-run
-do not measure production CPU or enforce the Free-plan subrequest budget. These boundary
-checks remain pending until real deployment evidence is available. Free allows 10 ms CPU
-per invocation (I/O wait excluded), 50 external and 1,000 Cloudflare service subrequests per
-invocation, 3,000 Workflow steps/day, five Cron Triggers/account and three-day completed
-Workflow instance state retention. See the linked limits in the README for current quotas.
+### Workers Free Plan Quotas and Operational Boundaries
+
+The Cloudflare application is designed to fit the **Workers Free tier**; the production boundary
+checks below are still pending real deployment evidence. Free tier quotas relevant to Read Podcast:
+
+| Resource | Free Tier Quota | Application Usage Pattern |
+|---|---|---|
+| **Worker CPU Time** | 10 ms per invocation | Lightweight routing & API parsing (I/O wait excluded) |
+| **External Subrequests** | 50 per invocation | Fetching RSS, calling GitHub API, polling transcription |
+| **Cloudflare Subrequests** | 1,000 per invocation | D1 database queries and R2 object operations |
+| **Workflow Step Quotas** | 3,000 steps / day | Multi-step execution per episode (`resolve-source` → `submit-transcription` → `poll-transcription-*` → `persist-raw` → `claim-refinement` → `refine` → `publish`; long episodes add poll steps) |
+| **Cron Triggers** | 5 triggers / account | Exactly 1 trigger used (5-minute background recovery) |
+| **R2 Storage** | 10 GB storage free | Managed by 1-day (`uploads/`) and 7-day (`raw/`, `refined/`) lifecycle rules |
+
+### Production Boundary Verification Checklist
+
+Local tests and `wrangler deploy --dry-run` validate code logic and syntax, but cannot measure
+production edge CPU or enforce the Free-plan subrequest budget. Maintainers and community users
+should monitor the following four operational scenarios against Workers Observability logs. These
+checks remain pending until real deployment evidence is available; record feed size, transcript
+size and task count with each result.
+
+1. **Large RSS Feeds (Several Hundred Episodes)**:
+   - *Boundary*: Parsing very large XML feeds with 200–500+ items within the 10 ms CPU budget.
+   - *Design note*: The feed is parsed in full with `fast-xml-parser` when it is refreshed; episodes are stored in D1 and the episode list is paginated from D1, so browsing never re-parses the feed.
+   - *Verification*: Subscribe to an extensive feed (e.g. 500+ episodes), open its episode list, and inspect CPU execution duration in Workers Logs.
+2. **Long Podcast Episodes (2–3 Hours)**:
+   - *Boundary*: Audio download and transcription polling across extended audio files; chunked LLM refinement.
+   - *Design guard*: Polling is non-blocking (sleep/retry intervals managed across Workflow steps). Heavy speech-to-text processing occurs outside the Worker (on your host or via provider).
+   - *Verification*: Process an episode longer than 2 hours. Confirm the workflow completes without `exceededCpu` or step timeouts.
+3. **GitHub Manuscript Publication**:
+   - *Boundary*: Writing markdown files and front matter via the GitHub REST API without exhausting subrequests or payload size limits.
+   - *Design guard*: R2 holds the finalized refined checkpoint so publication retries replay without re-generating text.
+   - *Verification*: Inspect the publish step log; verify that the commit appears under `podcasts/transcripts/` in your repository.
+4. **Multi-Task Cron Recovery**:
+   - *Boundary*: A scheduled cron trigger firing when multiple queued tasks or dead workflows need reconciliation simultaneously.
+   - *Design guard*: Each cron run recovers at most 10 queued tasks and checks at most 20 workflows for liveness.
+   - *Verification*: Queue several episodes while the transcription service is temporarily paused, restart the service, and verify the cron smoothly reconciles pending tasks.
+
+### Monitoring Logs and Investigating Errors
+
+To stream live logs during generation or boundary tests:
+
+```bash
+# Live tail of the deployed Worker
+npx wrangler tail --format pretty
+```
+
+Alternatively, open **Cloudflare Dashboard** → **Workers & Pages** → **read-podcast-edge** → **Observability** → **Logs**:
+- Filter by status `Error` or search for `exceededCpu`.
+- Check the **Metrics** tab for p50, p90, and p99 CPU duration distributions.
+- If an edge case triggers `exceededCpu` or a subrequest limit error, report the episode audio length, feed item count, and log trace in the project repository issues.
