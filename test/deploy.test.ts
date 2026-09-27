@@ -121,6 +121,15 @@ describe("仓库不含部署者自己的值", () => {
     expect(ci).toContain("run: npm run deploy");
   });
 
+  it("冒烟测试不在公开日志里输出跳转地址（含 Zero Trust 团队域名）", () => {
+    const ci = read(".github/workflows/ci.yml");
+    expect(ci).toContain("redirect_kind");
+    // 只允许经 redirect_kind 分类后输出；去掉这种用法后，echo 行里不得再出现 $loc。
+    const withoutClassified = ci.replaceAll('$(redirect_kind "$loc")', "");
+    expect(withoutClassified).not.toMatch(/echo [^\n]*\$loc\b/);
+    expect(withoutClassified).not.toMatch(/echo [^\n]*\$\{loc/);
+  });
+
   it("npm run deploy 走 scripts/deploy.mjs", () => {
     const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
     expect(pkg.scripts.deploy).toBe("node scripts/deploy.mjs");
