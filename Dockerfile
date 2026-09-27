@@ -18,9 +18,10 @@ ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     DATABASE_PATH=/data/read-podcast.db \
     STORAGE_PATH=/data/storage \
+    MANUSCRIPT_PATH=/data/manuscripts \
     PUBLIC_PATH=/app/public
 
-RUN mkdir -p /data && chown -R node:node /data /app
+RUN mkdir -p /data/manuscripts && chown -R node:node /data /app
 
 COPY --from=builder --chown=node:node /app/dist/server.js ./dist/server.js
 COPY --from=builder --chown=node:node /app/public ./public

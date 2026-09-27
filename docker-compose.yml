@@ -2,7 +2,9 @@
 # 不依赖任何 Cloudflare 服务。
 #
 # 使用方式：
-#   1. 复制 .env.example 为 .env，填入 GitHub 凭据与 Refinement Provider (LLM) 密钥；
+#   1. 复制 .env.example 为 .env，填入 Refinement Provider (LLM) 密钥；
+#      稿件默认写入本地 ./manuscripts/ 目录（可直接放进 Obsidian 等工具），
+#      如需改为 GitHub 仓库存储，见 .env 中「可选回落」说明；
 #   2. 运行 docker compose up -d；
 #   3. 访问 http://127.0.0.1:3000（公开阅读）或 http://127.0.0.1:3000/manage（管理工作区）。
 services:
@@ -30,11 +32,14 @@ services:
       - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-}
       # LLM 精修服务（OpenAI 兼容接口）
       - REFINER_API_KEY=${REFINER_API_KEY:-}
-      # 稿件存储（GitHub 仓库）
+      # 稿件存储：默认本地目录（bind mount 直接拿 Markdown 文件，可放进 Obsidian 等工具）
+      - MANUSCRIPT_PATH=/data/manuscripts
+      # 稿件存储可选回落 GitHub：仅当移除 MANUSCRIPT_PATH 与下方 manuscripts 挂载后生效
       - GITHUB_TOKEN=${GITHUB_TOKEN:-}
       - GITHUB_OWNER=${GITHUB_OWNER:-}
       - GITHUB_REPO=${GITHUB_REPO:-}
       - GITHUB_BRANCH=${GITHUB_BRANCH:-main}
+      # 稿件相对根（本地目录与 GitHub 两种存储共用）
       - GITHUB_PODCAST_PATH=${GITHUB_PODCAST_PATH:-podcasts/transcripts}
       - MANUSCRIPT_TIME_ZONE=${MANUSCRIPT_TIME_ZONE:-Asia/Shanghai}
       # 可选 Basic Auth（保护 /manage* 与 /api/control/*，未配置时不设密码）
@@ -42,6 +47,8 @@ services:
       - CONTROL_AUTH_PASSWORD=${CONTROL_AUTH_PASSWORD:-}
     volumes:
       - web-data:/data
+      # 成稿直接落在宿主机 ./manuscripts/（含 .versions/ 历史版本快照）
+      - ./manuscripts:/data/manuscripts
     restart: unless-stopped
     depends_on:
       - transcription
