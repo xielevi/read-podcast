@@ -180,10 +180,22 @@ def get_transcriber() -> Transcriber:
     """按内建策略选择转录引擎（可由 ``READ_PODCAST_TRANSCRIPTION_ENGINE`` 强制）。"""
     if resolve_engine() == ENGINE_MLX:
         return WhisperApiTranscriber()
-    # 延迟导入：faster_whisper_engine 反过来依赖本模块的协议类型。
-    from core.faster_whisper_engine import FasterWhisperTranscriber
+    return _faster_whisper_transcriber()
 
-    return FasterWhisperTranscriber()
+
+_faster_whisper: Transcriber | None = None
+
+
+def _faster_whisper_transcriber() -> Transcriber:
+    """进程内单例：JobManager 每个任务都会调用 get_transcriber()，模型必须跨任务常驻，
+    不能每个任务重新加载一次。"""
+    global _faster_whisper
+    if _faster_whisper is None:
+        # 延迟导入：faster_whisper_engine 反过来依赖本模块的协议类型。
+        from core.faster_whisper_engine import FasterWhisperTranscriber
+
+        _faster_whisper = FasterWhisperTranscriber()
+    return _faster_whisper
 
 
 def engine_name() -> str:

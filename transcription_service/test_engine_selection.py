@@ -126,3 +126,10 @@ def test_transcriber_source_holds_no_credential_or_env_machinery():
     source = Path(transcriber.__file__).read_text(encoding="utf-8")
     for forbidden in ("Authorization", "API_TOKEN", "API_KEY", "getenv", "environ"):
         assert forbidden not in source
+
+
+def test_faster_whisper_transcriber_is_process_singleton(monkeypatch):
+    """JobManager 每个任务都调用 get_transcriber()：模型必须常驻，不能每个任务重新加载。"""
+    auto_platform(monkeypatch, platform="linux")
+    monkeypatch.setattr(transcriber, "_faster_whisper", None)
+    assert get_transcriber() is get_transcriber()
