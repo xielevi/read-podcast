@@ -233,6 +233,10 @@
         'reader.initial_state': '选择一份已完成稿件开始阅读。',
         'reader.words_wan': '{0} 万字',
         'reader.words': '{0} 字',
+        'reader.characters_large': '{0} 万字',
+        'reader.characters': '{0} 字',
+        'reader.word_count_large': '{0}k 词',
+        'reader.word_count': '{0} 词',
         'reader.est_time': '约 {0} 分钟',
         'reader.bar_appearance': '排版',
         'reader.toolbar_label': '阅读工具栏',
@@ -570,6 +574,10 @@
         'reader.initial_state': 'Select a completed manuscript to start reading.',
         'reader.words_wan': '{0}k words',
         'reader.words': '{0} words',
+        'reader.characters_large': '{0}k characters',
+        'reader.characters': '{0} characters',
+        'reader.word_count_large': '{0}k words',
+        'reader.word_count': '{0} words',
         'reader.est_time': '~{0} min',
         'reader.bar_appearance': 'Typography',
         'reader.toolbar_label': 'Reading toolbar',
@@ -2659,15 +2667,15 @@
         var charCount = clean.replace(/\s+/g, '').length;
         var minutes = Math.max(1, Math.round(charCount / 750));
         var countStr = (getLocale() === 'en')
-          ? (charCount >= 10000 ? t('reader.words_wan', (charCount / 1000).toFixed(1)) : t('reader.words', charCount))
-          : (charCount >= 10000 ? t('reader.words_wan', (charCount / 10000).toFixed(1)) : t('reader.words', charCount));
+          ? (charCount >= 1000 ? t('reader.characters_large', (charCount / 1000).toFixed(1)) : t('reader.characters', charCount))
+          : (charCount >= 10000 ? t('reader.characters_large', (charCount / 10000).toFixed(1)) : t('reader.characters', charCount));
         statsEl.textContent = charCount ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       } else {
         var words = clean.split(/\s+/).filter(Boolean).length;
         var minutes = Math.max(1, Math.round(words / 220));
-        var countStr = (getLocale() === 'en')
-          ? (words >= 10000 ? t('reader.words_wan', (words / 1000).toFixed(1)) : t('reader.words', words))
-          : (words >= 10000 ? t('reader.words_wan', (words / 10000).toFixed(1)) : t('reader.words', words));
+        var countStr = words >= 1000
+          ? t('reader.word_count_large', (words / 1000).toFixed(1))
+          : t('reader.word_count', words);
         statsEl.textContent = words ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       }
     }
