@@ -66,11 +66,29 @@ export class LocalWorkflowStepRunner implements WorkflowStepLike {
       return existing.output === null ? (undefined as T) : (JSON.parse(existing.output) as T);
     }
 
-    const limit = config?.retries?.limit ?? 0;
+    // CF Workflows 默认重试 5 次（未显式指定 retries.limit 时）
+    const limit = config?.retries?.limit ?? 5;
+    const timeoutMs = config?.timeout ? parseDuration(config.timeout) : 0;
+
     for (let attempt = 1; ; attempt += 1) {
       if (this.isTerminated()) throw new Error("Workflow instance was terminated");
       try {
-        const result = await callback({ attempt, step: { name, count: attempt } });
+        const resultPromise = callback({ attempt, step: { name, count: attempt } });
+        let result: T;
+        if (timeoutMs > 0) {
+          let timer: NodeJS.Timeout;
+          const timeoutPromise = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              const err = new Error(`Step "${name}" timed out after ${timeoutMs}ms`);
+              err.name = "TimeoutError";
+              reject(err);
+            }, timeoutMs);
+          });
+          result = await Promise.race([resultPromise, timeoutPromise]).finally(() => clearTimeout(timer));
+        } else {
+          result = await resultPromise;
+        }
+
         const serialized = result === undefined ? null : JSON.stringify(result);
 
         this.db.prepare(`
@@ -91,6 +109,9 @@ export class LocalWorkflowStepRunner implements WorkflowStepLike {
           delayMs = parseDuration(calculated);
         } else if (delayCfg !== undefined) {
           delayMs = parseDuration(delayCfg);
+        } else {
+          // CF 默认退避：指数退避，基数 1s，上限 60s
+          delayMs = Math.min(60000, 1000 * Math.pow(2, attempt - 1));
         }
 
         if (delayMs > 0) {

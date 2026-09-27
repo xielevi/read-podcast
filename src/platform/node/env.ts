@@ -8,7 +8,7 @@ import type { Env } from "../../types";
 import { runProcessingPipeline } from "../../workflows/pipeline";
 import { createLocalAssetFetcher, type LocalAssetFetcher } from "./assets";
 import { applyLocalMigrations, createSqliteDatabase } from "./sqlite";
-import { createLocalObjectStore } from "./storage";
+import { createLocalObjectStore, resolveOrGenerateSigningSecret } from "./storage";
 import { createLocalWorkflowEngine } from "./workflow";
 import type { ObjectStore, TaskWorkflowEngine } from "../types";
 
@@ -19,6 +19,7 @@ export interface NodeEnvOptions {
   migrationsDir?: string;
   baseUrl?: string | (() => string);
   signingSecret?: string;
+  dataDir?: string;
   env?: Record<string, string | undefined>;
 }
 
@@ -31,6 +32,7 @@ export interface NodePlatformRuntime {
   };
   objectStore: ObjectStore;
   assets: LocalAssetFetcher;
+  signingSecret: string;
   close: () => void;
 }
 
@@ -38,6 +40,7 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
   const rawEnv = options.env ?? process.env;
 
   const dbPath = options.databasePath || rawEnv.DATABASE_PATH || "./data/read-podcast.db";
+  const dataDir = options.dataDir || (dbPath !== ":memory:" ? dirname(resolve(dbPath)) : "./data");
   if (dbPath !== ":memory:") {
     mkdirSync(dirname(resolve(dbPath)), { recursive: true });
   }
@@ -49,11 +52,15 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
   const storageDir = options.storageDir || rawEnv.STORAGE_PATH || "./data/storage";
   const envBaseUrl = rawEnv.APP_BASE_URL || (rawEnv.BASE_URL && rawEnv.BASE_URL.startsWith("http") ? rawEnv.BASE_URL : undefined);
   const baseUrl = options.baseUrl || envBaseUrl || "http://127.0.0.1:3000";
-  const signingSecret = options.signingSecret || rawEnv.INTERNAL_SIGNING_SECRET || "read-podcast-local-storage-secret";
+  const signingSecret = resolveOrGenerateSigningSecret({
+    explicitSecret: options.signingSecret || rawEnv.INTERNAL_SIGNING_SECRET,
+    dataDir,
+  });
   const objectStore = createLocalObjectStore({
     rootDir: storageDir,
     baseUrl,
     signingSecret,
+    dataDir,
   });
 
   const publicDir = options.publicDir || rawEnv.PUBLIC_PATH || "./public";
@@ -90,6 +97,7 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
     DASHSCOPE_API_KEY: rawEnv.DASHSCOPE_API_KEY,
     CF_ACCESS_CLIENT_ID: rawEnv.CF_ACCESS_CLIENT_ID,
     CF_ACCESS_CLIENT_SECRET: rawEnv.CF_ACCESS_CLIENT_SECRET,
+    TRUSTED_INTERNAL_TRANSCRIPTION: rawEnv.TRUSTED_INTERNAL_TRANSCRIPTION ?? "true",
   } as unknown as Env;
 
   return {
@@ -98,6 +106,7 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
     workflowEngine,
     objectStore,
     assets,
+    signingSecret,
     close: () => {
       try {
         dbSync.close();

@@ -22,9 +22,12 @@ services:
       - BASE_URL=http://web:3000
       # 默认连接同 compose 内的转录服务；若改用百炼，设为 dashscope 并配置 DASHSCOPE_API_KEY
       - TRANSCRIPTION_SERVICE_URL=http://transcription:28100
+      - TRUSTED_INTERNAL_TRANSCRIPTION=true
       - TRANSCRIPTION_PROVIDER=${TRANSCRIPTION_PROVIDER:-self-hosted}
       - TRANSCRIPTION_LANGUAGE=${TRANSCRIPTION_LANGUAGE:-}
       - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      # 签名密钥（留空时首次启动将自动生成随机密钥并持久化至 /data/signing.key）
+      - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-}
       # LLM 精修服务（OpenAI 兼容接口）
       - REFINER_API_KEY=${REFINER_API_KEY:-}
       # 稿件存储（GitHub 仓库）
@@ -47,6 +50,8 @@ services:
     image: ghcr.io/xielevi/read-podcast-transcription:latest
     ports:
       - "127.0.0.1:28100:28100"
+    environment:
+      - ALLOWED_AUDIO_SOURCE_HOSTS=web
     volumes:
       - transcription-data:/data
     cap_drop:

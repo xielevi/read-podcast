@@ -2,12 +2,13 @@
  * 本地卷对象存储适配器：基于本地文件系统实现 ObjectStore 接口。
  * 支持分片上传、临时 HMAC 签名下载地址以及对象生命周期自动保留清理（uploads 1天，raw/refined 7天）。
  */
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import {
   createReadStream,
   createWriteStream,
   existsSync,
   mkdirSync,
+  readFileSync,
   readdirSync,
   rmSync,
   statSync,
@@ -30,6 +31,28 @@ export interface LocalStorageOptions {
   rootDir: string;
   baseUrl?: string | (() => string);
   signingSecret?: string;
+  dataDir?: string;
+  keyFilePath?: string;
+}
+
+export function resolveOrGenerateSigningSecret(options: {
+  explicitSecret?: string;
+  dataDir?: string;
+  keyFilePath?: string;
+}): string {
+  if (options.explicitSecret && options.explicitSecret.trim()) {
+    return options.explicitSecret.trim();
+  }
+  const keyPath = options.keyFilePath || (options.dataDir ? join(options.dataDir, "signing.key") : "./data/signing.key");
+  const fullPath = resolve(keyPath);
+  if (existsSync(fullPath)) {
+    const existing = readFileSync(fullPath, "utf-8").trim();
+    if (existing) return existing;
+  }
+  mkdirSync(dirname(fullPath), { recursive: true });
+  const generated = Buffer.from(randomBytes(32)).toString("hex");
+  writeFileSync(fullPath, generated, { mode: 0o600 });
+  return generated;
 }
 
 function resolveKeyPath(rootDir: string, key: string): string {
@@ -76,10 +99,29 @@ export function verifyStorageSignature(
   }
 }
 
+export const UPLOAD_ID_PATTERN = /^localmp-\d+-[a-z0-9]+$/;
+
+function resolveMultipartDir(multipartDir: string, uploadId: string): string {
+  if (!UPLOAD_ID_PATTERN.test(uploadId)) {
+    throw new Error(`Invalid uploadId format: ${uploadId}`);
+  }
+  const resolved = resolve(multipartDir, uploadId);
+  const resolvedBase = resolve(multipartDir);
+  if (!resolved.startsWith(resolvedBase + sep) && resolved !== resolvedBase) {
+    throw new Error(`Invalid uploadId traversal: ${uploadId}`);
+  }
+  return resolved;
+}
+
 export function createLocalObjectStore(storeOptions: LocalStorageOptions): ObjectStore {
   const rootDir = resolve(storeOptions.rootDir);
   mkdirSync(rootDir, { recursive: true });
-  const signingSecret = storeOptions.signingSecret || "read-podcast-local-storage-secret";
+  const signingSecret = storeOptions.signingSecret && storeOptions.signingSecret.trim()
+    ? storeOptions.signingSecret.trim()
+    : resolveOrGenerateSigningSecret({
+        dataDir: storeOptions.dataDir || dirname(rootDir),
+        keyFilePath: storeOptions.keyFilePath,
+      });
   const getBaseUrl = () => {
     let raw = typeof storeOptions.baseUrl === "function" ? storeOptions.baseUrl() : (storeOptions.baseUrl || "http://127.0.0.1:3000");
     if (!raw || !raw.startsWith("http")) raw = "http://127.0.0.1:3000";
@@ -90,11 +132,14 @@ export function createLocalObjectStore(storeOptions: LocalStorageOptions): Objec
   mkdirSync(multipartDir, { recursive: true });
 
   const getMultipartAdapter = (key: string, uploadId: string): MultipartUpload => {
-    const partDir = join(multipartDir, uploadId);
+    const partDir = resolveMultipartDir(multipartDir, uploadId);
     return {
       uploadId,
       key,
       uploadPart: async (partNumber: number, value: ReadableStream<Uint8Array> | Uint8Array | ArrayBuffer) => {
+        if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > 10000) {
+          throw new Error(`Invalid partNumber: ${partNumber}`);
+        }
         mkdirSync(partDir, { recursive: true });
         const partFile = join(partDir, `${partNumber}`);
         if (value instanceof ReadableStream) {
@@ -218,6 +263,9 @@ export function createLocalObjectStore(storeOptions: LocalStorageOptions): Objec
     },
 
     resumeMultipartUpload(key: string, uploadId: string): MultipartUpload {
+      if (!UPLOAD_ID_PATTERN.test(uploadId)) {
+        throw new Error(`Invalid uploadId format: ${uploadId}`);
+      }
       return getMultipartAdapter(key, uploadId);
     },
 

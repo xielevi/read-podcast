@@ -1,6 +1,4 @@
-/**
- * 本地 Node HTTP 服务入口：支持 Basic Auth 权限保护、一次性签名存储下载以及定期维护调度。
- */
+import { timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve } from "node:path";
@@ -52,16 +50,16 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
   const port = options.port || Number(process.env.PORT) || 3000;
   const authUser = options.authUsername || process.env.CONTROL_AUTH_USER || process.env.BASIC_AUTH_USER;
   const authPass = options.authPassword || process.env.CONTROL_AUTH_PASSWORD || process.env.BASIC_AUTH_PASSWORD;
-  const signingSecret = options.signingSecret || process.env.INTERNAL_SIGNING_SECRET || "read-podcast-local-storage-secret";
   const storageDir = options.storageDir || process.env.STORAGE_PATH || "./data/storage";
 
   let actualPort = port;
   const runtime = createNodeEnv({
     ...options,
     baseUrl: options.baseUrl || (() => (process.env.APP_BASE_URL || (process.env.BASE_URL && process.env.BASE_URL.startsWith("http") ? process.env.BASE_URL : `http://${host}:${actualPort}`))),
-    signingSecret,
+    signingSecret: options.signingSecret || process.env.INTERNAL_SIGNING_SECRET,
     storageDir,
   });
+  const signingSecret = runtime.signingSecret;
 
   // 恢复未完成的工作流
   await runtime.workflowEngine.resumeRunningWorkflows();
@@ -101,6 +99,46 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           return;
         }
 
+        const rangeHeader = req.headers.range;
+        if (rangeHeader && /^bytes=\d*-\d*$/.test(rangeHeader)) {
+          const rangeParts = rangeHeader.replace(/bytes=/, "").split("-");
+          const start = rangeParts[0] ? parseInt(rangeParts[0], 10) : 0;
+          const end = rangeParts[1] ? parseInt(rangeParts[1], 10) : obj.size - 1;
+
+          if (start >= obj.size || start > end) {
+            res.statusCode = 416;
+            res.setHeader("content-range", `bytes */${obj.size}`);
+            res.end();
+            return;
+          }
+
+          res.statusCode = 206;
+          res.setHeader("content-type", "application/octet-stream");
+          res.setHeader("content-range", `bytes ${start}-${end}/${obj.size}`);
+          res.setHeader("content-length", String(end - start + 1));
+          res.setHeader("accept-ranges", "bytes");
+
+          if (obj.body) {
+            let currentByte = 0;
+            const reader = obj.body.getReader();
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              const chunkStart = currentByte;
+              const chunkEnd = currentByte + value.length - 1;
+              currentByte += value.length;
+
+              if (chunkEnd < start || chunkStart > end) continue;
+
+              const sliceStart = Math.max(0, start - chunkStart);
+              const sliceEnd = Math.min(value.length, end - chunkStart + 1);
+              res.write(value.subarray(sliceStart, sliceEnd));
+            }
+          }
+          res.end();
+          return;
+        }
+
         res.statusCode = 200;
         res.setHeader("content-type", "application/octet-stream");
         res.setHeader("content-length", String(obj.size));
@@ -126,9 +164,22 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           let authorized = false;
           if (authHeader && authHeader.startsWith("Basic ")) {
             const credentials = Buffer.from(authHeader.slice(6), "base64").toString("utf-8");
-            const [u, p] = credentials.split(":");
-            if (u === authUser && p === authPass) {
-              authorized = true;
+            const colonIndex = credentials.indexOf(":");
+            if (colonIndex !== -1) {
+              const u = credentials.slice(0, colonIndex);
+              const p = credentials.slice(colonIndex + 1);
+              const uBuf = Buffer.from(u);
+              const expUBuf = Buffer.from(authUser);
+              const pBuf = Buffer.from(p);
+              const expPBuf = Buffer.from(authPass);
+              if (
+                uBuf.length === expUBuf.length &&
+                pBuf.length === expPBuf.length &&
+                timingSafeEqual(uBuf, expUBuf) &&
+                timingSafeEqual(pBuf, expPBuf)
+              ) {
+                authorized = true;
+              }
             }
           }
 
@@ -216,6 +267,9 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     host,
     close: async () => {
       clearInterval(maintenanceTimer);
+      if (typeof (server as any).closeAllConnections === "function") {
+        (server as any).closeAllConnections();
+      }
       await new Promise<void>((res, rej) => {
         server.close(err => (err ? rej(err) : res()));
       });

@@ -99,6 +99,11 @@ export function serviceHeaders(env: Env, json = false): Headers {
     return headers;
   }
   if (isLocalServiceEndpoint(serviceBase(env))) return headers;
+  const isTrustedInternal =
+    env.TRUSTED_INTERNAL_TRANSCRIPTION === true ||
+    env.TRUSTED_INTERNAL_TRANSCRIPTION === "true" ||
+    env.TRUSTED_INTERNAL_TRANSCRIPTION === "1";
+  if (isTrustedInternal) return headers;
   throw new TranscriptionServiceError(
     "unconfigured",
     "transcription_service_unconfigured",

@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import ipaddress
+import os
 import socket
 from urllib.parse import urljoin, urlsplit, urlunsplit
 
@@ -73,8 +74,17 @@ def _is_allowed_address(address: str) -> bool:
     return isinstance(ip, ipaddress.IPv4Address) and ip in FAKE_IP_NETWORK
 
 
+def _allowed_audio_source_hosts() -> set[str]:
+    raw = (
+        os.environ.get("ALLOWED_AUDIO_SOURCE_HOSTS")
+        or os.environ.get("READ_PODCAST_ALLOWED_AUDIO_SOURCE_HOSTS")
+        or ""
+    )
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
 def validate_public_url(url: str) -> str:
-    """只允许解析到全局可路由地址（或 Fake-IP 地址池）的 http(s) URL。"""
+    """只允许解析到全局可路由地址（或 Fake-IP 地址池、或显式受信来源主机白名单）的 http(s) URL。"""
     candidate = str(url or "").strip()
     parts = urlsplit(candidate)
     if parts.scheme not in {"http", "https"} or not parts.hostname:
@@ -90,6 +100,9 @@ def validate_public_url(url: str) -> str:
         raise UrlResolutionError("URL host could not be resolved") from exc
     if not addresses:
         raise UrlResolutionError("URL host did not resolve")
+    allowed_hosts = _allowed_audio_source_hosts()
+    if parts.hostname.lower() in allowed_hosts:
+        return candidate
     if any(not _is_allowed_address(address) for address in addresses):
         raise UnsafeUrlError("URL points to a private or local network")
     return candidate

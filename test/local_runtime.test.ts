@@ -6,10 +6,10 @@
  *   - 进程内工作流执行器（断点持久化、重放不重复调用昂贵步骤、崩溃重启续跑、NonRetryableError）；
  *   - Node HTTP 服务（健康检查、Basic Auth 控制面拦截、公共面放行、签名音频下载）。
  */
-import { existsSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   applyLocalMigrations,
   createLocalAssetFetcher,
@@ -21,6 +21,8 @@ import {
   startServer,
   verifyStorageSignature,
   cleanExpiredObjects,
+  resolveOrGenerateSigningSecret,
+  LocalWorkflowStepRunner,
 } from "../src/platform/node";
 import { NonRetryableError } from "../src/platform/types";
 import { runProcessingPipeline } from "../src/workflows/pipeline";
@@ -38,9 +40,19 @@ import {
 } from "./helpers/cloud";
 
 const TEST_DIR = resolve(process.cwd(), "data/test-local-runtime");
+const realFetch = globalThis.fetch;
 
 beforeEach(() => {
+  rmSync(TEST_DIR, { recursive: true, force: true });
   mkdirSync(TEST_DIR, { recursive: true });
+});
+
+afterEach(() => {
+  globalThis.fetch = realFetch;
+});
+
+afterAll(() => {
+  rmSync(TEST_DIR, { recursive: true, force: true });
 });
 
 describe("本地 SQLite 适配器与迁移执行器", () => {
@@ -201,6 +213,55 @@ describe("本地卷对象存储（ObjectStore）", () => {
     expect(await store.get("uploads/new.mp3")).not.toBeNull();
     expect(await store.get("raw/new.txt")).not.toBeNull();
   });
+
+  it("分片上传安全：严格校验 uploadId 格式，防止目录遍历与任意文件删除/写入", async () => {
+    const storeDir = resolve(TEST_DIR, "storage-multipart-security");
+    const store = createLocalObjectStore({ rootDir: storeDir });
+
+    // 1. 尝试使用 ../.. 路径穿越 uploadId 恢复
+    expect(() => store.resumeMultipartUpload!("uploads/malicious.mp3", "../../etc")).toThrow(/Invalid uploadId/);
+    expect(() => store.resumeMultipartUpload!("uploads/malicious.mp3", "random-id")).toThrow(/Invalid uploadId/);
+
+    // 2. 正常格式 localmp-12345-abc123
+    const validId = "localmp-1700000000-abc123";
+    const adapter = store.resumeMultipartUpload!("uploads/audio.mp3", validId);
+
+    // 3. 非法 partNumber
+    await expect(adapter.uploadPart(0, new Uint8Array([1]))).rejects.toThrow(/Invalid partNumber/);
+    await expect(adapter.uploadPart(-1, new Uint8Array([1]))).rejects.toThrow(/Invalid partNumber/);
+    await expect(adapter.uploadPart(10001, new Uint8Array([1]))).rejects.toThrow(/Invalid partNumber/);
+
+    // 4. abort 只能删除对应的 partDir，无法逃逸
+    await adapter.uploadPart(1, new Uint8Array([1, 2, 3]));
+    await adapter.abort();
+    expect(existsSync(resolve(storeDir, ".multiparts", validId))).toBe(false);
+  });
+
+  it("签名密钥安全：未提供密钥时自动生成随机密钥并持久化至 0600 文件，绝不使用固定默认值", () => {
+    const dataDir = resolve(TEST_DIR, "key-gen-data");
+    mkdirSync(dataDir, { recursive: true });
+
+    // 1. 未配置任何 secret
+    const secret1 = resolveOrGenerateSigningSecret({ dataDir });
+    expect(secret1).toBeDefined();
+    expect(secret1.length).toBe(64); // 32 字节 hex
+    expect(secret1).not.toBe("read-podcast-local-storage-secret");
+
+    // 2. 检查文件权限
+    const keyFile = resolve(dataDir, "signing.key");
+    expect(existsSync(keyFile)).toBe(true);
+    const stat = statSync(keyFile);
+    // mode 掩码后八进制 0600
+    expect(stat.mode & 0o777).toBe(0o600);
+
+    // 3. 第二次读取：复用已持久化的密钥，绝不每次变动导致旧签名失效
+    const secret2 = resolveOrGenerateSigningSecret({ dataDir });
+    expect(secret2).toBe(secret1);
+
+    // 4. 显式提供 secret 时优先使用显式配置
+    const secretExplicit = resolveOrGenerateSigningSecret({ explicitSecret: "my-custom-key-999", dataDir });
+    expect(secretExplicit).toBe("my-custom-key-999");
+  });
 });
 
 describe("本地工作流执行器（TaskWorkflowEngine & WorkflowStepLike）", () => {
@@ -336,6 +397,228 @@ describe("本地工作流执行器（TaskWorkflowEngine & WorkflowStepLike）", 
     // 只执行了 1 次，没有重试
     expect(attempts).toBe(1);
   });
+
+  it("Step 超时控制：超过 step.timeout 抛出 TimeoutError", async () => {
+    const raw = new DatabaseSync(":memory:");
+    applyLocalMigrations(raw, resolve(process.cwd(), "migrations"));
+
+    const runner = new LocalWorkflowStepRunner(raw, "timeout-inst", () => false);
+    await expect(
+      runner.do("timed-out-step", { timeout: "50ms", retries: { limit: 0 } }, async () => {
+        await new Promise(r => setTimeout(r, 200));
+        return "done";
+      }),
+    ).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("Step 默认重试：未显式配置 retries.limit 时默认具备 5 次重试能力", async () => {
+    const raw = new DatabaseSync(":memory:");
+    applyLocalMigrations(raw, resolve(process.cwd(), "migrations"));
+
+    const runner = new LocalWorkflowStepRunner(raw, "default-retry-inst", () => false);
+    let attempts = 0;
+    const res = await runner.do("flaky-step", { retries: { delay: 1 } }, async ({ attempt }) => {
+      attempts = attempt;
+      if (attempt < 3) throw new Error("temporary network hitch");
+      return "succeeded-at-3";
+    });
+
+    expect(res).toBe("succeeded-at-3");
+    expect(attempts).toBe(3);
+  });
+
+  it("真实 ProcessingPipeline 在 LocalWorkflowStepRunner 上运行：断点持久化到 SQLite，重放不重复调用昂贵步骤", async () => {
+    const cloud = makeCloud();
+    const raw = new DatabaseSync(":memory:");
+    applyLocalMigrations(raw, resolve(process.cwd(), "migrations"));
+
+    // 将 cloud 的 D1 替换为 real SQLite
+    cloud.d1.raw.close();
+    cloud.d1.raw = raw;
+    cloud.env.db = createSqliteDatabase(raw);
+
+    insertTask(cloud.d1, { status: "queued" });
+    globalThis.fetch = cloud.fetch;
+
+    const instanceId = processingWorkflowId(TASK, ATTEMPT);
+    const localRunner = new LocalWorkflowStepRunner(raw, instanceId, () => false);
+
+    // 第一次运行：完整跑通真实业务管线
+    const res1 = await runProcessingPipeline(cloud.env, paramsFor(TASK, ATTEMPT), instanceId, localRunner, {
+      fetchFn: cloud.fetch,
+      poll: FAST_POLL,
+    });
+
+    expect(res1.finalPath).toContain("podcasts/transcripts/");
+    expect(taskRow(cloud.d1)).toMatchObject({ status: "success", progress: 100 });
+    expect(cloud.service.posts).toHaveLength(1);
+    expect(cloud.externals.llmCalls).toBe(1);
+    expect(cloud.externals.github.commits).toBe(1);
+
+    // 检查 SQLite 中的 _workflow_checkpoints 表已持久化各个 step
+    const checkpoints = raw.prepare("SELECT step_name FROM _workflow_checkpoints WHERE instance_id = ?").all(instanceId) as Array<{ step_name: string }>;
+    const stepNames = checkpoints.map(c => c.step_name);
+    expect(stepNames).toContain("claim-refinement");
+    expect(stepNames.some(s => s.startsWith("submit-transcription-"))).toBe(true);
+    expect(stepNames).toContain("refine");
+    expect(stepNames).toContain("validate-and-publish");
+
+    // 第二次运行（重放 / 故障恢复）：创建新的 LocalWorkflowStepRunner 实例针对同一个 instanceId
+    const replayRunner = new LocalWorkflowStepRunner(raw, instanceId, () => false);
+    const res2 = await runProcessingPipeline(cloud.env, paramsFor(TASK, ATTEMPT), instanceId, replayRunner, {
+      fetchFn: cloud.fetch,
+      poll: FAST_POLL,
+    });
+
+    expect(res2.finalPath).toBe(res1.finalPath);
+    // 关键断言：重放后转录提交、LLM 精修、GitHub 提交次数完全没有增加！
+    expect(cloud.service.posts).toHaveLength(1);
+    expect(cloud.externals.llmCalls).toBe(1);
+    expect(cloud.externals.github.commits).toBe(1);
+  });
+
+  it("Docker Compose 拓扑端到端验证：受信内网转录端点 (C) + 上传音频受控访问与 SSRF 白名单放行 (D)", async () => {
+    const raw = new DatabaseSync(":memory:");
+    applyLocalMigrations(raw, resolve(process.cwd(), "migrations"));
+
+    const srvDir = resolve(TEST_DIR, "compose-e2e-storage");
+    rmSync(srvDir, { recursive: true, force: true });
+    mkdirSync(srvDir, { recursive: true });
+
+    const composeEnv = createNodeEnv({
+      storageDir: srvDir,
+      databasePath: ":memory:",
+      baseUrl: "http://web:3000",
+      env: {
+        APP_ENV: "test",
+        TRANSCRIPTION_SERVICE_URL: "http://transcription:28100",
+        TRUSTED_INTERNAL_TRANSCRIPTION: "true",
+        BASE_URL: "http://web:3000",
+        REFINER_API_KEY: "test-refiner-key",
+        GITHUB_TOKEN: "test-token",
+        GITHUB_OWNER: "test-owner",
+        GITHUB_REPO: "test-repo",
+      },
+    });
+
+    // 模拟用户上传自定义音频至本地存储
+    const uploadKey = "uploads/custom-compose/audio.mp3";
+    await composeEnv.objectStore.put(uploadKey, "fake-audio-payload-for-compose");
+
+    const composeTask = "compose-task-1";
+    const composeAttempt = "compose-attempt-1";
+    const instanceId = processingWorkflowId(composeTask, composeAttempt);
+
+    // 插入 custom 上传音频任务
+    insertTask({ raw: composeEnv.dbSync } as any, {
+      id: composeTask,
+      attempt: composeAttempt,
+      source_type: "upload",
+      audio_url: `r2://${uploadKey}`,
+      status: "queued",
+    });
+
+    let downloadedAudioFromWeb = "";
+    let transcriptionSubmitted = false;
+    let currentRequestId = "";
+
+    const composeFetch: typeof fetch = async (input, init) => {
+      const url = typeof input === "string" ? input : (input instanceof URL ? input.toString() : (input as Request).url);
+      const method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      const rawBody = init?.body ?? (input instanceof Request ? await input.clone().text() : undefined);
+
+      if (url.startsWith("http://transcription:28100")) {
+        // C: 验证出站请求无需 CF Access 凭据即被接受
+        const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+        expect(headers.get("cf-access-client-id")).toBeNull();
+        expect(headers.get("cf-access-client-secret")).toBeNull();
+
+        if (url.includes("/health")) {
+          return Response.json({ status: "ok", service: "transcription-service", engine: "faster-whisper" });
+        }
+
+        if (url.includes("/v1/transcriptions") && method === "POST") {
+          transcriptionSubmitted = true;
+          const body = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+          currentRequestId = body.request_id;
+          const audioUrl = body.source?.url;
+
+          // D: 转录服务收到音频 URL (http://web:3000/storage/download?...)
+          expect(audioUrl).toContain("http://web:3000/storage/download");
+
+          const parsed = new URL(audioUrl);
+          expect(parsed.hostname).toBe("web");
+
+          // 验证签名有效并从本地存储获取
+          const key = parsed.searchParams.get("key");
+          const expires = Number(parsed.searchParams.get("expires"));
+          const sig = parsed.searchParams.get("sig");
+          expect(verifyStorageSignature(key!, expires, sig!, composeEnv.signingSecret)).toBe(true);
+
+          const obj = await composeEnv.objectStore.get(key!);
+          downloadedAudioFromWeb = await obj!.text();
+
+          return Response.json({
+            request_id: currentRequestId,
+            provider_request_id: "tsr_compose_001",
+            status: "completed",
+            progress: { phase: "transcribing", percent: 100 },
+            result: { language: "zh", duration: 120 },
+          }, { status: 200 });
+        }
+
+        if (url.includes("/v1/transcriptions/tsr_compose_001/result")) {
+          return new Response(RAW_TEXT, { status: 200, headers: { "content-type": "text/plain" } });
+        }
+
+        if (url.includes("/v1/transcriptions/tsr_compose_001")) {
+          return Response.json({
+            request_id: currentRequestId,
+            provider_request_id: "tsr_compose_001",
+            status: "completed",
+            progress: { phase: "transcribing", percent: 100 },
+            result: { language: "zh", duration: 120 },
+          });
+        }
+      }
+
+      // Fake LLM & GitHub
+      if (url.includes("/chat/completions")) {
+        return Response.json({ choices: [{ message: { content: REFINED_TEXT }, finish_reason: "stop" }] });
+      }
+      if (url.includes("api.github.com")) {
+        if (url.includes("/contents/")) return new Response(null, { status: 404 });
+        if (url.includes("/git/ref/heads/")) return Response.json({ object: { sha: "base-sha" } });
+        if (url.includes("/git/commits/")) return Response.json({ tree: { sha: "tree-sha" } });
+        if (url.includes("/git/blobs")) return Response.json({ sha: "blob-sha" }, { status: 201 });
+        if (url.includes("/git/trees")) return Response.json({ sha: "new-tree-sha" }, { status: 201 });
+        if (url.includes("/git/commits") && method === "POST") return Response.json({ sha: "commit-sha" }, { status: 201 });
+        if (url.includes("/git/refs/heads/")) return Response.json({ sha: "commit-sha" });
+      }
+
+      throw new Error(`Unexpected fetch in compose test: ${url}`);
+    };
+
+    globalThis.fetch = composeFetch;
+
+    const runner = new LocalWorkflowStepRunner(composeEnv.dbSync, instanceId, () => false);
+    const result = await runProcessingPipeline(composeEnv.env, paramsFor(composeTask, composeAttempt), instanceId, runner, {
+      fetchFn: composeFetch,
+      poll: FAST_POLL,
+    });
+
+    expect(result.finalPath).toContain("podcasts/transcripts/");
+    expect(transcriptionSubmitted).toBe(true);
+    expect(downloadedAudioFromWeb).toBe("fake-audio-payload-for-compose");
+
+    const row = composeEnv.dbSync.prepare("SELECT status, progress, raw_object_key FROM tasks WHERE id = ?").get(composeTask) as any;
+    expect(row.status).toBe("success");
+    expect(row.progress).toBe(100);
+    expect(row.raw_object_key).toBe(`raw/${composeTask}/${composeAttempt}.txt`);
+
+    composeEnv.close();
+    rmSync(srvDir, { recursive: true, force: true });
+  });
 });
 
 describe("本地 Node HTTP 服务（Server & Basic Auth）", () => {
@@ -353,7 +636,7 @@ describe("本地 Node HTTP 服务（Server & Basic Auth）", () => {
     mkdirSync(srvDir, { recursive: true });
 
     running = await startServer({
-      port: 0, // 动态可用端口
+      port: 39101, // 独立端口
       host: "127.0.0.1",
       databasePath: ":memory:",
       storageDir: srvDir,
@@ -374,22 +657,27 @@ describe("本地 Node HTTP 服务（Server & Basic Auth）", () => {
     const indexRes = await fetch(`${base}/`);
     expect(indexRes.status).toBe(200);
     expect(indexRes.headers.get("content-type")).toContain("text/html");
+    await indexRes.text();
 
     // 3. 控制面未提供凭据 -> 401 Unauthorized
     const controlRes = await fetch(`${base}/manage`);
     expect(controlRes.status).toBe(401);
     expect(controlRes.headers.get("www-authenticate")).toContain("Basic");
+    await controlRes.text();
 
     const controlApiRes = await fetch(`${base}/api/control/tasks`);
     expect(controlApiRes.status).toBe(401);
+    await controlApiRes.text();
 
     // 4. 控制面携带正确 Basic Auth 凭据 -> 200 OK
     const authHeader = `Basic ${Buffer.from("admin:secret-password-123").toString("base64")}`;
     const authedManage = await fetch(`${base}/manage`, { headers: { authorization: authHeader } });
     expect(authedManage.status).toBe(200);
+    await authedManage.text();
 
     const authedApi = await fetch(`${base}/api/control/tasks`, { headers: { authorization: authHeader } });
     expect(authedApi.status).toBe(200);
+    await authedApi.text();
 
     // 5. 存储下载签名验证
     await running.runtime.objectStore.put("uploads/audio.mp3", "fake audio bytes for transcription");
@@ -403,5 +691,44 @@ describe("本地 Node HTTP 服务（Server & Basic Auth）", () => {
     // 篡改签名 -> 403
     const badDlRes = await fetch(downloadUrl + "tampered");
     expect(badDlRes.status).toBe(403);
+    await badDlRes.text();
+
+    // 6. Range 头部分请求支持（HTTP 206）
+    const rangeRes = await fetch(downloadUrl, { headers: { range: "bytes=0-3" } });
+    expect(rangeRes.status).toBe(206);
+    expect(rangeRes.headers.get("content-range")).toBe("bytes 0-3/34");
+    expect(rangeRes.headers.get("content-length")).toBe("4");
+    expect(await rangeRes.text()).toBe("fake");
+
+    // 超出范围的 Range -> 416
+    const badRange = await fetch(downloadUrl, { headers: { range: "bytes=100-200" } });
+    expect(badRange.status).toBe(416);
+    await badRange.text();
+  });
+
+  it("Basic Auth 安全：支持密码中包含冒号，且采用常量时间比对", async () => {
+    const srvDir = resolve(TEST_DIR, "srv-colon-data");
+    mkdirSync(srvDir, { recursive: true });
+
+    running = await startServer({
+      port: 39102,
+      host: "127.0.0.1",
+      databasePath: ":memory:",
+      storageDir: srvDir,
+      authUsername: "admin",
+      authPassword: "p:a:s:s:w:o:r:d:with:colons",
+      signingSecret: "test-secret",
+    });
+
+    const base = `http://${running.host}:${running.port}`;
+    const authHeader = `Basic ${Buffer.from("admin:p:a:s:s:w:o:r:d:with:colons").toString("base64")}`;
+    const res = await fetch(`${base}/manage`, { headers: { authorization: authHeader, connection: "close" } });
+    expect(res.status).toBe(200);
+    await res.text();
+
+    const wrongHeader = `Basic ${Buffer.from("admin:p:a:s:s:w:o:r:d:wrong").toString("base64")}`;
+    const wrongRes = await fetch(`${base}/manage`, { headers: { authorization: wrongHeader, connection: "close" } });
+    expect(wrongRes.status).toBe(401);
+    await wrongRes.text();
   });
 });
