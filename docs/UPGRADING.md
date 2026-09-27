@@ -10,16 +10,18 @@ steps are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Architecture and Upgrade Principles
 
-A Read Podcast deployment consists of two decoupled components:
+Read Podcast has two supported deployment paths:
 
-1. **Cloudflare Application**: Cloudflare Worker, D1 database, Workflows engine, and R2 object storage.
-2. **Transcription Service Host**: An independent, stateless speech-to-text compute node (reference: macOS Apple Silicon running MLX Whisper).
+1. **Cloudflare**: Worker + D1 + Workflows + R2, with a GitHub manuscript store and either self-hosted or cloud transcription.
+2. **Docker / Node**: Node.js + SQLite + local object storage + a local manuscript directory by default, with the same application code and an in-process checkpointed workflow runner.
+
+The Cloudflare procedure below applies only to the first path; Docker has its own procedure later in this guide.
 
 When upgrading, the following core principles must be maintained:
 
-- **Zero Data Loss for Published Manuscripts**: Articles recorded in D1 and saved as Markdown files in your GitHub repository are durable and must never be altered or cascade-deleted by an upgrade.
-- **Graceful In-flight Task Handling**: Database migrations and workflow upgrades must handle active tasks gracefully. Completed raw transcripts in R2 are preserved so that upgrading never forces already-transcribed audio to be re-transcribed.
-- **Idempotent and Tracked Migrations**: D1 migrations are sequential, version-controlled SQL files tracked in the `d1_migrations` table by Wrangler.
+- **Zero Data Loss for Published Manuscripts**: published Markdown in the configured Manuscript Store is durable and must never be altered or cascade-deleted by an upgrade.
+- **Graceful In-flight Task Handling**: inspect active tasks before schema or workflow changes and follow the target release notes for any migration-specific handling.
+- **Idempotent and Tracked Migrations**: D1 migrations are sequential SQL files tracked by Wrangler; SQLite applies the same migration set locally on Node startup.
 
 ---
 
@@ -40,14 +42,14 @@ scripts/preflight_upgrade.sh
 scripts/preflight_upgrade.sh --local
 ```
 
-`scripts/preflight_upgrade.sh` lists all tasks in active processing states (`waiting_worker`,
-`downloading`, `transcribing`, `refining`).
+`scripts/preflight_upgrade.sh` lists all current active task states (`queued`, `transcribing`,
+`refining`, `finalizing`).
 
 > [!TIP]
 > **Why wait for active tasks?**
-> Schema migrations are designed to safely requeue active tasks rather than letting them fail
-> silently or become orphaned. However, requeued tasks will re-run the current processing step.
-> Waiting for in-flight tasks to complete avoids re-consuming transcription or LLM refinement compute.
+> Migration behavior is version-specific. Some releases can safely preserve or requeue active work,
+> while others may require waiting for a checkpoint boundary. The preflight is intentionally read-only:
+> inspect the listed tasks, then follow the target release notes before applying migrations.
 
 ### 2. Apply D1 Database Migrations
 
