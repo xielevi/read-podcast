@@ -79,6 +79,66 @@ via `Env` (`env.db`, `env.storage`, `env.workflows`), with zero imports of `clou
 around Cloudflare runtime bindings with unchanged behavior. An architecture test enforces that
 no business files bypass the adapter or reference Cloudflare binding types.
 
+## Local Runtime (Docker / Node.js)
+
+To support self-hosted operation without dependency on Cloudflare services (#27), the application
+provides a first-class local runtime running on Node.js 22+. The exact same TypeScript business
+logic is executed by pairing the platform interfaces with local implementations:
+
+| Interface | Cloudflare Implementation | Local / Docker Implementation |
+|---|---|---|
+| `Database` | Cloudflare D1 | SQLite (`node:sqlite` DatabaseSync), WAL mode, foreign keys enabled, running `migrations/*.sql` |
+| `ObjectStore` | Cloudflare R2 | Local directory volume (`uploads/`, `raw/`, `refined/`), temporary HMAC-signed download URLs (`/storage/download`), automated lifecycle retention (1d uploads, 7d raw/refined) |
+| `TaskWorkflowEngine` | Cloudflare Workflows | In-process step runner with SQLite checkpoint tables (`_workflow_instances`, `_workflow_checkpoints`), matching replay, retry, backoff, and non-retryable semantics; recovers running workflows across process restarts |
+| `ScheduledHandler` | Cloudflare Cron Trigger (every 5 min) | In-process timer (every 5 min) invoking `runMaintenance` (recovery and liveness reconciliation) and object store retention sweep |
+| Static Assets | Cloudflare Assets | Node HTTP server serving `public/` files with MIME mapping and SPA fallback |
+| Access Control | Cloudflare Access | Optional HTTP Basic Auth on `/manage*` and `/api/control/*`; Public Browse Mode (`/` and `/api/public/*`) remains open and side-effect free; defaults to listening on `127.0.0.1` |
+| Secrets / Vars | Wrangler secrets / vars | Environment variables and `.env` |
+
+In Docker Compose, the Web application container runs alongside the containerized Transcription
+Service (`transcription_service/docker-compose.yml`), communicating over an internal container network.
+Manuscript persistence uses the Canonical Manuscript Store (GitHub repository) as in the Cloudflare deployment;
+local directory persistence is planned for #28.
+
+### Internal Service Topology and Security Boundaries
+
+In the reference production deployment, the Cloudflare application communicates with the Transcription
+Service across public networks through a Cloudflare Tunnel protected by Cloudflare Access service tokens.
+The Transcription Service in turn enforces outbound SSRF protection (`validate_public_url`), forbidding
+downloads of audio files from local or private IP addresses.
+
+In the local Docker Compose topology, both services reside on an isolated internal container bridge network.
+This requires explicit security boundary trade-offs:
+
+1. **Trusted Internal Transcription (`TRUSTED_INTERNAL_TRANSCRIPTION`)**:
+   Instead of relaxing `isLocalServiceEndpoint` to treat arbitrary network hostnames as local, the platform
+   `Env` explicitly declares `TRUSTED_INTERNAL_TRANSCRIPTION=true` when running in a trusted internal network.
+   When enabled, outbound calls to `TRANSCRIPTION_SERVICE_URL` omit the Cloudflare Access service token check,
+   allowing direct communication between the `web` container and the `transcription` container.
+2. **Audio Source SSRF Allowlist (`ALLOWED_AUDIO_SOURCE_HOSTS`)**:
+   When users process uploaded audio files, the Web application generates an HMAC-signed download URL pointing
+   to `http://web:3000/storage/download`. The sibling Transcription Service resolves `web` to a Docker internal
+   bridge IP (RFC 1918 private network), which standard SSRF protection would reject.
+   Rather than disabling SSRF checks or permitting private networks globally, the Transcription Service supports
+   an explicit opt-in allowlist `ALLOWED_AUDIO_SOURCE_HOSTS` (configured as `web` in `docker-compose.yml`).
+   Only hostnames in this allowlist are permitted to resolve to private network addresses, and only for the
+   initial URL handed to the service (the application's own signed download URL) — never for redirect targets.
+   Per-hop redirect validation in `safe_get` stays strict: a public audio URL that redirects to `web`, and a
+   redirect from `web` to any internal target or cloud metadata endpoint (`169.254.169.254`, loopback, LAN), are
+   both rejected.
+3. **Storage Signing Key Persistence**:
+   Temporary download URLs are signed with HMAC-SHA256. If `INTERNAL_SIGNING_SECRET` is not provided via
+   environment variables, the local runtime generates a cryptographically random secret on first startup and
+   persists it to `/data/signing.key` with `0600` permissions. Fixed public default keys are forbidden.
+4. **Multipart Path Traversal Defense**:
+   Multipart upload IDs are strictly validated against `^localmp-\d+-[a-z0-9]+$` and constrained within the
+   storage root's `.multiparts/` directory, preventing arbitrary directory deletion or file creation.
+5. **Workflow Execution & Replay Semantics**:
+   The in-process `LocalWorkflowStepRunner` persists step results in `_workflow_checkpoints`. Steps executed
+   in prior attempts are restored directly from SQLite, guaranteeing that expensive operations (transcription,
+   LLM refinement, GitHub commits) are never re-run during retry or recovery. When step `retries` is omitted,
+   it defaults to Cloudflare Workflows semantics (5 retries), and step `timeout` is enforced.
+
 
 ## Public Browse Mode and Authenticated Control Mode
 

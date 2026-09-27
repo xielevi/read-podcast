@@ -552,6 +552,48 @@ Scripts in `deploy/macos/`:
 
 To rotate a credential, set the new value, verify with the smoke test, then remove the old one.
 
+## 7. Local Docker deployment
+
+Read Podcast can be run completely self-hosted using Docker Compose without any dependency on
+Cloudflare services (#27). The same application codebase runs on Node.js 22 with SQLite and local volume storage:
+
+| Component | Cloudflare Deployment | Local Docker Deployment |
+|---|---|---|
+| Database | Cloudflare D1 | SQLite (`/data/read-podcast.db`), automatic migration on boot |
+| Object storage | Cloudflare R2 | Local volume (`/data/storage`), automated 1d/7d retention |
+| Task execution | Cloudflare Workflows | In-process step runner with SQLite checkpoints and restart resume |
+| Maintenance | Cloudflare Cron Trigger | In-process 5-minute timer (reconciliation + storage sweep) |
+| Access control | Cloudflare Access | Optional Basic Auth on `/manage*` and `/api/control/*` (bound to `127.0.0.1`) |
+| Transcription | Mac host or DashScope | Containerized Faster-Whisper (`transcription` service) or DashScope |
+
+### Quick start
+
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+2. Fill in the required credentials in `.env`:
+   - `REFINER_API_KEY`: Your OpenAI-compatible LLM API key
+   - `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`: Your manuscript store repository
+   - Optional: set `CONTROL_AUTH_USER` and `CONTROL_AUTH_PASSWORD` to protect the control plane with Basic Auth.
+3. Start the services:
+   ```bash
+   docker compose up -d
+   ```
+4. Verify health:
+   ```bash
+   curl -fsS http://127.0.0.1:3000/api/public/health
+   ```
+5. Open your browser:
+   - `http://127.0.0.1:3000`: Public Browse Mode (read-only, side-effect free)
+   - `http://127.0.0.1:3000/manage`: Authenticated Control Mode (manage subscriptions, tasks, settings)
+
+### Data persistence
+
+- `web-data`: Persists the SQLite database (`/data/read-podcast.db`) and temporary execution payloads (`/data/storage/`).
+- `transcription-data`: Persists downloaded Faster-Whisper models (Hugging Face cache) and logs.
+
+
 ## Resource names and Free-plan boundary checks
 
 The package and existing Worker, D1, R2 and Workflow resource names remain unchanged for

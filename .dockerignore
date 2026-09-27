@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.github
+data
+.venv
+__pycache__
+.pytest_cache
+transcription_service/.venv
+transcription_service/__pycache__
+transcription_service/.pytest_cache
+*.log

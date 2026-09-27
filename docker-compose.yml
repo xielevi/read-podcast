@@ -1,0 +1,68 @@
+# Read Podcast 本地 Docker 部署（Web 应用 + 进程内任务执行器 + 本地卷 + 转录服务）。
+# 不依赖任何 Cloudflare 服务。
+#
+# 使用方式：
+#   1. 复制 .env.example 为 .env，填入 GitHub 凭据与 Refinement Provider (LLM) 密钥；
+#   2. 运行 docker compose up -d；
+#   3. 访问 http://127.0.0.1:3000（公开阅读）或 http://127.0.0.1:3000/manage（管理工作区）。
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ghcr.io/xielevi/read-podcast:latest
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - APP_ENV=production
+      - PORT=3000
+      - HOST=0.0.0.0
+      - DATABASE_PATH=/data/read-podcast.db
+      - STORAGE_PATH=/data/storage
+      - BASE_URL=http://web:3000
+      # 默认连接同 compose 内的转录服务；若改用百炼，设为 dashscope 并配置 DASHSCOPE_API_KEY
+      - TRANSCRIPTION_SERVICE_URL=http://transcription:28100
+      - TRUSTED_INTERNAL_TRANSCRIPTION=true
+      - TRANSCRIPTION_PROVIDER=${TRANSCRIPTION_PROVIDER:-self-hosted}
+      - TRANSCRIPTION_LANGUAGE=${TRANSCRIPTION_LANGUAGE:-}
+      - DASHSCOPE_API_KEY=${DASHSCOPE_API_KEY:-}
+      # 签名密钥（留空时首次启动将自动生成随机密钥并持久化至 /data/signing.key）
+      - INTERNAL_SIGNING_SECRET=${INTERNAL_SIGNING_SECRET:-}
+      # LLM 精修服务（OpenAI 兼容接口）
+      - REFINER_API_KEY=${REFINER_API_KEY:-}
+      # 稿件存储（GitHub 仓库）
+      - GITHUB_TOKEN=${GITHUB_TOKEN:-}
+      - GITHUB_OWNER=${GITHUB_OWNER:-}
+      - GITHUB_REPO=${GITHUB_REPO:-}
+      - GITHUB_BRANCH=${GITHUB_BRANCH:-main}
+      - GITHUB_PODCAST_PATH=${GITHUB_PODCAST_PATH:-podcasts/transcripts}
+      - MANUSCRIPT_TIME_ZONE=${MANUSCRIPT_TIME_ZONE:-Asia/Shanghai}
+      # 可选 Basic Auth（保护 /manage* 与 /api/control/*，未配置时不设密码）
+      - CONTROL_AUTH_USER=${CONTROL_AUTH_USER:-}
+      - CONTROL_AUTH_PASSWORD=${CONTROL_AUTH_PASSWORD:-}
+    volumes:
+      - web-data:/data
+    restart: unless-stopped
+    depends_on:
+      - transcription
+
+  transcription:
+    image: ghcr.io/xielevi/read-podcast-transcription:latest
+    ports:
+      - "127.0.0.1:28100:28100"
+    environment:
+      - ALLOWED_AUDIO_SOURCE_HOSTS=web
+    volumes:
+      - transcription-data:/data
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: unless-stopped
+
+volumes:
+  web-data:
+  transcription-data:

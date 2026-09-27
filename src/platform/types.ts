@@ -95,7 +95,7 @@ export interface StepContextLike {
 export type DelayFunction = (input: { ctx: StepContextLike; error: Error }) => number | string;
 
 export interface StepConfigLike {
-  retries?: { limit: number; delay: number | string | DelayFunction; backoff?: "constant" | "linear" | "exponential" };
+  retries?: { limit?: number; delay?: number | string | DelayFunction; backoff?: "constant" | "linear" | "exponential" };
   timeout?: number | string;
 }
 
