@@ -151,20 +151,18 @@
           if (!data) return null;
           if (IS_MANAGE) {
             Object.assign(_cloudPrefs, data);
-            if (data.locale && typeof setLocale === 'function') {
+            if (data.locale && (data.locale === 'zh' || data.locale === 'en') && typeof setLocale === 'function') {
               setLocale(data.locale, false);
             }
           } else {
-            // 未登录态：若本地未自定义过，则继承站长云端默认值；若已设置过则保留本地偏好
+            // 未登录态：若本地未自定义过，则继承站长云端外观/排版默认值；
+            // 访客语言遵循浏览器首选语言自适应（由 08-i18n.js 初始化），不从 data.locale 覆盖！
             try {
               if (!localStorage.getItem('app_theme') && data.app_theme) _cloudPrefs.app_theme = data.app_theme;
               if (!localStorage.getItem('reader_theme') && data.reader_theme) _cloudPrefs.reader_theme = data.reader_theme;
               if (!localStorage.getItem('reader_font_preset') && data.font_preset) _cloudPrefs.font_preset = data.font_preset;
               if (!localStorage.getItem('reader_font_size') && data.font_size) _cloudPrefs.font_size = data.font_size;
               if (!localStorage.getItem('reader_line_height') && data.line_height) _cloudPrefs.line_height = data.line_height;
-              if (!localStorage.getItem('app_locale') && data.locale && typeof setLocale === 'function') {
-                setLocale(data.locale, false);
-              }
             } catch (ignore) {
               Object.assign(_cloudPrefs, data);
             }
@@ -196,7 +194,7 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
     }
-    function errorMessage(error) { return error && error.message ? error.message : String(error || '未知错误'); }
+    function errorMessage(error) { return error && error.message ? error.message : String(error || t('common.unknown_error')); }
     // 统一解析 API 响应：成功返回 JSON（空 body，如 204，返回 null）；失败抛出带 status 的 Error，
     // 文案取服务端错误协议 {error: {code, message}}（见 src/http.ts）。
     function readApiResponse(response) {
@@ -297,7 +295,7 @@
           if (read) delete _readEpisodes[key];
           else _readEpisodes[key] = true;
           refreshReadViews();
-          addLog('保存已读状态失败：' + errorMessage(error), 'error');
+          addLog(t('read_state.save_failed') + errorMessage(error), 'error');
         });
     }
 
@@ -312,8 +310,8 @@
       var hasEpisode = IS_MANAGE && Boolean(readKey(_currentReadingRef));
       var read = hasEpisode && isRead(_currentReadingRef);
       setHidden(button, !hasEpisode);
-      button.textContent = read ? '已读 · 改为未读' : '标记为已读';
-      button.title = read ? '将这期改回未读' : '标记这期已经读完';
+      button.textContent = read ? t('episode.mark_unread') : t('episode.mark_read');
+      button.title = read ? t('episode.mark_unread_title') : t('episode.mark_read_title');
       button.setAttribute('aria-pressed', String(read));
       button.classList.toggle('is-read', read);
     }

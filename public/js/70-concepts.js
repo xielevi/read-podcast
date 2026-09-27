@@ -4,7 +4,7 @@
       section.className = 'concepts-section';
 
       var title = document.createElement('h3');
-      title.textContent = getLocale() === 'en' ? t('concepts.title') : '关键概念';
+      title.textContent = t('concepts.title');
       section.appendChild(title);
 
       var body = document.createElement('div');
@@ -27,7 +27,7 @@
       body.replaceChildren();
       var loading = document.createElement('div');
       loading.className = 'concepts-empty';
-      loading.textContent = IS_MANAGE ? (getLocale() === 'en' ? t('concepts.extracting') : '正在抽取关键概念…') : (getLocale() === 'en' ? t('concepts.reading') : '正在读取关键概念…');
+      loading.textContent = IS_MANAGE ? t('concepts.extracting') : t('concepts.reading');
       body.appendChild(loading);
 
       // 控制模式按需抽取（会调用模型并写缓存）；公开浏览只读取已缓存的结果。
@@ -57,7 +57,7 @@
           if (!concepts.length) {
             var empty = document.createElement('div');
             empty.className = 'concepts-empty';
-            empty.textContent = getLocale() === 'en' ? t('concepts.empty') : '没有找到可链接到维基百科的概念。';
+            empty.textContent = t('concepts.empty');
             body.appendChild(empty);
             return;
           }
@@ -103,12 +103,12 @@
           }
           var failed = document.createElement('div');
           failed.className = 'concepts-empty';
-          failed.textContent = (getLocale() === 'en' ? t('concepts.failed') : '抽取失败：') + errorMessage(error);
+          failed.textContent = t('concepts.failed') + errorMessage(error);
           body.appendChild(failed);
           var retry = document.createElement('button');
           retry.type = 'button';
           retry.className = 'concepts-load-btn';
-          retry.textContent = getLocale() === 'en' ? t('concepts.retry') : '重试';
+          retry.textContent = t('concepts.retry');
           retry.addEventListener('click', function () { loadConcepts(taskId, body); });
           body.appendChild(retry);
         });
@@ -164,7 +164,7 @@
       link.href = url;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.title = getLocale() === 'en' ? t('concepts.wiki_title') : '维基百科';
+      link.title = t('concepts.wiki_title');
       link.textContent = match.nodeValue;
       match.parentNode.replaceChild(link, match);
     }

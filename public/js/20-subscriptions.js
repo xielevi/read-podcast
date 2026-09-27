@@ -37,7 +37,7 @@
           _promptTemplates.forEach(function (template) {
             var option = document.createElement('option');
             option.value = String(template.content || '');
-            option.textContent = String(template.name || '未命名模板');
+            option.textContent = String(template.name || t('custom.untitled_template'));
             select.appendChild(option);
           });
           if (_promptTemplates.length > 0) {
@@ -45,7 +45,7 @@
             applyPromptTemplate(_promptTemplates[0].content);
           }
         })
-        .catch(function () { addLog('稿件风格加载失败', 'warning'); });
+        .catch(function () { addLog(t('custom.templates_load_failed'), 'warning'); });
     }
 
     function applyPromptTemplate(content) {
@@ -72,8 +72,8 @@
       // 产品硬上限 200 MiB（= 209,715,200 字节）；Cloudflare 才是权威校验方，这里只是让用户立即得到反馈、不进入上传流程。
       var MAX_SIZE = 200 * 1024 * 1024;
       if (file.size > MAX_SIZE) {
-        addLog('文件体积超出 200 MiB 上限', 'error');
-        byId('upload-status').textContent = '文件超出 200 MiB 限制（约 ' + (Math.round(file.size / 1024 / 1024 * 10) / 10) + ' MiB），请压缩或截取后重试';
+        addLog(t('custom.file_size_exceeded'), 'error');
+        byId('upload-status').textContent = t('custom.file_size_hint', (Math.round(file.size / 1024 / 1024 * 10) / 10));
         setHidden(byId('upload-progress-wrap'), false);
         setHidden(byId('upload-success-info'), true);
         setHidden(byId('upload-hint'), false);
@@ -84,7 +84,7 @@
       setHidden(byId('upload-progress-wrap'), false);
       setHidden(byId('upload-success-info'), true);
       setHidden(byId('upload-hint'), true);
-      byId('upload-status').textContent = '准备上传…';
+      byId('upload-status').textContent = t('custom.upload_ready');
       byId('upload-progress-inner').style.width = '0%';
 
       var CHUNK_SIZE = 10 * 1024 * 1024; // 10 MiB 分片（200 MiB 上限 → 至多 20 片）
@@ -110,7 +110,7 @@
           function uploadChunk(partIndex) {
             if (partIndex >= totalParts) {
               // 3. 完成合并
-              byId('upload-status').textContent = '合并分片中…';
+              byId('upload-status').textContent = t('custom.upload_merging');
               return fetch(appUrl('/api/control/uploads/multipart/' + encodeURIComponent(uploadId) + '/complete'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -118,11 +118,11 @@
               }).then(readApiResponse).then(function () {
                 _uploadedAudioPath = uploadId;
                 _uploadedAudioTitle = file.name.replace(/\.[^/.]+$/, "");
-                byId('upload-status').textContent = '上传完成';
+                byId('upload-status').textContent = t('custom.upload_complete');
                 byId('upload-progress-inner').style.width = '100%';
                 setHidden(byId('upload-success-info'), false);
                 byId('upload-success-info').textContent = '✓ ' + file.name + ' (' + Math.round(file.size / 1024 / 1024 * 10) / 10 + ' MiB)';
-                addLog('文件上传成功：' + file.name, 'success');
+                addLog(t('custom.upload_success', file.name), 'success');
               });
             }
 
@@ -151,13 +151,13 @@
               });
             }
 
-            byId('upload-status').textContent = '正在上传 0%';
+            byId('upload-status').textContent = t('custom.upload_progress', 0);
             return doUploadPart(1).then(function (partResult) {
               uploadedParts.push({ partNumber: partNumber, etag: partResult.etag });
               uploadedBytes += chunkSize;
               var percent = Math.min(99, Math.round((uploadedBytes / file.size) * 100));
               byId('upload-progress-inner').style.width = percent + '%';
-              byId('upload-status').textContent = '正在上传 ' + percent + '%';
+              byId('upload-status').textContent = t('custom.upload_progress', percent);
               return uploadChunk(partIndex + 1);
             });
           }
@@ -165,10 +165,10 @@
           return uploadChunk(0);
         })
         .catch(function (err) {
-          var message = (err && err.message) || '上传失败';
+          var message = (err && err.message) || t('custom.upload_failed');
           byId('upload-status').textContent = message;
           setHidden(byId('upload-hint'), false);
-          addLog('文件上传失败：' + message, 'error');
+          addLog(t('custom.upload_failed_msg', message), 'error');
           if (uploadId && r2UploadId && key) {
             fetch(appUrl('/api/control/uploads/multipart/' + encodeURIComponent(uploadId) + '/abort'), {
               method: 'POST',
@@ -184,14 +184,14 @@
       fetch(appUrl('/api/control/subscriptions/' + encodeURIComponent(name)), { method: 'DELETE' })
         .then(readApiResponse)
         .then(function () {
-          addLog('已取消订阅节目「' + name + '」', 'info');
+          addLog(t('subscription.unsubscribed', name), 'info');
           if (selectedPodcast === name) {
             selectedPodcast = null;
             pageEpisodes = [];
             currentPage = 1;
             resetEpisodeInspector();
-            byId('center-title').textContent = '全部订阅';
-            byId('center-sub').textContent = '按时间线展示所有订阅';
+            byId('center-title').textContent = t('content.all_subscriptions');
+            byId('center-sub').textContent = t('subscription.timeline_desc');
             byId('episode-list').replaceChildren();
             setHidden(byId('episode-list'), true);
             setHidden(byId('episode-pagination'), true);
@@ -199,7 +199,7 @@
           }
           loadSubscriptions();
         })
-        .catch(function (err) { addLog('删除订阅失败：' + errorMessage(err), 'error'); });
+        .catch(function (err) { addLog(t('subscription.delete_failed') + errorMessage(err), 'error'); });
     }
 
     function createPodcastItem(podcast, index) {
@@ -222,14 +222,14 @@
       var name = document.createElement('span');
       name.className = 'pod-name';
       name.style.display = 'block';
-      name.textContent = String(podcast.name || '未命名节目');
+      name.textContent = String(podcast.name || t('subscription.untitled'));
       var meta = document.createElement('span');
       meta.className = 'pod-meta';
       meta.style.display = 'block';
       // 公开浏览只拿到脱敏后的 source_host；控制模式从完整 RSS 地址取域名。
       var host = String(podcast.source_host || '');
       if (!host && podcast.rss_url) { try { host = new URL(podcast.rss_url).hostname; } catch (error) { host = ''; } }
-      meta.textContent = host || 'RSS 订阅地址';
+      meta.textContent = host || t('drawer.rss_feed');
       copy.append(name, meta);
       selectBtn.append(dot, copy);
       selectBtn.addEventListener('click', function () { selectPodcast(String(podcast.name || '')); });
@@ -242,8 +242,8 @@
       var deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
       deleteBtn.className = 'pod-delete-btn';
-      deleteBtn.title = '取消订阅';
-      deleteBtn.setAttribute('aria-label', '取消订阅 ' + (podcast.name || '未命名节目'));
+      deleteBtn.title = t('subscription.unsubscribe');
+      deleteBtn.setAttribute('aria-label', t('subscription.unsubscribe_aria', (podcast.name || t('subscription.untitled'))));
       deleteBtn.innerHTML = uiIcon('trash');
 
       var confirmTimer = null;
@@ -254,7 +254,7 @@
         }
         deleteBtn.dataset.confirming = 'false';
         deleteBtn.innerHTML = uiIcon('trash');
-        deleteBtn.setAttribute('aria-label', '取消订阅 ' + (podcast.name || '未命名节目'));
+        deleteBtn.setAttribute('aria-label', t('subscription.unsubscribe_aria', (podcast.name || t('subscription.untitled'))));
       }
 
       deleteBtn.addEventListener('click', function (e) {
@@ -266,8 +266,8 @@
           return;
         }
         deleteBtn.dataset.confirming = 'true';
-        deleteBtn.textContent = '确认删除';
-        deleteBtn.setAttribute('aria-label', '再次点击确认取消订阅 ' + (podcast.name || '未命名节目'));
+        deleteBtn.textContent = t('subscription.confirm_delete');
+        deleteBtn.setAttribute('aria-label', t('subscription.confirm_delete_aria', (podcast.name || t('subscription.untitled'))));
         confirmTimer = setTimeout(resetDeleteBtn, 3000);
       });
 
@@ -293,11 +293,11 @@
       var name = document.createElement('span');
       name.className = 'pod-name';
       name.style.display = 'block';
-      name.textContent = getLocale() === 'en' ? t('content.all_subscriptions') : '全部订阅';
+      name.textContent = t('content.all_subscriptions');
       var meta = document.createElement('span');
       meta.className = 'pod-meta';
       meta.style.display = 'block';
-      meta.textContent = getLocale() === 'en' ? 'Chronological' : '按时间线浏览';
+      meta.textContent = t('subscription.timeline_browse');
       copy.append(name, meta);
       selectBtn.append(dot, copy);
       selectBtn.addEventListener('click', selectAllPodcasts);
@@ -329,7 +329,7 @@
         emptyIcon.className = 'empty-state-icon';
         emptyIcon.innerHTML = uiIcon('rss');
         empty.appendChild(emptyIcon);
-        empty.appendChild(document.createTextNode('暂无订阅节目'));
+        empty.appendChild(document.createTextNode(t('subscription.empty_shows')));
         list.appendChild(empty);
         return;
       }
@@ -359,7 +359,7 @@
       wrap.className = className;
       var mono = document.createElement('span');
       mono.className = 'art-monogram';
-      mono.textContent = String(fallbackText || '播').trim().slice(0, 1) || '播';
+      mono.textContent = String(fallbackText || (getLocale() === 'en' ? 'P' : '播')).trim().slice(0, 1) || (getLocale() === 'en' ? 'P' : '播');
       wrap.appendChild(mono);
       if (src) {
         var img = document.createElement('img');
@@ -392,7 +392,7 @@
       });
       var edition = byId('cover-edition');
       if (edition) {
-        edition.textContent = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) + ' · 订阅合集';
+        edition.textContent = new Date().toLocaleDateString(getLocale() === 'en' ? 'en-US' : 'zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) + ' · ' + t('cover.collection');
       }
       section.hidden = false;
     }
@@ -410,7 +410,7 @@
           loadTimelineEpisodes(getScopedSubscriptions(), false);
           return _subscriptions;
         })
-        .catch(function (error) { addLog('加载订阅失败：' + errorMessage(error), 'error'); });
+        .catch(function (error) { addLog(t('subscription.load_failed') + errorMessage(error), 'error'); });
     }
 
     function getScopedSubscriptions() {
@@ -421,18 +421,18 @@
     function updateTimelineHeading() {
       var scopeCount = getScopedSubscriptions().length;
       var total = Number(_episodeCounts.all) || 0;
-      byId('center-title').textContent = selectedPodcast || (getLocale() === 'en' ? t('content.all_subscriptions') : '全部订阅');
+      byId('center-title').textContent = selectedPodcast || t('content.all_subscriptions');
       var pieces = [];
       if (getLocale() === 'en') {
         if (total) pieces.push('Chronological');
         if (selectedPodcast) pieces.push(total + ' episode' + (total === 1 ? '' : 's'));
         else if (scopeCount) pieces.push(scopeCount + ' show' + (scopeCount === 1 ? '' : 's') + ' · ' + total + ' episode' + (total === 1 ? '' : 's'));
-        byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? 'Loading subscriptions…' : 'Add a podcast show to start');
+        byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? t('subscription.loading') : t('subscription.add_first_hint'));
       } else {
-        if (total) pieces.push('按时间线');
-        if (selectedPodcast) pieces.push(total + ' 期');
-        else if (scopeCount) pieces.push(scopeCount + ' 档节目 · ' + total + ' 期');
-        byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? '正在读取订阅…' : '先添加一档节目，时间线会从这里开始');
+        if (total) pieces.push(t('subscription.timeline'));
+        if (selectedPodcast) pieces.push(t('subscription.episodes_count', total));
+        else if (scopeCount) pieces.push(t('subscription.shows_episodes_count', scopeCount, total));
+        byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? t('subscription.loading') : t('subscription.add_first_hint'));
       }
     }
 

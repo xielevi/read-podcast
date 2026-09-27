@@ -18,7 +18,7 @@ export type LineHeight = "compact" | "normal" | "relaxed";
 export type MarginWidth = "compact" | "normal" | "wide";
 
 export interface UiPreferences {
-  locale: UiLocale;
+  locale: UiLocale | null;
   appTheme: AppTheme;
   readerTheme: ReaderTheme;
   fontPreset: FontPreset;
@@ -29,7 +29,7 @@ export interface UiPreferences {
 }
 
 export interface UiPreferencesDto {
-  locale: UiLocale;
+  locale: UiLocale | null;
   app_theme: AppTheme;
   reader_theme: ReaderTheme;
   font_preset: FontPreset;
@@ -40,7 +40,7 @@ export interface UiPreferencesDto {
 }
 
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
-  locale: "zh",
+  locale: null,
   appTheme: "auto",
   readerTheme: "follow",
   fontPreset: "classical",
@@ -71,7 +71,7 @@ const VALID_MARGIN_WIDTHS = new Set<string>(["compact", "normal", "wide"]);
 function toPreferences(row: UiPreferencesRow | null): UiPreferences {
   if (!row) return { ...DEFAULT_UI_PREFERENCES };
   return {
-    locale: VALID_LOCALES.has(row.locale ?? "") ? (row.locale as UiLocale) : DEFAULT_UI_PREFERENCES.locale,
+    locale: row.locale && VALID_LOCALES.has(row.locale) ? (row.locale as UiLocale) : null,
     appTheme: VALID_APP_THEMES.has(row.app_theme ?? "") ? (row.app_theme as AppTheme) : DEFAULT_UI_PREFERENCES.appTheme,
     readerTheme: VALID_READER_THEMES.has(row.reader_theme ?? "") ? (row.reader_theme as ReaderTheme) : DEFAULT_UI_PREFERENCES.readerTheme,
     fontPreset: VALID_FONT_PRESETS.has(row.font_preset ?? "") ? (row.font_preset as FontPreset) : DEFAULT_UI_PREFERENCES.fontPreset,
@@ -112,11 +112,15 @@ export function parseUiPreferencesPatch(body: unknown): Partial<Omit<UiPreferenc
   const patch: Partial<Omit<UiPreferences, "updatedAt">> = {};
 
   if (raw.locale !== undefined) {
-    const val = String(raw.locale).trim().toLowerCase();
-    if (!VALID_LOCALES.has(val)) {
-      throw new HttpError(400, "invalid_preferences", "locale 必须是 zh 或 en");
+    if (raw.locale === null || raw.locale === "") {
+      patch.locale = null;
+    } else {
+      const val = String(raw.locale).trim().toLowerCase();
+      if (!VALID_LOCALES.has(val)) {
+        throw new HttpError(400, "invalid_preferences", "locale 必须是 zh、en 或 null");
+      }
+      patch.locale = val as UiLocale;
     }
-    patch.locale = val as UiLocale;
   }
 
   if (raw.app_theme !== undefined) {
@@ -176,7 +180,7 @@ export async function updateUiPreferences(
 ): Promise<UiPreferences> {
   const current = await loadUiPreferences(env);
   const next: UiPreferences = {
-    locale: patch.locale ?? current.locale,
+    locale: patch.locale !== undefined ? patch.locale : current.locale,
     appTheme: patch.appTheme ?? current.appTheme,
     readerTheme: patch.readerTheme ?? current.readerTheme,
     fontPreset: patch.fontPreset ?? current.fontPreset,

@@ -1,9 +1,9 @@
 -- 0022: 中英双语支持（UI locale、稿件 content_language 与多语言维基概念缓存）。
--- 1. ui_preferences 增加 locale 列（zh | en，默认 zh）；
+-- 1. ui_preferences 增加 locale 列（zh | en，可空，未显式设置时不覆盖浏览器自适应）；
 -- 2. tasks 增加 content_language 列（zh | en，记录任务内容语言）；
 -- 3. article_concepts 增加 lang 列并调整主键为 (content_path, commit_sha, lang)。
 
-ALTER TABLE ui_preferences ADD COLUMN locale TEXT NOT NULL DEFAULT 'zh' CHECK (locale IN ('zh', 'en'));
+ALTER TABLE ui_preferences ADD COLUMN locale TEXT DEFAULT NULL CHECK (locale IS NULL OR locale IN ('zh', 'en'));
 
 ALTER TABLE tasks ADD COLUMN content_language TEXT DEFAULT NULL CHECK (content_language IS NULL OR content_language IN ('zh', 'en'));
 

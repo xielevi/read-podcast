@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { JSDOM, VirtualConsole } from "jsdom";
 
 const ROOT = resolve(__dirname, "..");
 const HTML = readFileSync(resolve(ROOT, "public/index.html"), "utf-8");
 const CSS = readFileSync(resolve(ROOT, "public/app.css"), "utf-8");
+const JS_I18N = readFileSync(resolve(ROOT, "public/js/08-i18n.js"), "utf-8");
 const JS_EPISODES = readFileSync(resolve(ROOT, "public/js/30-episodes.js"), "utf-8");
 const JS_SUBSCRIPTIONS = readFileSync(resolve(ROOT, "public/js/20-subscriptions.js"), "utf-8");
 const JS_TASKS = readFileSync(resolve(ROOT, "public/js/40-tasks.js"), "utf-8");
@@ -103,8 +105,10 @@ describe("Frontend Invariants & Correctness Blockers", () => {
 
     it("implements attention count and label in 40-tasks.js", () => {
       expect(JS_TASKS).toContain("attentionCount");
-      expect(JS_TASKS).toContain("个任务需要处理");
-      expect(JS_TASKS).toContain("处理中 ");
+      expect(JS_TASKS).toContain("t('tasks.attention_count', attentionCount)");
+      expect(JS_TASKS).toContain("t('tasks.processing_count', runningCount)");
+      expect(BUNDLE).toContain("个任务需要处理");
+      expect(BUNDLE).toContain("处理中 {0}");
     });
   });
 
@@ -193,9 +197,9 @@ describe("Frontend Invariants & Correctness Blockers", () => {
     });
 
     it("uses neutral '任务' panel title instead of fixed '处理中'", () => {
-      expect(HTML).toContain('id="task-panel-title">任务</h2>');
+      expect(HTML).toMatch(/id="task-panel-title"[^>]*>任务<\/h2>/);
       expect(HTML).toContain('aria-label="关闭任务面板"');
-      expect(HTML).toContain('<div class="task-queue-head"><strong>任务</strong>');
+      expect(HTML).toMatch(/class="task-queue-head"><strong[^>]*>任务<\/strong>/);
     });
 
     it("ensures src/settings.ts does not export dead helpers or retain drifted configured badge docstrings", () => {
@@ -224,7 +228,7 @@ describe("Frontend Invariants & Correctness Blockers", () => {
     it("keeps manuscript download as a direct visible action", () => {
       expect(JS_TASKS).not.toContain("library-more");
       expect(JS_TASKS).toContain("actions.append(read, download)");
-      expect(JS_TASKS).toContain("document.createTextNode('下载')");
+      expect(JS_TASKS).toContain("document.createTextNode(t('library.download'))");
     });
   });
 
@@ -535,6 +539,162 @@ title: 袁长庚×胡安焉
       await expect(readApiResponse(new Response("upstream down", { status: 502 }))).rejects.toMatchObject({ message: "HTTP 502", status: 502 });
       await expect(readApiResponse(new Response(null, { status: 204 }))).resolves.toBeNull();
       await expect(readApiResponse(Response.json({ task_id: "t" }))).resolves.toEqual({ task_id: "t" });
+    });
+  });
+
+  describe("Bilingual UI & i18n Invariants", () => {
+    it("guarantees identical key sets between TRANSLATIONS.zh and TRANSLATIONS.en", () => {
+      const zhMatch = JS_I18N.match(/zh:\s*\{([\s\S]*?)\n\s*\},/);
+      const enMatch = JS_I18N.match(/en:\s*\{([\s\S]*?)\n\s*\}\n\s*\};/);
+      expect(zhMatch).not.toBeNull();
+      expect(enMatch).not.toBeNull();
+
+      const zhKeys = new Set([...zhMatch![1].matchAll(/'([a-zA-Z0-9_.]+)':/g)].map(m => m[1]));
+      const enKeys = new Set([...enMatch![1].matchAll(/'([a-zA-Z0-9_.]+)':/g)].map(m => m[1]));
+
+      expect(zhKeys.size).toBeGreaterThan(250);
+      expect(enKeys.size).toBe(zhKeys.size);
+
+      const missingInEn = [...zhKeys].filter(k => !enKeys.has(k));
+      const missingInZh = [...enKeys].filter(k => !zhKeys.has(k));
+      expect(missingInEn).toEqual([]);
+      expect(missingInZh).toEqual([]);
+    });
+
+    it("verifies all data-i18n* attributes in public/index.html exist in TRANSLATIONS", () => {
+      const zhMatch = JS_I18N.match(/zh:\s*\{([\s\S]*?)\n\s*\},/);
+      const zhKeys = new Set([...zhMatch![1].matchAll(/'([a-zA-Z0-9_.]+)':/g)].map(m => m[1]));
+
+      const htmlI18nKeys = [...HTML.matchAll(/data-i18n(?:-[a-z\-]+)?="([^"]+)"/g)].map(m => m[1]);
+      expect(htmlI18nKeys.length).toBeGreaterThan(50);
+
+      const unmappedKeys = htmlI18nKeys.filter(k => !zhKeys.has(k));
+      expect(unmappedKeys).toEqual([]);
+    });
+
+    it("verifies index.html has no static Chinese text or attributes without data-i18n mapping", () => {
+      const lines = HTML.split("\n");
+      const unmapped: string[] = [];
+
+      for (let idx = 0; idx < lines.length; idx++) {
+        const line = lines[idx];
+        const stripped = line.replace(/<!--.*?-->/g, "");
+        if (stripped.includes("中 / EN") || stripped.includes("// <base>/ 是公开浏览")) continue;
+        if (/[\u4e00-\u9fa5]/.test(stripped) && !stripped.includes("data-i18n")) {
+          unmapped.push(`Line ${idx + 1}: ${line.trim()}`);
+        }
+      }
+      expect(unmapped).toEqual([]);
+    });
+
+    it("evaluates English mode invariant: applyLocale('en') leaves no Chinese characters in static DOM", () => {
+      const virtualConsole = new VirtualConsole();
+      const dom = new JSDOM(HTML, {
+        url: "https://example.com/manage",
+        runScripts: "dangerously",
+        pretendToBeVisual: true,
+        virtualConsole,
+        beforeParse(window) {
+          Object.defineProperty(window.navigator, "language", { value: "en-US", configurable: true });
+          (window as unknown as { fetch: typeof fetch }).fetch = (() => Promise.resolve({ ok: true, json: () => Promise.resolve([]) })) as unknown as typeof fetch;
+        }
+      });
+
+      const script = dom.window.document.createElement("script");
+      script.textContent = BUNDLE;
+      dom.window.document.body.appendChild(script);
+
+      const win = dom.window as unknown as { applyLocale: (locale: string) => void };
+      win.applyLocale("en");
+
+      expect(dom.window.document.documentElement.lang).toBe("en");
+      expect(dom.window.document.documentElement.dataset.locale).toBe("en");
+
+      const issues: Array<{ type: string; value: string; context?: string }> = [];
+      function scanNode(node: Node) {
+        if (node.nodeType === 3) {
+          const text = (node.textContent || "").trim();
+          if (text === "中 / EN") return;
+          if (/[\u4e00-\u9fa5]/.test(text)) {
+            issues.push({ type: "text", value: text, context: (node.parentElement as HTMLElement)?.outerHTML?.slice(0, 100) });
+          }
+        } else if (node.nodeType === 1) {
+          const el = node as HTMLElement;
+          if (el.tagName === "SCRIPT" || el.tagName === "STYLE") return;
+          for (const attr of ["aria-label", "title", "placeholder"]) {
+            const val = el.getAttribute(attr);
+            if (val && /[\u4e00-\u9fa5]/.test(val)) {
+              issues.push({ type: "attr", value: `${attr}="${val}"`, context: el.outerHTML.slice(0, 100) });
+            }
+          }
+          for (const child of Array.from(node.childNodes)) {
+            scanNode(child);
+          }
+        }
+      }
+
+      scanNode(dom.window.document.body);
+      expect(issues).toEqual([]);
+    });
+
+    it("verifies dynamic task queue localization and Chinese error suppression in English mode", () => {
+      const virtualConsole = new VirtualConsole();
+      const dom = new JSDOM(HTML, {
+        url: "https://example.com/manage",
+        runScripts: "dangerously",
+        pretendToBeVisual: true,
+        virtualConsole,
+        beforeParse(window) {
+          Object.defineProperty(window.navigator, "language", { value: "en-US", configurable: true });
+          (window as unknown as { fetch: typeof fetch }).fetch = (() => Promise.resolve({ ok: true, json: () => Promise.resolve([]) })) as unknown as typeof fetch;
+        }
+      });
+
+      const script = dom.window.document.createElement("script");
+      script.textContent = BUNDLE;
+      dom.window.document.body.appendChild(script);
+
+      const win = dom.window as unknown as {
+        applyLocale: (loc: string) => void;
+        getLocale: () => string;
+        setTaskStatus: (stage: string, progress: number, taskId?: string, title?: string, message?: string) => void;
+        t: (key: string, ...args: unknown[]) => string;
+      };
+
+      win.applyLocale("en");
+      expect(win.getLocale()).toBe("en");
+
+      // Verify translation helper returns English strings
+      expect(win.t("stage.queued")).toBe("Queued");
+      expect(win.t("stage.downloading")).toBe("Downloading audio");
+      expect(win.t("stage.transcribing")).toBe("Transcribing");
+      expect(win.t("stage.refining")).toBe("Refining");
+      expect(win.t("stage.finalizing")).toBe("Saving");
+      expect(win.t("tasks.title")).toBe("Tasks");
+      expect(win.t("tasks.processing_count", 2)).toBe("Processing 2");
+      expect(win.t("tasks.attention_count", 3)).toBe("3 task(s) require attention");
+
+      // Simulate a running task
+      win.setTaskStatus("downloading", 20, "task-1", "Test Episode");
+      const triggerLabel = dom.window.document.getElementById("task-trigger-label");
+      expect(triggerLabel?.textContent).toBe("Processing 1");
+
+      const taskItem = dom.window.document.querySelector("#task-list .task-queue-item");
+      expect(taskItem).not.toBeNull();
+      // Ensure no Chinese leaked into the running task item
+      expect(/[\u4e00-\u9fa5]/.test(taskItem?.textContent || "")).toBe(false);
+
+      // Simulate a failed task with a backend Chinese message in English mode
+      win.setTaskStatus("downloading", 0, "task-2", "Another Episode", "音频下载失败 (404)");
+      const failedCard = (dom.window as unknown as { _taskCards: Record<string, { status: string; message: string; stage: string }> })._taskCards["task-2"];
+      if (failedCard) failedCard.status = "failed";
+      (dom.window as unknown as { renderTaskQueue: () => void }).renderTaskQueue();
+
+      const items = dom.window.document.querySelectorAll("#task-list .task-queue-item");
+      expect(items.length).toBe(2);
+      // Verify Chinese error message did not leak into English UI
+      expect(/[\u4e00-\u9fa5]/.test(items[0]?.textContent || "")).toBe(false);
+      expect(/[\u4e00-\u9fa5]/.test(items[1]?.textContent || "")).toBe(false);
     });
   });
 });

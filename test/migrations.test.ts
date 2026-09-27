@@ -488,12 +488,14 @@ describe("0022_i18n_support", () => {
 
     migrate(db, { from: "0022_i18n_support.sql", upTo: "0022_i18n_support.sql" });
 
-    // 1. ui_preferences 包含 locale 默认 'zh'
+    // 1. ui_preferences 包含 locale 默认 NULL（未显式指定时不覆盖访客自适应）
     const prefs = db.prepare("SELECT * FROM ui_preferences WHERE id = 1").get() as Record<string, unknown>;
-    expect(prefs.locale).toBe("zh");
+    expect(prefs.locale).toBeNull();
     expect(() => db.prepare("UPDATE ui_preferences SET locale = 'fr' WHERE id = 1").run()).toThrow();
     db.prepare("UPDATE ui_preferences SET locale = 'en' WHERE id = 1").run();
     expect((db.prepare("SELECT locale FROM ui_preferences WHERE id = 1").get() as { locale: string }).locale).toBe("en");
+    db.prepare("UPDATE ui_preferences SET locale = NULL WHERE id = 1").run();
+    expect((db.prepare("SELECT locale FROM ui_preferences WHERE id = 1").get() as { locale: unknown }).locale).toBeNull();
 
     // 2. tasks 包含 content_language 列
     expect(columns(db, "tasks")).toContain("content_language");

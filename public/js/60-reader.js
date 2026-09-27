@@ -8,11 +8,11 @@
       if (getLocale() === 'en') {
         var words = withoutFrontmatter.trim().split(/\s+/).filter(Boolean).length;
         var minutes = Math.max(1, Math.round(words / 220));
-        statsEl.textContent = words ? (words + ' words · ~' + minutes + ' min') : '';
+        statsEl.textContent = words ? (t('reader.words', words) + ' · ' + t('reader.est_time', minutes)) : '';
       } else {
         var minutes = Math.max(1, Math.round(count / 750));
-        var countStr = count >= 10000 ? (count / 10000).toFixed(1) + ' 万字' : count + ' 字';
-        statsEl.textContent = count ? (countStr + ' · 约 ' + minutes + ' 分钟') : '';
+        var countStr = count >= 10000 ? t('reader.words_wan', (count / 10000).toFixed(1)) : t('reader.words', count);
+        statsEl.textContent = count ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       }
     }
 
@@ -30,7 +30,7 @@
       if (sheetProgressVal) sheetProgressVal.textContent = rounded + '%';
 
       var barProgressLabel = byId('reader-bar-progress-label');
-      if (barProgressLabel) barProgressLabel.textContent = (getLocale() === 'en' ? 'Progress ' : '进度 ') + rounded + '%';
+      if (barProgressLabel) barProgressLabel.textContent = t('reader.progress_val', rounded);
 
       if (bounded >= 99.5 && _currentReadingRef && !isRead(_currentReadingRef)) {
         setRead(_currentReadingRef, true);
@@ -324,14 +324,14 @@
       var source = task || article;
       _currentReadingRef = episode ? episodeReadRef(episode) : { episode_id: source && source.episode_id ? String(source.episode_id) : null, task_id: cleanId };
       var title = (task && task.episode_title) || (article && article.title) || '';
-      byId('reader-title').textContent = title ? String(title) : '阅读';
+      byId('reader-title').textContent = title ? String(title) : t('reader.title');
       byId('reader-download').href = articleUrl(cleanId, '/download');
       updateReaderReadState();
       
       var tocContainer = byId('reader-toc');
       setHidden(tocContainer, true);
       tocContainer.replaceChildren();
-      byId('manuscript-body').innerHTML = '<div class="reader-state reader-loading">正在展开稿纸</div>';
+      byId('manuscript-body').innerHTML = '<div class="reader-state reader-loading">' + escapeHtml(t('reader.loading')) + '</div>';
       
       var progressRange = byId('reader-progress-range');
       var progressValue = byId('reader-progress-value');
@@ -367,7 +367,7 @@
         .then(function (result) {
           if (result.title) byId('reader-title').textContent = String(result.title);
           if (!result.content) { 
-            byId('manuscript-body').innerHTML = '<div class="reader-state">稿件内容为空。</div>'; 
+            byId('manuscript-body').innerHTML = '<div class="reader-state">' + escapeHtml(t('reader.empty_content')) + '</div>'; 
             updateReaderStats('');
             return; 
           }
@@ -383,12 +383,12 @@
             var tocHead = document.createElement('div');
             tocHead.className = 'reader-sheet-head reader-toc-sheet-head';
             var tocTitle = document.createElement('h3');
-            tocTitle.textContent = '大纲目录';
+            tocTitle.textContent = t('reader.toc_label');
             tocHead.appendChild(tocTitle);
             var tocCloseBtn = document.createElement('button');
             tocCloseBtn.className = 'close-btn reader-sheet-close';
             tocCloseBtn.type = 'button';
-            tocCloseBtn.setAttribute('aria-label', '关闭目录');
+            tocCloseBtn.setAttribute('aria-label', t('reader.close_toc'));
             tocCloseBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
             tocCloseBtn.addEventListener('click', closeReaderSheets);
             tocHead.appendChild(tocCloseBtn);
@@ -438,7 +438,7 @@
           byId('manuscript-body').replaceChildren(); 
           var state = document.createElement('div'); 
           state.className = 'reader-state'; 
-          state.textContent = '稿件读取失败：' + errorMessage(error); 
+          state.textContent = t('reader.load_failed') + errorMessage(error); 
           byId('manuscript-body').appendChild(state); 
           updateReaderStats('');
         });

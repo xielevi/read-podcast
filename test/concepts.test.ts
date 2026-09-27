@@ -534,6 +534,34 @@ describe("taskConcepts endpoint", () => {
     expect(JSON.parse(enCached!.concepts_json).concepts[0].wikipedia_title).toBe("Max Weber");
   });
 
+  it("Chinese transcript -> en concepts: extracts English Wikipedia entries from Chinese source text", async () => {
+    const env = createMockEnv({
+      githubMarkdown: "# 忽左忽右\n\n今天讨论社会学先驱马克斯·韦伯。",
+      workerCandidates: ["Max Weber"],
+    });
+
+    const res = await taskConcepts(TASK_ID, env, "en");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { concepts: Array<{ term: string; wikipedia_title: string; url: string }> };
+    expect(body.concepts).toHaveLength(1);
+    expect(body.concepts[0].wikipedia_title).toBe("Max Weber");
+    expect(body.concepts[0].url).toContain("en.wikipedia.org");
+  });
+
+  it("English transcript -> zh concepts: extracts Chinese Wikipedia entries from English source text", async () => {
+    const env = createMockEnv({
+      githubMarkdown: "# Sociology Weekly\n\nToday we examine the sociological contributions of Max Weber.",
+      workerCandidates: ["马克斯·韦伯"],
+    });
+
+    const res = await taskConcepts(TASK_ID, env, "zh");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { concepts: Array<{ term: string; wikipedia_title: string; url: string }> };
+    expect(body.concepts).toHaveLength(1);
+    expect(body.concepts[0].wikipedia_title).toBe("马克斯·韦伯");
+    expect(body.concepts[0].url).toContain("zh.wikipedia.org");
+  });
+
   it("route dispatch supports ?lang=en for both control and public endpoints", async () => {
     const env = createMockEnv({
       cachedConcepts: JSON.stringify({ concepts: [{ term: "韦伯", wikipedia_title: "马克斯·韦伯" }] }),
