@@ -86,6 +86,55 @@ describe("parseFeed (golden parity vs original feedparser)", () => {
   });
 });
 
+describe("parseFeed XML parser compatibility", () => {
+  it("preserves v4 entity handling and numeric-looking identifiers", () => {
+    const feed = parseFeed(`<rss><channel>
+      <title>News &amp; Culture &#x4E2D;</title>
+      <itunes:image href="https://cdn.example.com/cover?a=1&amp;b=2"/>
+      <item>
+        <title>&quot;001&quot; &amp; &#20013;</title>
+        <guid isPermaLink="false">00123</guid>
+        <link>https://example.com/episode?a=1&amp;b=2</link>
+        <itunes:duration>0090</itunes:duration>
+        <description>&lt;p&gt;Tom &amp; Jerry&lt;/p&gt;</description>
+        <enclosure url="https://cdn.example.com/audio?a=1&amp;b=2"/>
+      </item>
+    </channel></rss>`, "News");
+
+    // With the existing options, numeric character references remain literal in v4 and v5.
+    expect(feed.channelTitle).toBe("News & Culture &#x4E2D;");
+    expect(feed.channelImage).toBe("https://cdn.example.com/cover?a=1&b=2");
+    expect(feed.episodes).toHaveLength(1);
+    expect(feed.episodes[0]).toMatchObject({
+      title: '"001" & &#20013;',
+      id: "00123",
+      link: "https://example.com/episode?a=1&b=2",
+      audio_url: "https://cdn.example.com/audio?a=1&b=2",
+      duration: "0090",
+      duration_seconds: 90,
+      summary: "Tom & Jerry",
+    });
+  });
+
+  it("keeps CDATA entities literal and normalizes repeated enclosures", () => {
+    const feed = parseFeed(`<rss><channel><title>News</title><item>
+      <title><![CDATA[Rock &amp; Roll]]></title>
+      <guid>00042</guid>
+      <content:encoded><![CDATA[<p>A &amp; B</p><br/>第二段]]></content:encoded>
+      <enclosure url="https://cdn.example.com/first.mp3"/>
+      <enclosure url="https://cdn.example.com/second.mp3"/>
+    </item></channel></rss>`, "News");
+
+    expect(feed.episodes).toHaveLength(1);
+    expect(feed.episodes[0]).toMatchObject({
+      title: "Rock &amp; Roll",
+      id: "00042",
+      audio_url: "https://cdn.example.com/first.mp3",
+      summary: "A &amp; B\n\n第二段",
+    });
+  });
+});
+
 describe("parseDuration", () => {
   it("handles HH:MM:SS, MM:SS, seconds and garbage", () => {
     expect(parseDuration("01:02:03")).toBe(3723);
