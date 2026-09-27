@@ -106,6 +106,11 @@ class OpenAIProxyTranscriber:
         self.options = options or openai_proxy_options()
         self._client = client
         self._ffmpeg_runner = ffmpeg_runner or subprocess.run
+        # 注入的 runner（测试）不依赖宿主机是否装了 ffmpeg / ffprobe
+        self._check_binaries = ffmpeg_runner is None
+
+    def _has_binary(self, name: str) -> bool:
+        return not self._check_binaries or shutil.which(name) is not None
 
     def _get_client(self) -> httpx.Client:
         if self._client is None:
@@ -113,7 +118,7 @@ class OpenAIProxyTranscriber:
         return self._client
 
     def _ensure_ffmpeg(self) -> None:
-        if not shutil.which("ffmpeg"):
+        if not self._has_binary("ffmpeg"):
             raise EngineError("engine_unavailable", FFMPEG_MISSING_HINT)
 
     def _transcode_to_mono(self, input_path: str, output_path: str) -> None:
@@ -142,7 +147,7 @@ class OpenAIProxyTranscriber:
 
     def _get_audio_duration(self, audio_path: str) -> float:
         """获取音频时长（秒）。优先使用 ffprobe，失败时从 ffmpeg 获取。"""
-        if shutil.which("ffprobe"):
+        if self._has_binary("ffprobe"):
             cmd = [
                 "ffprobe",
                 "-v",
@@ -210,9 +215,10 @@ class OpenAIProxyTranscriber:
         if file_size <= max_bytes or total_duration <= 0.0:
             return [(0.0, total_duration)]
 
-        overlap = max(0.5, float(self.options.overlap_seconds))
         # 预留 10% 缓冲以防码率浮动导致切片超限
         target_chunk_duration = max(30.0, (max_bytes / file_size) * total_duration * 0.90)
+        # overlap 必须远小于分段时长，否则 current_start 不前进（死循环）
+        overlap = min(max(0.5, float(self.options.overlap_seconds)), target_chunk_duration / 4)
         search_window = min(45.0, target_chunk_duration * 0.25)
 
         chunks: list[tuple[float, float]] = []
@@ -271,9 +277,8 @@ class OpenAIProxyTranscriber:
             raise EngineError("engine_unavailable", "缺少上游 API Key：请配置 READ_PODCAST_OPENAI_API_KEY")
 
         url = _normalize_endpoint(self.options.api_base)
-        # 避免在源码中出现裸词以符合架构测试
-        auth_header_val = f"{'B' + 'earer'} {self.options.api_key}"
-        headers = {"Authorization": auth_header_val}
+        # 出站鉴权（调用上游）；架构测试禁止的是转录服务校验入站 Bearer，本文件是显式豁免。
+        headers = {"Authorization": f"Bearer {self.options.api_key}"}
 
         client = self._get_client()
         max_retries = max(1, self.options.max_retries)

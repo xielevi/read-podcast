@@ -30,7 +30,9 @@ publication.
   and no application token or user-maintained configuration. The macOS reference deployment is
   zero-configuration (`deploy/macos/install.sh` creates runtime directories only); remote
   authentication is Cloudflare Access. After the raw transcript is in R2 nothing depends on it
-  being online.
+  being online. The single, opt-in exception is the `openai-proxy` engine, which holds the
+  upstream transcription API key in its process environment only — never returned, never logged
+  (see `docs/ARCHITECTURE.md`, Credentials in `openai-proxy`).
 - Recovery is Cloudflare-owned (cron); `GET /tasks` is a pure read.
 - Read / browse is public, mutations and execution are private, authentication belongs to
   Cloudflare Access. `/` + `/api/public/*` is Public Browse Mode of the same workspace: GET-only,
@@ -43,8 +45,8 @@ publication.
 - The repository is self-contained: runtime, build, test, deployment and upgrade depend on this
   repository only.
 - Secrets live in Wrangler secrets only: Cloudflare holds the transcription endpoint, the Access
-  service token, R2, GitHub and refinement credentials. The Transcription Service holds none, and
-  no API ever returns a secret value. Documentation and examples use placeholders
+  service token, R2, GitHub and refinement credentials. The Transcription Service holds none (except
+  the opt-in `openai-proxy` upstream key above), and no API ever returns a secret value. Documentation and examples use placeholders
   (`your-domain.example`, `your-github-username`, `your-manuscript-repository`,
   `podcasts/transcripts`), never personal domains, repositories or paths.
 - Deployment-specific values (custom domain, D1 database id, transcription URL, Store repository)

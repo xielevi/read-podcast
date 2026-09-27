@@ -156,6 +156,28 @@ def test_plan_chunks_multi_chunk_with_silence_snap():
     assert chunks[1][0] == 86.0
 
 
+
+def test_plan_chunks_terminates_when_overlap_exceeds_chunk_duration():
+    """overlap 配置过大（≥ 分段时长）时也必须收敛，不能死循环。"""
+    transcriber = OpenAIProxyTranscriber(
+        options=OpenAIProxyOptions(
+            api_base="https://api.openai.com/v1",
+            api_key="sk-test",
+            model="whisper-1",
+            chunk_size_mb=10,
+            overlap_seconds=600.0,
+        )
+    )
+    chunks = transcriber._plan_chunks(
+        total_duration=3600.0,
+        file_size=100 * 1024 * 1024,
+        max_bytes=10 * 1024 * 1024,
+        silence_points=[],
+    )
+    assert chunks[-1][1] == 3600.0
+    assert all(end > start for start, end in chunks)
+    assert all(b[0] > a[0] for a, b in zip(chunks, chunks[1:]))
+
 # ── 4. 上游 API 调用与重试 ──
 
 def make_mock_client(handler):
