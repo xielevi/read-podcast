@@ -121,6 +121,27 @@ describe("仓库不含部署者自己的值", () => {
     expect(ci).toContain("run: npm run deploy");
   });
 
+  it("冒烟测试不在公开日志里输出跳转地址（含 Zero Trust 团队域名）", () => {
+    const ci = read(".github/workflows/ci.yml");
+    expect(ci).toContain("redirect_kind");
+    // 只允许经 redirect_kind 分类后输出；去掉这种用法后，echo 行里不得再出现 $loc。
+    const withoutClassified = ci.replaceAll('$(redirect_kind "$loc")', "");
+    expect(withoutClassified).not.toMatch(/echo [^\n]*\$loc\b/);
+    expect(withoutClassified).not.toMatch(/echo [^\n]*\$\{loc/);
+  });
+
+  it("冒烟测试的失败路径不输出目标地址，curl 错误信息不进日志", () => {
+    const ci = read(".github/workflows/ci.yml");
+    // 除了拼出 base 的那一行，echo 不得带 $base 或部署域名变量。
+    expect(ci).not.toMatch(/echo [^\n]*\$base/);
+    expect(ci).not.toMatch(/echo [^\n]*READ_PODCAST_DOMAIN/);
+    // curl 不用 -S（show-error），且 stderr 被丢弃。
+    const curlLine = ci.split("\n").find(line => line.includes("curl ") && line.includes("$base$1"));
+    expect(curlLine).toBeDefined();
+    expect(curlLine).not.toMatch(/curl -\w*S/);
+    expect(curlLine).toContain("2>/dev/null");
+  });
+
   it("npm run deploy 走 scripts/deploy.mjs", () => {
     const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
     expect(pkg.scripts.deploy).toBe("node scripts/deploy.mjs");
