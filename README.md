@@ -3,11 +3,11 @@
 **English** · [简体中文](README.zh-CN.md)
 
 > [!NOTE]
-> **Runs on Cloudflare Free plan ($0/month)**: You can deploy and run Read Podcast entirely within Cloudflare's Free tier (Workers, D1, Workflows, R2) with zero monthly cloud compute fees — the only mandatory cost is your domain on Cloudflare DNS.
+> **Runs on the Cloudflare Free plan**: the whole Cloudflare application (Workers, D1, Workflows, R2) fits in the Workers Free tier, so there is no Cloudflare bill. You still need a domain on Cloudflare DNS, a machine to run the Transcription Service (or a cloud transcription provider), and an OpenAI-compatible LLM API for refinement, billed by that provider.
 >
 > **Relation to v0.x (Python / macOS App)**: Read Podcast was originally created as a native macOS desktop app (v0.x, built with Python, local MLX Whisper, and desktop packaging). Desktop development is currently paused, and the v0.x codebase is archived on the [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python) branch. Starting with v1.0, Read Podcast has been rewritten as a cloud-native personal reading service (Cloudflare Workers/D1/Workflows/R2 + external transcription compute) with a responsive WebUI for phone, tablet, and desktop reading.
 
-**A personal podcast reading system — runs entirely on the Cloudflare Free plan ($0/month).** Pick the episodes worth keeping, and Read Podcast turns
+**A personal podcast reading system that runs on the Cloudflare Free plan.** Pick the episodes worth keeping, and Read Podcast turns
 each one into a complete, readable long-form manuscript — not a summary — that you can read on
 any device, share as a public page, and keep as Markdown in a repository you own.
 
