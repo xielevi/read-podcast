@@ -21,13 +21,18 @@ ENV NODE_ENV=production \
     MANUSCRIPT_PATH=/data/manuscripts \
     PUBLIC_PATH=/app/public
 
-RUN mkdir -p /data/manuscripts && chown -R node:node /data /app
+RUN apk add --no-cache su-exec \
+    && mkdir -p /data/manuscripts \
+    && chown -R node:node /data /app
 
 COPY --from=builder --chown=node:node /app/dist/server.js ./dist/server.js
 COPY --from=builder --chown=node:node /app/public ./public
 COPY --from=builder --chown=node:node /app/migrations ./migrations
+COPY --chmod=755 scripts/docker-entrypoint.sh /usr/local/bin/read-podcast-entrypoint
 
-USER node
+# Entrypoint only uses root to fix ownership of a newly-created bind mount, then immediately
+# drops to the unprivileged node user before starting the application.
+ENTRYPOINT ["read-podcast-entrypoint"]
 
 VOLUME /data
 
