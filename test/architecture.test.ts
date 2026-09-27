@@ -140,7 +140,9 @@ describe("零配置 reference deployment：Mac 侧不持有任何 application co
   it("transcription_service 不加载 .env / YAML 配置、不校验 bearer token、没有第二 health 端点", () => {
     for (const file of pythonFiles) {
       const text = read(file);
-      expect(text, file).not.toMatch(/load_dotenv|python-dotenv|safe_load|READ_PODCAST_TRANSCRIPTION_CONFIG|READ_PODCAST_WHISPER_API_TOKEN|READ_PODCAST_TRANSCRIPTION_API_KEY|_authorize|Bearer|\/v1\/health/);
+      expect(text, file).not.toMatch(/load_dotenv|python-dotenv|safe_load|READ_PODCAST_TRANSCRIPTION_CONFIG|READ_PODCAST_WHISPER_API_TOKEN|READ_PODCAST_TRANSCRIPTION_API_KEY|_authorize|\/v1\/health/);
+      // 入站不校验 Bearer；唯一例外是 openai-proxy 引擎对上游的出站鉴权（见 ARCHITECTURE「Credentials in openai-proxy」）
+      if (!file.endsWith("core/openai_proxy_engine.py")) expect(text, file).not.toMatch(/Bearer/);
     }
   });
 

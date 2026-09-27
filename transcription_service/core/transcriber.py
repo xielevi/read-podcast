@@ -25,7 +25,7 @@ from typing import Callable, Protocol
 
 import httpx
 
-from core.config import ENGINE_MLX, MLX_ENDPOINT, resolve_engine
+from core.config import ENGINE_MLX, ENGINE_OPENAI_PROXY, MLX_ENDPOINT, resolve_engine
 
 logger = logging.getLogger(__name__)
 
@@ -178,12 +178,16 @@ class WhisperApiTranscriber:
 
 def get_transcriber() -> Transcriber:
     """按内建策略选择转录引擎（可由 ``READ_PODCAST_TRANSCRIPTION_ENGINE`` 强制）。"""
-    if resolve_engine() == ENGINE_MLX:
+    engine = resolve_engine()
+    if engine == ENGINE_MLX:
         return WhisperApiTranscriber()
+    if engine == ENGINE_OPENAI_PROXY:
+        return _openai_proxy_transcriber()
     return _faster_whisper_transcriber()
 
 
 _faster_whisper: Transcriber | None = None
+_openai_proxy: Transcriber | None = None
 
 
 def _faster_whisper_transcriber() -> Transcriber:
@@ -198,6 +202,21 @@ def _faster_whisper_transcriber() -> Transcriber:
     return _faster_whisper
 
 
+def _openai_proxy_transcriber() -> Transcriber:
+    """进程内单例：JobManager 每个任务都会调用 get_transcriber()，复用代理实例。"""
+    global _openai_proxy
+    if _openai_proxy is None:
+        from core.openai_proxy_engine import OpenAIProxyTranscriber
+
+        _openai_proxy = OpenAIProxyTranscriber()
+    return _openai_proxy
+
+
 def engine_name() -> str:
     """/health 等处展示的引擎名（不含机密）。"""
-    return ENGINE_MLX if resolve_engine() == ENGINE_MLX else "faster-whisper"
+    engine = resolve_engine()
+    if engine == ENGINE_MLX:
+        return ENGINE_MLX
+    if engine == ENGINE_OPENAI_PROXY:
+        return ENGINE_OPENAI_PROXY
+    return "faster-whisper"

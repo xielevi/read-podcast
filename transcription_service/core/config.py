@@ -30,6 +30,7 @@ MLX_ENDPOINT = "http://127.0.0.1:21567"
 # ── 转录引擎选择：内建默认 + 环境变量强制 ──
 ENGINE_MLX = "mlx"
 ENGINE_FASTER_WHISPER = "faster-whisper"
+ENGINE_OPENAI_PROXY = "openai-proxy"
 ENGINE_ENV_VAR = "READ_PODCAST_TRANSCRIPTION_ENGINE"
 
 
@@ -38,13 +39,14 @@ def resolve_engine() -> str:
 
     Apple Silicon（darwin + arm64）默认 MLX——reference deployment 的本机引擎；
     其余平台（Linux / Windows / NAS / 容器，含 Intel Mac）默认进程内 Faster-Whisper。
+    openai-proxy 为显式代理模式，代理任意 OpenAI 兼容云端转录接口。
     非法值宁可启动即报错，也不悄悄回退到「看似正常」的错误引擎。
     """
     explicit = os.environ.get(ENGINE_ENV_VAR, "").strip().lower()
     if explicit and explicit != "auto":
-        if explicit not in (ENGINE_MLX, ENGINE_FASTER_WHISPER):
+        if explicit not in (ENGINE_MLX, ENGINE_FASTER_WHISPER, ENGINE_OPENAI_PROXY):
             raise ValueError(
-                f"{ENGINE_ENV_VAR} 必须是 'auto' / 'mlx' / 'faster-whisper'，收到 {explicit!r}"
+                f"{ENGINE_ENV_VAR} 必须是 'auto' / 'mlx' / 'faster-whisper' / 'openai-proxy'，收到 {explicit!r}"
             )
         return explicit
     if sys.platform == "darwin" and platform.machine() == "arm64":
@@ -118,4 +120,50 @@ def faster_whisper_options() -> FasterWhisperOptions:
         device=os.environ.get("READ_PODCAST_TRANSCRIPTION_DEVICE", "").strip() or DEFAULT_FASTER_WHISPER_DEVICE,
         compute_type=os.environ.get("READ_PODCAST_TRANSCRIPTION_COMPUTE_TYPE", "").strip() or DEFAULT_FASTER_WHISPER_COMPUTE_TYPE,
         cpu_threads=_env_int("READ_PODCAST_TRANSCRIPTION_CPU_THREADS", DEFAULT_FASTER_WHISPER_CPU_THREADS),
+    )
+
+
+# ── OpenAI-Proxy 引擎内建默认值（只允许环境变量逐项覆盖；没有配置文件） ──
+DEFAULT_OPENAI_PROXY_API_BASE = "https://api.openai.com/v1"
+DEFAULT_OPENAI_PROXY_MODEL = "whisper-1"
+DEFAULT_OPENAI_PROXY_CHUNK_SIZE_MB = 24  # 上游上限通常为 25MB，留 1MB 余量
+DEFAULT_OPENAI_PROXY_OVERLAP_SECONDS = 2.0  # 分段重叠时长（秒）
+DEFAULT_OPENAI_PROXY_TIMEOUT_SECONDS = 180  # 单段上传超时时间（秒）
+DEFAULT_OPENAI_PROXY_MAX_RETRIES = 3  # 单段失败最大重试次数
+
+
+@dataclass(frozen=True)
+class OpenAIProxyOptions:
+    api_base: str
+    api_key: str
+    model: str
+    chunk_size_mb: int = DEFAULT_OPENAI_PROXY_CHUNK_SIZE_MB
+    overlap_seconds: float = DEFAULT_OPENAI_PROXY_OVERLAP_SECONDS
+    timeout_seconds: int = DEFAULT_OPENAI_PROXY_TIMEOUT_SECONDS
+    max_retries: int = DEFAULT_OPENAI_PROXY_MAX_RETRIES
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = float(raw)
+    except ValueError:
+        raise ValueError(f"{name} 必须是数值，收到 {raw!r}") from None
+    if value < 0:
+        raise ValueError(f"{name} 不能为负数")
+    return value
+
+
+def openai_proxy_options() -> OpenAIProxyOptions:
+    """OpenAI 代理模式运行参数：内建默认值，仅可用环境变量逐项覆盖。"""
+    return OpenAIProxyOptions(
+        api_base=os.environ.get("READ_PODCAST_OPENAI_API_BASE", "").strip() or DEFAULT_OPENAI_PROXY_API_BASE,
+        api_key=os.environ.get("READ_PODCAST_OPENAI_API_KEY", "").strip() or os.environ.get("OPENAI_API_KEY", "").strip(),
+        model=os.environ.get("READ_PODCAST_OPENAI_MODEL", "").strip() or os.environ.get("OPENAI_MODEL", "").strip() or DEFAULT_OPENAI_PROXY_MODEL,
+        chunk_size_mb=_env_int("READ_PODCAST_OPENAI_CHUNK_SIZE_MB", DEFAULT_OPENAI_PROXY_CHUNK_SIZE_MB),
+        overlap_seconds=_env_float("READ_PODCAST_OPENAI_OVERLAP_SECONDS", DEFAULT_OPENAI_PROXY_OVERLAP_SECONDS),
+        timeout_seconds=_env_int("READ_PODCAST_OPENAI_TIMEOUT_SECONDS", DEFAULT_OPENAI_PROXY_TIMEOUT_SECONDS),
+        max_retries=_env_int("READ_PODCAST_OPENAI_MAX_RETRIES", DEFAULT_OPENAI_PROXY_MAX_RETRIES),
     )

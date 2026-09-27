@@ -210,6 +210,56 @@ origin (`http://127.0.0.1:28100`) and the Access policy are configured on the Cl
 and the host runs only the connector. Tunnel bootstrap credentials belong to the host's
 cloudflared installation, not to this application.
 
+### OpenAI-compatible upload proxy engine (`openai-proxy`)
+
+When you do not want to run local Whisper models (e.g. in resource-constrained environments
+like NAS or small VPS), you can set the Transcription Service to proxy any OpenAI-compatible
+`/audio/transcriptions` API. The service uses `ffmpeg` to transcode audio to low-bitrate mono,
+splits files exceeding the upstream upload limit (e.g. 25MB) at silence points with a short
+overlap, calls the upstream per chunk with retries, and deduplicates the merged transcript text.
+
+The service's external HTTP contract (`/v1/transcriptions`) is identical, so the Worker or
+caller does not need to know the engine is proxying.
+
+Set the following environment variables on the transcription host or container:
+
+```bash
+READ_PODCAST_TRANSCRIPTION_ENGINE=openai-proxy
+```
+
+#### Example 1: OpenAI
+
+```bash
+export READ_PODCAST_TRANSCRIPTION_ENGINE=openai-proxy
+export READ_PODCAST_OPENAI_API_KEY="sk-..."
+export READ_PODCAST_OPENAI_MODEL="whisper-1"
+# Optional: READ_PODCAST_OPENAI_API_BASE defaults to https://api.openai.com/v1
+```
+
+#### Example 2: Groq
+
+```bash
+export READ_PODCAST_TRANSCRIPTION_ENGINE=openai-proxy
+export READ_PODCAST_OPENAI_API_BASE="https://api.groq.com/openai/v1"
+export READ_PODCAST_OPENAI_API_KEY="gsk_..."
+export READ_PODCAST_OPENAI_MODEL="whisper-large-v3"
+```
+
+#### Example 3: SiliconFlow
+
+```bash
+export READ_PODCAST_TRANSCRIPTION_ENGINE=openai-proxy
+export READ_PODCAST_OPENAI_API_BASE="https://api.siliconflow.cn/v1"
+export READ_PODCAST_OPENAI_API_KEY="sk-..."
+export READ_PODCAST_OPENAI_MODEL="FunAudioLLM/SenseVoiceSmall"
+```
+
+Optional tuning variables:
+- `READ_PODCAST_OPENAI_CHUNK_SIZE_MB`: upload chunk limit in MiB (default: `24`, 1 MiB under the standard 25 MiB ceiling).
+- `READ_PODCAST_OPENAI_OVERLAP_SECONDS`: overlap between consecutive chunks for silence split boundary (default: `2.0`).
+- `READ_PODCAST_OPENAI_TIMEOUT_SECONDS`: upload request timeout in seconds (default: `180`).
+- `READ_PODCAST_OPENAI_MAX_RETRIES`: max retry attempts per chunk on rate-limits (429) or transient 5xx errors (default: `3`).
+
 ## 4. Cloud transcription (DashScope Paraformer)
 
 Instead of running the Transcription Service on your own hardware, transcription can be

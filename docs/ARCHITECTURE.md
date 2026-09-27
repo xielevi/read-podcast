@@ -221,22 +221,33 @@ The service reports facts (status, progress, error code); whether to retry is de
 Cloudflare. Any machine or remote service implementing the contract can replace it;
 replaceability comes from this contract rather than from an in-process backend registry.
 
-The reference implementation (`transcription_service/`) ships two built-in engines behind one
+The reference implementation (`transcription_service/`) ships three built-in engines behind one
 in-process `Transcriber` protocol. On Apple Silicon the default engine is the local MLX
 Whisper HTTP service (`mlx_service/`, loopback only, no credential); everywhere else — Linux,
 Windows, NAS and the container image — the default is an in-process Faster-Whisper engine on
 CPU or CUDA. Selection is built in (`core.config.resolve_engine`): platform default first,
-`READ_PODCAST_TRANSCRIPTION_ENGINE` to force either. Both engines are zero-configuration:
-model size, device, compute precision and thread counts have built-in defaults that only
-environment variables can override. The container image
-(`ghcr.io/<owner>/read-podcast-transcription`, built and published by CI) runs as a non-root
-user with no capabilities, keeps Whisper models in a mounted volume, and downloads no model
-at build time.
+`READ_PODCAST_TRANSCRIPTION_ENGINE` to force an engine. The third option is `openai-proxy`
+(opt-in via `READ_PODCAST_TRANSCRIPTION_ENGINE=openai-proxy`): instead of running local inference,
+it proxies any OpenAI-compatible `/audio/transcriptions` API (OpenAI, Groq, SiliconFlow, etc.),
+handling file transcoding to low-bitrate mono via ffmpeg, silence-based chunking with overlap for
+files exceeding upstream size limits, per-chunk retry with backoff, and overlap deduplication.
 
 The reference service is **zero-configuration**: built-in runtime defaults (download limits,
 timeouts, concurrency, result TTL), platform data/log directories, no user-maintained
-configuration file and **no application credential** — request-scoped options (language) travel
-with each request, and remote authentication is Cloudflare Access.
+configuration file, and remote authentication is Cloudflare Access.
+
+### Architectural Decision: Credentials in `openai-proxy`
+
+The local MLX and Faster-Whisper engines hold no application credential. The `openai-proxy`
+engine introduces a scoped exception to this rule:
+
+- **Scope:** Only the `openai-proxy` engine holds upstream API credentials (`READ_PODCAST_OPENAI_API_KEY`,
+  configured alongside upstream base URL and model through process environment variables).
+- **Invariants:** The upstream key is strictly confined to outgoing HTTP requests to the upstream
+  transcription API. It is **never** echoed in status endpoints (`/v1/transcriptions/*`),
+  health probes (`/health`), or error responses, and is **never** written to logs. The external
+  HTTP contract (`/v1/transcriptions`) is completely unchanged: Cloudflare Worker and callers
+  do not know or care whether the service runs local Whisper or proxies an upstream provider.
 
 ## Cloud transcription adapter
 
@@ -312,5 +323,6 @@ every entry point.
 - Outbound URLs are validated against private and reserved ranges on both Cloudflare and
   the service, which re-checks every redirect hop; audio is fetched by direct link only.
 - Secrets live in Wrangler secrets and are never returned by any API. The Transcription Service
-  stores no credential and no user-maintained configuration.
+  stores no Cloudflare or customer credentials; for the `openai-proxy` engine, upstream API credentials
+  are passed via process environment variables and strictly scoped to upstream requests, never exposed or logged.
 - Cloud-drive export, OAuth connectors and a conversational assistant do not exist, by design.
