@@ -21,8 +21,10 @@ Cloudflare 拥有整条业务任务生命周期；本服务只是它调用的外
 回调、没有对账、没有任何 Cloudflare 凭据——因此把它换到 Windows / Linux / NAS / 云 GPU 只需
 部署一个满足同一 HTTP contract 的服务并修改 Cloudflare 侧的 endpoint。
 
-同机部署的 MLX Whisper HTTP 服务（``mlx_service``）是它的转录引擎，地址是内建默认值
-（``core.config.MLX_ENDPOINT``），与本服务是两个独立进程。
+同机部署的 MLX Whisper HTTP 服务（``mlx_service``）是 Apple Silicon 上的转录引擎，地址是
+内建默认值（``core.config.MLX_ENDPOINT``），与本服务是两个独立进程；其余平台默认使用
+进程内 Faster-Whisper 引擎（``core.faster_whisper_engine``），选择策略见
+``core.config.resolve_engine``。
 """
 from __future__ import annotations
 
@@ -36,6 +38,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from core.config import DATA_DIR, default_log_dir
+from core.transcriber import engine_name
 from jobs import ApiError, JobManager
 
 PROTOCOL_VERSION = 1
@@ -104,7 +107,7 @@ def create_app(manager: Optional[JobManager] = None) -> FastAPI:
             "status": "ok",
             "service": "transcription-service",
             "protocol": PROTOCOL_VERSION,
-            "engine": "mlx-api",
+            "engine": engine_name(),
             "active_requests": jobs.active_count,
         }
 

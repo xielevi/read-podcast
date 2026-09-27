@@ -1,8 +1,9 @@
 """转录引擎适配（Transcription Engine adapter）的单元测试。
 
-Reference deployment 只有本机 MLX Whisper 一条路径：这里验证内建端点、语言透传，
-以及失败时带稳定 ``code`` 的 ``EngineError`` 分类（这些 code 会原样上报给 Cloudflare，
-由它判定是否重试）。服务不持有任何引擎令牌。
+这里覆盖 MLX HTTP 适配层（Apple Silicon reference deployment 的引擎）：内建端点、
+语言透传，以及失败时带稳定 ``code`` 的 ``EngineError`` 分类（这些 code 会原样上报给
+Cloudflare，由它判定是否重试）。服务不持有任何引擎令牌。引擎选择与 Faster-Whisper
+引擎见 ``test_engine_selection.py`` / ``test_faster_whisper_engine.py``。
 """
 from __future__ import annotations
 
@@ -12,13 +13,19 @@ import httpx
 import pytest
 
 import core.transcriber as transcriber
-from core.config import MLX_ENDPOINT
+from core.config import ENGINE_ENV_VAR, MLX_ENDPOINT
 from core.transcriber import (
     EngineError,
     TranscriptionResult,
     WhisperApiTranscriber,
     get_transcriber,
 )
+
+
+@pytest.fixture(autouse=True)
+def force_mlx_engine(monkeypatch):
+    """本文件只测 MLX HTTP 适配层：显式固定引擎，与测试宿主平台无关。"""
+    monkeypatch.setenv(ENGINE_ENV_VAR, "mlx")
 
 
 def make_audio(path, size=2048):
@@ -66,7 +73,7 @@ def engine_code(transcribe, *args, **kwargs):
 
 # ── 内建引擎（无配置、无令牌） ──
 
-def test_default_transcriber_targets_the_local_mlx_endpoint():
+def test_forced_engine_targets_the_local_mlx_endpoint():
     t = get_transcriber()
     assert isinstance(t, WhisperApiTranscriber)
     assert t.api_url == f"{MLX_ENDPOINT}/transcribe"

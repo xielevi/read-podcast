@@ -184,9 +184,20 @@ GET    /health                   the only health endpoint (host curl; from Cloud
 ```
 
 The service reports facts (status, progress, error code); whether to retry is decided by
-Cloudflare. Any machine or remote service implementing the contract can replace it; the
-reference implementation (`transcription_service/`) uses the local MLX Whisper engine, and
+Cloudflare. Any machine or remote service implementing the contract can replace it;
 replaceability comes from this contract rather than from an in-process backend registry.
+
+The reference implementation (`transcription_service/`) ships two built-in engines behind one
+in-process `Transcriber` protocol. On Apple Silicon the default engine is the local MLX
+Whisper HTTP service (`mlx_service/`, loopback only, no credential); everywhere else — Linux,
+Windows, NAS and the container image — the default is an in-process Faster-Whisper engine on
+CPU or CUDA. Selection is built in (`core.config.resolve_engine`): platform default first,
+`READ_PODCAST_TRANSCRIPTION_ENGINE` to force either. Both engines are zero-configuration:
+model size, device, compute precision and thread counts have built-in defaults that only
+environment variables can override. The container image
+(`ghcr.io/<owner>/read-podcast-transcription`, built and published by CI) runs as a non-root
+user with no capabilities, keeps Whisper models in a mounted volume, and downloads no model
+at build time.
 
 The reference service is **zero-configuration**: built-in runtime defaults (download limits,
 timeouts, concurrency, result TTL), platform data/log directories, no user-maintained

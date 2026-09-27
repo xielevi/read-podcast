@@ -1,14 +1,18 @@
 """转录引擎适配（Transcription Engine adapter）。
 
-Reference deployment 固定为同机的原生 MLX Whisper HTTP 服务：引擎地址是
-``core.config.MLX_ENDPOINT`` 内建默认值，没有配置文件、没有令牌——MLX 服务只监听
-127.0.0.1，只被本机的 Transcription Service 消费。
+内建两个引擎，同属一个 ``Transcriber`` 协议（``音频文件 → 文本``，一次计算：不缓存、
+不决定是否重试——失败以带稳定 ``code`` 的 ``EngineError`` 抛出，由上层如实上报给
+Cloudflare，业务重试判断属于 Cloudflare）：
 
-本层只做一次「音频文件 → 文本」的计算：不缓存、不决定是否重试——失败以带稳定 ``code``
-的 ``EngineError`` 抛出，由上层如实上报给 Cloudflare（业务重试判断属于 Cloudflare）。
+- **MLX**（``WhisperApiTranscriber``）：reference deployment（Apple Silicon）的本机
+  原生 MLX Whisper HTTP 服务（``mlx_service``，127.0.0.1，无令牌）；
+- **Faster-Whisper**（``core.faster_whisper_engine.FasterWhisperTranscriber``）：进程内
+  CPU / CUDA 引擎，其余平台（Linux / Windows / NAS / 容器）的默认。
 
-可替换性来自 **HTTP contract**（Windows CUDA / cloud GPU 可以实现同一个 Transcription
-Service contract），而不是要求本服务内部同时内置多个 transcription backend。
+引擎选择是内建策略（见 ``core.config.resolve_engine``）：Apple Silicon 默认 MLX，其余
+默认 Faster-Whisper，``READ_PODCAST_TRANSCRIPTION_ENGINE`` 可强制指定。跨机器的可替换性
+仍然来自 **HTTP contract**（Windows CUDA / cloud GPU 可以实现同一个 Transcription
+Service contract），不依赖调用方感知引擎差异。
 """
 from __future__ import annotations
 
@@ -21,7 +25,7 @@ from typing import Callable, Protocol
 
 import httpx
 
-from core.config import MLX_ENDPOINT
+from core.config import ENGINE_MLX, MLX_ENDPOINT, resolve_engine
 
 logger = logging.getLogger(__name__)
 
@@ -173,5 +177,27 @@ class WhisperApiTranscriber:
 
 
 def get_transcriber() -> Transcriber:
-    """内建默认引擎：本机 MLX Whisper（无配置、无令牌）。"""
-    return WhisperApiTranscriber()
+    """按内建策略选择转录引擎（可由 ``READ_PODCAST_TRANSCRIPTION_ENGINE`` 强制）。"""
+    if resolve_engine() == ENGINE_MLX:
+        return WhisperApiTranscriber()
+    return _faster_whisper_transcriber()
+
+
+_faster_whisper: Transcriber | None = None
+
+
+def _faster_whisper_transcriber() -> Transcriber:
+    """进程内单例：JobManager 每个任务都会调用 get_transcriber()，模型必须跨任务常驻，
+    不能每个任务重新加载一次。"""
+    global _faster_whisper
+    if _faster_whisper is None:
+        # 延迟导入：faster_whisper_engine 反过来依赖本模块的协议类型。
+        from core.faster_whisper_engine import FasterWhisperTranscriber
+
+        _faster_whisper = FasterWhisperTranscriber()
+    return _faster_whisper
+
+
+def engine_name() -> str:
+    """/health 等处展示的引擎名（不含机密）。"""
+    return ENGINE_MLX if resolve_engine() == ENGINE_MLX else "faster-whisper"
