@@ -40,8 +40,8 @@ npm run db:migrate:remote
 `read-podcast-edge`, for migrations and for deploys. If Wrangler offers to add the new database to
 the config, decline.
 
-Upgrading an existing deployment? Run `scripts/preflight_upgrade.sh` first to list tasks that
-are still processing.
+Upgrading an existing deployment? See [UPGRADING.md](UPGRADING.md) and run `scripts/preflight_upgrade.sh`
+first to list tasks that are still processing.
 
 ### R2 and lifecycle rules
 
