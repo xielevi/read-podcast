@@ -29,7 +29,7 @@ interface TaskConceptRow {
  * 即使转录服务完全下线，已生成稿件仍然可以完成阅读、概念提取与维基百科核验。
  */
 export async function taskConcepts(taskId: string, env: Env): Promise<Response> {
-  const task = await env.DB.prepare(
+  const task = await env.db.prepare(
     `SELECT id, status, podcast_name, episode_title, final_content_path, content_commit_sha
      FROM tasks WHERE id = ?`
   )
@@ -46,7 +46,7 @@ export async function taskConcepts(taskId: string, env: Env): Promise<Response> 
 
   // 1. D1 缓存查询（绑定 commit_sha，确保不重复消耗 Token）
   if (task.content_commit_sha) {
-    const cached = await env.DB.prepare(
+    const cached = await env.db.prepare(
       "SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ?"
     )
       .bind(task.final_content_path, task.content_commit_sha)
@@ -106,7 +106,7 @@ export async function taskConcepts(taskId: string, env: Env): Promise<Response> 
   if (task.content_commit_sha) {
     if (concepts.length > 0 || !hasErrors) {
       try {
-        await env.DB.prepare(
+        await env.db.prepare(
           `INSERT OR REPLACE INTO article_concepts (content_path, commit_sha, concepts_json)
            VALUES (?, ?, ?)`
         )

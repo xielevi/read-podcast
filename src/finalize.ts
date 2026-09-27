@@ -68,7 +68,7 @@ export async function persistFinalArticle(
   // 原子 CAS 进入 finalizing 状态：
   // 1. refining → finalizing（正常路径）
   // 2. same attempt + already finalizing → resume（同一 Workflow publish step 重试 / 重放）
-  const claim = await env.DB.prepare(`
+  const claim = await env.db.prepare(`
     UPDATE tasks
     SET status = 'finalizing',
         progress = MAX(progress, 95),
@@ -83,7 +83,7 @@ export async function persistFinalArticle(
     .run();
 
   if (!claim.meta.changes) {
-    const task = await env.DB.prepare(
+    const task = await env.db.prepare(
       `SELECT status, current_attempt_id, cancel_requested, error_code, final_content_path, content_commit_sha
        FROM tasks WHERE id = ?`,
     )
@@ -103,7 +103,7 @@ export async function persistFinalArticle(
     throw new FinalizeError("not_running", `Task is not in a completable state (status=${task.status})`, false);
   }
 
-  const task = await env.DB.prepare(
+  const task = await env.db.prepare(
     "SELECT episode_id, episode_title, podcast_name FROM tasks WHERE id = ?",
   )
     .bind(input.taskId)
@@ -114,7 +114,7 @@ export async function persistFinalArticle(
   try {
     const saved = await commitPodcast(env, input.writingFilename, task.episode_title, markdown);
 
-    const taskUpdateStmt = env.DB.prepare(`UPDATE tasks SET status = 'success', progress = 100, message = '已完成',
+    const taskUpdateStmt = env.db.prepare(`UPDATE tasks SET status = 'success', progress = 100, message = '已完成',
       final_content_path = ?, content_commit_sha = ?, transcript_source = 'ai_refined', refinement_success = 1,
       cancel_requested = 0, error_code = NULL,
       completed_at = ${NOW}, updated_at = ${NOW}
@@ -122,7 +122,7 @@ export async function persistFinalArticle(
       .bind(saved.finalPath, saved.commitSha, input.taskId, input.attemptId);
 
     const articleUpsertStmt = task.episode_id
-      ? env.DB.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha)
+      ? env.db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha)
           VALUES (?, ?, ?, ?, ?, ?)
           ON CONFLICT(episode_id) WHERE episode_id IS NOT NULL DO UPDATE SET
             task_id = excluded.task_id,
@@ -132,7 +132,7 @@ export async function persistFinalArticle(
             commit_sha = excluded.commit_sha,
             updated_at = ${NOW}`)
           .bind(input.taskId, task.episode_id, task.episode_title, task.podcast_name, saved.finalPath, saved.commitSha)
-      : env.DB.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha)
+      : env.db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha)
           VALUES (?, NULL, ?, ?, ?, ?)
           ON CONFLICT(task_id) DO UPDATE SET
             title = excluded.title,
@@ -143,10 +143,10 @@ export async function persistFinalArticle(
           .bind(input.taskId, task.episode_title, task.podcast_name, saved.finalPath, saved.commitSha);
 
     // D1 原子事务提交：任务更新与成稿建立同生共死
-    const [updateRes] = await env.DB.batch([taskUpdateStmt, articleUpsertStmt]);
+    const [updateRes] = await env.db.batch([taskUpdateStmt, articleUpsertStmt]);
 
     if (!updateRes?.meta?.changes) {
-      await env.DB.prepare("DELETE FROM articles WHERE task_id = ?").bind(input.taskId).run();
+      await env.db.prepare("DELETE FROM articles WHERE task_id = ?").bind(input.taskId).run();
       throw new FinalizeError("stale_attempt", "Task state changed during finalization; completion discarded", false);
     }
     return saved;

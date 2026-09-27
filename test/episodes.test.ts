@@ -195,7 +195,7 @@ function mockReadStateEnv(options: { rows?: Array<{ episode_id: string | null; t
       return statement;
     },
   };
-  return { env: { DB: db } as unknown as Env, calls };
+  return { env: { db, DB: db } as unknown as Env, calls };
 }
 
 function itunesResponse(results: Array<Record<string, unknown>>, status = 200): Response {

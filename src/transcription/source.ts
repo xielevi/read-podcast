@@ -110,7 +110,7 @@ const R2_CREDENTIAL_FIELDS = [
   ["bucket", "R2_BUCKET_NAME"],
 ] as const;
 
-function r2Credentials(env: Env): R2SigningCredentials {
+export function r2Credentials(env: Env): R2SigningCredentials {
   const credentials: R2SigningCredentials = {
     accountId: (env.R2_ACCOUNT_ID ?? "").trim(),
     accessKeyId: (env.R2_ACCESS_KEY_ID ?? "").trim(),
@@ -148,15 +148,19 @@ export async function resolveTranscriptionSource(
   const key = uploadObjectKeyFromAudioUrl(task.audio_url);
   if (!key) throw new SourceError("upload_expired", "uploaded audio reference is missing or malformed");
 
-  // 以 R2 里的真实对象为准：存在 + 不超过产品硬上限。超限的对象在**签名之前**就拒绝，
+  // 以存储里的真实对象为准：存在 + 不超过产品硬上限。超限的对象在**签名之前**就拒绝，
   // 绝不为一个不可能被处理的对象签发 URL。
-  const object = await env.RAW_BUCKET.head(key);
+  const object = await env.storage.head(key);
   if (!object) throw new SourceError("upload_expired", "uploaded audio is missing or has expired");
   if (object.size > MAX_UPLOAD_BYTES) throw new SourceError("source_too_large", "uploaded audio exceeds the product hard cap");
 
   let url: string;
   try {
-    url = await presignR2Get(r2Credentials(env), key, nowMs, ttlSeconds);
+    if (env.storage.createPresignedUrl) {
+      url = await env.storage.createPresignedUrl(key, { nowMs, expiresInSeconds: ttlSeconds });
+    } else {
+      url = await presignR2Get(r2Credentials(env), key, nowMs, ttlSeconds);
+    }
   } catch (error) {
     if (error instanceof R2PresignError) throw new SourceError("r2_credentials_unconfigured", error.message);
     throw error;

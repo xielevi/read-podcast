@@ -44,5 +44,5 @@ export const TASK_COLUMNS: ReadonlyArray<keyof TaskRow> = [
 ];
 
 export async function loadTaskRow(env: Env, taskId: string): Promise<TaskRow | null> {
-  return env.DB.prepare("SELECT * FROM tasks WHERE id = ?").bind(taskId).first<TaskRow>();
+  return env.db.prepare("SELECT * FROM tasks WHERE id = ?").bind(taskId).first<TaskRow>();
 }

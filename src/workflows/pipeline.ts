@@ -119,7 +119,7 @@ export function resolveDate(dateStr: string | null, published: string | null, fa
 
 export async function loadEpisodeContext(env: Env, task: TaskRow): Promise<EpisodeContext> {
   if (task.episode_id) {
-    const row = await env.DB.prepare(
+    const row = await env.db.prepare(
       "SELECT podcast_name, title, audio_url, summary, link, published, published_date, duration FROM episodes WHERE id = ?",
     )
       .bind(task.episode_id)
@@ -152,7 +152,7 @@ export async function loadEpisodeContext(env: Env, task: TaskRow): Promise<Episo
 }
 
 async function markProgress(env: Env, params: ProcessingWorkflowParams, progress: number, message: string): Promise<void> {
-  await env.DB.prepare(`UPDATE tasks SET progress = MAX(progress, ?), message = ?, updated_at = ${NOW}
+  await env.db.prepare(`UPDATE tasks SET progress = MAX(progress, ?), message = ?, updated_at = ${NOW}
     WHERE id = ? AND current_attempt_id = ? AND cancel_requested = 0 AND status IN ('refining', 'finalizing')`)
     .bind(progress, message, params.taskId, params.attemptId)
     .run();
@@ -168,7 +168,7 @@ export async function claimRefinement(env: Env, params: ProcessingWorkflowParams
   const task = assertTaskOwned(await loadTaskRow(env, params.taskId), params.attemptId);
   if (task.raw_object_key !== rawKey) throw nonRetryable("raw_mismatch", "Raw transcript key does not match the persisted object");
 
-  const result = await env.DB.prepare(`UPDATE tasks
+  const result = await env.db.prepare(`UPDATE tasks
     SET status = 'refining',
         progress = MAX(progress, 65),
         message = 'Edge AI 精修中',
@@ -201,7 +201,7 @@ export async function refineStep(
 ): Promise<string> {
   const task = assertAttemptCurrent(await loadTaskRow(env, params.taskId), params.attemptId);
 
-  const rawObject = await env.RAW_BUCKET.get(rawKey);
+  const rawObject = await env.storage.get(rawKey);
   if (!rawObject) throw nonRetryable("refine_raw_missing", "R2 raw transcript is missing");
   const rawText = await rawObject.text();
   if (!rawText.trim()) throw nonRetryable("refine_raw_missing", "R2 raw transcript is empty");
@@ -247,7 +247,7 @@ export async function refineStep(
   }
 
   const refinedKey = `refined/${params.taskId}/${params.attemptId}.md`;
-  await env.RAW_BUCKET.put(refinedKey, markdown, {
+  await env.storage.put(refinedKey, markdown, {
     httpMetadata: { contentType: "text/markdown; charset=utf-8" },
   });
   return refinedKey;
@@ -275,7 +275,7 @@ export async function publishStep(
   await markProgress(env, params, 95, "正在保存正式稿…");
 
   const task = assertAttemptCurrent(await loadTaskRow(env, params.taskId), params.attemptId);
-  const refinedObject = await env.RAW_BUCKET.get(refinedKey);
+  const refinedObject = await env.storage.get(refinedKey);
   if (!refinedObject) throw nonRetryable("refined_checkpoint_missing", "R2 refined checkpoint is missing or expired");
   const refinedText = await refinedObject.text();
   if (!refinedText.trim()) throw nonRetryable("refined_checkpoint_missing", "R2 refined checkpoint is empty");
@@ -408,7 +408,7 @@ export async function markWorkflowFailure(env: Env, params: ProcessingWorkflowPa
   if (task.status === "success") return;
 
   if (task.cancel_requested || task.status === "cancelled") {
-    await env.DB.prepare(`UPDATE tasks SET status = 'cancelled', message = '任务已取消',
+    await env.db.prepare(`UPDATE tasks SET status = 'cancelled', message = '任务已取消',
       completed_at = ${NOW}, updated_at = ${NOW}
       WHERE id = ? AND status != 'success'`)
       .bind(params.taskId)
@@ -417,7 +417,7 @@ export async function markWorkflowFailure(env: Env, params: ProcessingWorkflowPa
   }
   if (record.skip) return;
 
-  await env.DB.prepare(`UPDATE tasks SET status = 'error', error_code = ?, message = ?, transcription_phase = NULL,
+  await env.db.prepare(`UPDATE tasks SET status = 'error', error_code = ?, message = ?, transcription_phase = NULL,
     completed_at = ${NOW}, updated_at = ${NOW}
     WHERE id = ? AND current_attempt_id = ? AND status NOT IN ('success', 'cancelled')`)
     .bind(record.code, record.message, params.taskId, params.attemptId)

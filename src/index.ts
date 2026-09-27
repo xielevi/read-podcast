@@ -42,6 +42,7 @@ import {
   handleUploadPart,
 } from "./uploads";
 import type { Env } from "./types";
+import { adaptCloudflareEnv, type CloudflareEnv } from "./platform/cloudflare";
 
 // 两个 API 命名空间，按路径划定安全边界（Cloudflare Access 按路径生效）：
 //   /api/public/*  Public Browse Mode —— 匿名可访问，严格只读、无副作用（见 src/public.ts）；
@@ -82,7 +83,9 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   }
   if (!path.startsWith(`${API}/`)) {
     if (path.startsWith("/api/")) return error(404, "not_found", "API route not found");
-    return env.ASSETS.fetch(request);
+    const assets = env.assets ?? (env as any).ASSETS;
+    if (assets) return assets.fetch(request);
+    return error(404, "not_found", "Asset handler not found");
   }
 
   // ── 配置（Settings）、偏好（Preferences）与 Prompt 模板 ──
@@ -143,20 +146,22 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 export default {
   // Cloudflare 自有的收敛动作（未启动的 queued 任务 / Workflow 存活对账），
   // 不依赖任何外部节点。
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runMaintenance(env));
+  async scheduled(_controller: ScheduledController, env: CloudflareEnv | Env, ctx: ExecutionContext): Promise<void> {
+    const platformEnv = adaptCloudflareEnv(env);
+    ctx.waitUntil(runMaintenance(platformEnv));
   },
 
-  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+  async fetch(request: Request, env: CloudflareEnv | Env, ctx: ExecutionContext): Promise<Response> {
+    const platformEnv = adaptCloudflareEnv(env);
     try {
-      return await route(request, env, ctx);
+      return await route(request, platformEnv, ctx);
     } catch (caught) {
       if (caught instanceof HttpError) return error(caught.status, caught.code, caught.message);
       console.error("Unhandled request error", caught);
       return error(500, "internal_error", "Unexpected server error");
     }
   },
-} satisfies ExportedHandler<Env>;
+};
 
 // Cloudflare Workflows 入口：任务从创建到成稿（转录 → raw 落库 → 精修 → 质量门禁 → Formatter → GitHub）的唯一执行体。
-export { ProcessingWorkflow } from "./workflows/processing";
+export { ProcessingWorkflow } from "./platform/cloudflare";

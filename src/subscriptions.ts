@@ -34,7 +34,7 @@ export async function createSubscription(request: Request, env: Env): Promise<Re
   if (!name) throw new HttpError(400, "invalid_feed", "无法识别节目名称");
   const image = provided || feed.image || "";
 
-  const result = await env.DB.prepare(`INSERT INTO subscriptions (name, rss_url, image_url) VALUES (?, ?, ?)
+  const result = await env.db.prepare(`INSERT INTO subscriptions (name, rss_url, image_url) VALUES (?, ?, ?)
     ON CONFLICT(name) DO UPDATE SET rss_url = excluded.rss_url, image_url = excluded.image_url,
     updated_at = ${NOW}
     RETURNING name, rss_url, image_url`)
@@ -45,7 +45,7 @@ export async function createSubscription(request: Request, env: Env): Promise<Re
 }
 
 export async function deleteSubscription(name: string, env: Env): Promise<Response> {
-  const result = await env.DB.prepare("DELETE FROM subscriptions WHERE name = ?").bind(decodeURIComponent(name)).run();
+  const result = await env.db.prepare("DELETE FROM subscriptions WHERE name = ?").bind(decodeURIComponent(name)).run();
   // episodes 通过 FK ON DELETE CASCADE 清理。
   return result.meta.changes ? new Response(null, { status: 204 }) : error(404, "subscription_not_found", "Subscription not found");
 }

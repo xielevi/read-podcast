@@ -26,10 +26,10 @@ export function rawObjectKey(taskId: string, attemptId: string): string {
  */
 export async function resolveExistingRawKey(env: Env, taskId: string, rawObjectKeyHint: string | null): Promise<string | null> {
   if (rawObjectKeyHint) {
-    const object = await env.RAW_BUCKET.get(rawObjectKeyHint);
+    const object = await env.storage.get(rawObjectKeyHint);
     if (object) return rawObjectKeyHint;
   }
-  const listing = await env.RAW_BUCKET.list({ prefix: rawPrefix(taskId) });
+  const listing = await env.storage.list({ prefix: rawPrefix(taskId) });
   let latest: { key: string; uploaded: number } | null = null;
   for (const object of listing.objects) {
     const uploaded = object.uploaded ? object.uploaded.getTime() : 0;
@@ -40,6 +40,6 @@ export async function resolveExistingRawKey(env: Env, taskId: string, rawObjectK
 
 /** 删除任务记录 / 转录不可用时，清理其所有 R2 原始转录（best-effort；lifecycle 也会兜底）。 */
 export async function purgeRaw(env: Env, id: string): Promise<void> {
-  const listing = await env.RAW_BUCKET.list({ prefix: rawPrefix(id) });
-  await Promise.all(listing.objects.map(object => env.RAW_BUCKET.delete(object.key)));
+  const listing = await env.storage.list({ prefix: rawPrefix(id) });
+  await Promise.all(listing.objects.map(object => env.storage.delete(object.key)));
 }

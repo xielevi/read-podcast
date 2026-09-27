@@ -43,7 +43,7 @@ export interface SubscriptionRow {
 }
 
 export async function listSubscriptions(env: Env): Promise<Response> {
-  const result = await env.DB.prepare(
+  const result = await env.db.prepare(
     "SELECT name, rss_url, image_url FROM subscriptions ORDER BY name COLLATE NOCASE",
   ).all<{ name: string; rss_url: string; image_url: string }>();
   // 对齐原生 PODCASTS 形状：name/rss_url/image/enabled。
@@ -88,12 +88,12 @@ async function fetchFeed(rssUrl: string, podcastName: string): Promise<{ channel
  */
 export async function upsertEpisodes(env: Env, subscriptionName: string, episodes: Episode[]): Promise<void> {
   if (!episodes.length) return;
-  const sub = await env.DB.prepare("SELECT id FROM subscriptions WHERE name = ?").bind(subscriptionName).first<{ id: number }>();
+  const sub = await env.db.prepare("SELECT id FROM subscriptions WHERE name = ?").bind(subscriptionName).first<{ id: number }>();
   const subId = sub?.id ?? null;
   const statements = episodes.map(ep => {
     const sourceId = ep.id;
     const namespacedId = subId != null ? `${subId}:${sourceId}` : sourceId;
-    return env.DB.prepare(
+    return env.db.prepare(
       `INSERT INTO episodes
         (id, subscription_id, podcast_name, title, audio_url, duration_seconds,
          summary, link, published, published_date, duration, source_id, updated_at)
@@ -124,9 +124,9 @@ export async function upsertEpisodes(env: Env, subscriptionName: string, episode
     );
   });
   statements.push(
-    env.DB.prepare(`UPDATE subscriptions SET episodes_synced_at = ${NOW} WHERE name = ?`).bind(subscriptionName),
+    env.db.prepare(`UPDATE subscriptions SET episodes_synced_at = ${NOW} WHERE name = ?`).bind(subscriptionName),
   );
-  await env.DB.batch(statements);
+  await env.db.batch(statements);
 }
 
 function rowToEpisode(row: Record<string, unknown>): Episode {
@@ -151,7 +151,7 @@ function rowToEpisode(row: Record<string, unknown>): Episode {
 export async function getEpisodeSummary(url: URL, env: Env): Promise<Response> {
   const id = (url.searchParams.get("id") ?? "").trim();
   if (!id) throw new HttpError(400, "invalid_request", "id is required");
-  const row = await env.DB.prepare("SELECT summary FROM episodes WHERE id = ?").bind(id).first<{ summary: string | null }>();
+  const row = await env.db.prepare("SELECT summary FROM episodes WHERE id = ?").bind(id).first<{ summary: string | null }>();
   if (!row) return error(404, "episode_not_found", "Episode not found");
   return json({ id, summary: String(row.summary ?? "") });
 }
@@ -178,7 +178,7 @@ export async function refreshFeedInBackground(env: Env, rssUrl: string, podcastN
 
 /** 按稳定的（命名空间化）单集 id 读取 D1 中的单集；任务创建的主路径。 */
 export async function episodeById(env: Env, id: string): Promise<Episode | null> {
-  const row = await env.DB.prepare("SELECT * FROM episodes WHERE id = ?").bind(id).first<Record<string, unknown>>();
+  const row = await env.db.prepare("SELECT * FROM episodes WHERE id = ?").bind(id).first<Record<string, unknown>>();
   return row ? rowToEpisode(row) : null;
 }
 
@@ -252,7 +252,7 @@ export interface ReadRef {
 export async function getReadState(url: URL, env: Env): Promise<Response> {
   const limit = parseLimit(url, 200, 500);
   const offset = parseOffset(url);
-  const result = await env.DB.prepare(
+  const result = await env.db.prepare(
     "SELECT episode_id, task_id FROM read_state ORDER BY read_at DESC LIMIT ? OFFSET ?",
   ).bind(limit + 1, offset).all<ReadRef>();
   const rows = result.results;
@@ -271,12 +271,12 @@ export async function putReadState(request: Request, env: Env): Promise<Response
   const column = episodeId ? "episode_id" : "task_id";
   const value = episodeId || taskId;
   if (body.read) {
-    await env.DB.prepare(
+    await env.db.prepare(
       `INSERT INTO read_state (${column}, read_at) VALUES (?, ${NOW})
        ON CONFLICT(${column}) DO UPDATE SET read_at = ${NOW}`,
     ).bind(value).run();
   } else {
-    await env.DB.prepare(`DELETE FROM read_state WHERE ${column} = ?`).bind(value).run();
+    await env.db.prepare(`DELETE FROM read_state WHERE ${column} = ?`).bind(value).run();
   }
   return json({ ok: true });
 }
