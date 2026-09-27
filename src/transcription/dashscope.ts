@@ -149,16 +149,31 @@ const DASHSCOPE_STATUS: Record<string, TranscriptionSnapshot["status"]> = {
  * 它们在结果文件里，由 persist 阶段的 fetchResult 单独读取。快照的 result 留空：Workflow 的
  * 业务判断只消费 status，正文与元数据各走各的路径（与自托管协议「正文与状态分开」同一取舍）。
  */
+/**
+ * 单文件子任务的失败详情。百炼的 task_status 是批任务级状态：文件下载失败时可能仍报 SUCCEEDED，
+ * 真正的失败原因（如 InvalidFile.DownloadFailed）在 results[0].subtask_status / code / message 里。
+ */
+function failedSubtask(output: Record<string, unknown>): { code: string; message: string } | null {
+  const first = (Array.isArray(output.results) ? output.results[0] : undefined) as Record<string, unknown> | undefined;
+  if (!first || first.subtask_status !== "FAILED") return null;
+  return {
+    code: typeof first.code === "string" ? first.code : "",
+    message: typeof first.message === "string" ? first.message : "",
+  };
+}
+
 function snapshotFromDashscope(requestId: string, taskId: string, output: Record<string, unknown>): TranscriptionSnapshot {
   const dashscopeStatus = output.task_status as string;
-  const status = DASHSCOPE_STATUS[dashscopeStatus];
+  let status = DASHSCOPE_STATUS[dashscopeStatus];
   if (!status) {
     throw new TranscriptionServiceError("protocol", "transcription_protocol_error", `百炼返回未知任务状态 ${dashscopeStatus}`, false);
   }
+  const subtask = status === "completed" ? failedSubtask(output) : null;
+  if (subtask) status = "failed";
   const snapshot: TranscriptionSnapshot = { request_id: requestId, provider_request_id: taskId, status };
   if (status === "failed") {
-    const code = typeof output.code === "string" ? output.code : "";
-    const message = typeof output.message === "string" ? output.message : "";
+    const code = subtask ? subtask.code : typeof output.code === "string" ? output.code : "";
+    const message = subtask ? subtask.message : typeof output.message === "string" ? output.message : "";
     snapshot.error = { code: providerCodeForDashscopeFailure(code, message), message: message || code || dashscopeStatus };
   }
   if (status === "running") snapshot.progress = { phase: "transcribing", percent: 0 };
@@ -254,7 +269,7 @@ export async function fetchDashscopeTranscriptionResult(
   if (!data) return null;
   const output = outputOf(data);
   if (output.task_status === "FAILED") return null; // 查询时刻已是失败 → 交给 Workflow 重新提交
-  if (output.task_status !== "SUCCEEDED") return null;
+  if (output.task_status !== "SUCCEEDED" || failedSubtask(output)) return null;
   const results = Array.isArray(output.results) ? output.results : [];
   const first = results[0] as { transcription_url?: unknown; subtask_status?: unknown } | undefined;
   if (!first || typeof first.transcription_url !== "string" || !first.transcription_url) {

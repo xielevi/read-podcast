@@ -287,6 +287,25 @@ describe("查询：状态翻译与错误码映射", () => {
     expect(NON_RETRYABLE_PROVIDER_ERRORS.has("transcription_failed")).toBe(false);
   });
 
+  it("SUCCEEDED 但单文件子任务 FAILED（下载失败）→ failed + provider_fetch_failed；取结果返回 null", async () => {
+    const ds = new FakeDashScope();
+    ds.phases = [];
+    const subtaskFailed = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const response = await ds.fetch(input, init);
+      if (String(input).startsWith(DASHSCOPE_BASE_URL)) {
+        const body = (await response.json()) as { output: { results?: unknown } };
+        body.output.results = [{ file_url: "https://cdn.example/a.mp3", subtask_status: "FAILED", code: "InvalidFile.DownloadFailed", message: "The audio file cannot be downloaded." }];
+        return Response.json(body);
+      }
+      return response;
+    }) as unknown as typeof fetch;
+    expect(await pollDashscopeTranscription(dashEnv(), ref, 0, subtaskFailed)).toMatchObject({
+      status: "failed",
+      error: { code: "provider_fetch_failed" },
+    });
+    expect(await fetchDashscopeTranscriptionResult(dashEnv(), ref, subtaskFailed)).toBeNull();
+  });
+
   it("百炼不支持长轮询：仍要进行中时客户端等待 waitSeconds 再返回", async () => {
     vi.useFakeTimers();
     const ds = new FakeDashScope();
