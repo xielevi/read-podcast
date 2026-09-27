@@ -9,18 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased] — planned as 1.0.0
 
-> Release is pending the real-provider evaluation (#31), Cloudflare Free production
-> boundary checks, and a Docker end-to-end run with a real LLM provider in #30.
-> The import wrap-up (#47) is complete; an isolated Docker run with Faster-Whisper
-> and a local test refiner verified storage and restart recovery but does not prove
-> the external LLM path. Do not tag 1.0.0 until the remaining checks have evidence;
+> Release is pending the real-provider evaluation (#31), remaining Cloudflare Free
+> boundary checks (GitHub publication, multi-task cron recovery and resource-limit
+> evidence), and a Docker end-to-end run with a real LLM provider in #30.
+> Large feeds and long episodes have already been exercised. The import wrap-up
+> (#47) is complete; an isolated Docker run with Faster-Whisper and a local
+> test refiner verified storage and restart recovery but does not prove the
+> external LLM path. Do not tag 1.0.0 until the remaining checks have evidence;
 > the package version remains 0.1.0 meanwhile.
 
 ### Overview
 
 Read Podcast 1.0.0 will be the first major release of the personal podcast reading system. It turns selected podcast episodes into complete, readable long-form manuscripts—not compressed summaries—that you can read on any device and preserve as plain Markdown in a store you own. The same code supports Cloudflare (Workers / D1 / Workflows / R2, publishing to GitHub) and single-host Docker / Node (SQLite, local storage and local manuscripts by default).
 
-The Cloudflare application is designed for the **Cloudflare Workers Free plan**, but the large-feed, long-episode, publication and multi-task recovery boundaries are not yet production-verified. Transcription compute and the LLM refinement API may be billed separately by their providers.
+The Cloudflare application is designed for the **Cloudflare Workers Free plan**. Large feeds and long episodes have been exercised in production; multi-task recovery and CPU/subrequest headroom still need a documented boundary check. Transcription compute and the LLM refinement API may be billed separately by their providers.
 
 ### Relation to v0.x (Python / macOS App)
 

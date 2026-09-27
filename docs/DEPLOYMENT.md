@@ -18,8 +18,9 @@ When you are done you will have two hostnames:
 
 - A Cloudflare account with your domain on Cloudflare DNS, R2 enabled, and a Zero Trust
   organization (for Access and Tunnel). Workers, D1, Workflows and one Cron Trigger are used.
-  The maintainer's production deployment uses Workers Free, but the release boundary
-  scenarios remain unverified; see [Free-plan boundary checks](#resource-names-and-free-plan-boundary-checks).
+  The maintainer's production deployment uses Workers Free. Large feeds and long
+  episodes have been exercised; remaining release boundary checks are tracked
+  under [Free-plan boundary checks](#resource-names-and-free-plan-boundary-checks).
 - A Transcription Service host (reference: Apple Silicon Mac, macOS 14+, Xcode Command Line
   Tools, `uv`, `cloudflared`).
 - A private GitHub repository for manuscripts, and a fine-grained token with
@@ -622,8 +623,10 @@ resource instead of reusing the production data.
 
 ### Workers Free Plan Quotas and Operational Boundaries
 
-The Cloudflare application is designed to fit the **Workers Free tier**; the production boundary
-checks below are still pending real deployment evidence. Free tier quotas relevant to Read Podcast:
+The Cloudflare application is designed to fit the **Workers Free tier**. The maintainer has
+already processed large RSS feeds and long episodes; these runs establish that the paths
+work, not the worst-case CPU/subrequest headroom. Remaining release checks (especially
+multi-task cron recovery) need production evidence. Free tier quotas relevant to Read Podcast:
 
 | Resource | Free Tier Quota | Application Usage Pattern |
 |---|---|---|
@@ -637,16 +640,18 @@ checks below are still pending real deployment evidence. Free tier quotas releva
 ### Production Boundary Verification Checklist
 
 Local tests and `wrangler deploy --dry-run` validate code logic and syntax, but cannot measure
-production edge CPU or enforce the Free-plan subrequest budget. Maintainers and community users
-should monitor the following four operational scenarios against Workers Observability logs. These
-checks remain pending until real deployment evidence is available; record feed size, transcript
-size and task count with each result.
+production edge CPU or enforce the Free-plan subrequest budget. The first two scenarios have
+already been exercised; record the feed/episode and Workers Observability evidence if a
+resource-limit claim is needed. Publication and multi-task recovery checks below remain useful
+release verification scenarios:
 
 1. **Large RSS Feeds (Several Hundred Episodes)**:
+   - *Observed*: Production D1 contains 643 episodes for one subscription (read-only query); large-feed ingestion has been exercised. This count alone does not prove the RSS parse CPU budget.
    - *Boundary*: Parsing very large XML feeds with 200–500+ items within the 10 ms CPU budget.
    - *Design note*: The feed is parsed in full with `fast-xml-parser` when it is refreshed; episodes are stored in D1 and the episode list is paginated from D1, so browsing never re-parses the feed.
    - *Verification*: Subscribe to an extensive feed (e.g. 500+ episodes), open its episode list, and inspect CPU execution duration in Workers Logs.
 2. **Long Podcast Episodes (2–3 Hours)**:
+   - *Observed*: The maintainer has already run long episodes in production; the D1 feed snapshot also includes episodes over two hours. Historical run details and resource metrics are not captured here.
    - *Boundary*: Audio download and transcription polling across extended audio files; chunked LLM refinement.
    - *Design guard*: Polling is non-blocking (sleep/retry intervals managed across Workflow steps). Heavy speech-to-text processing occurs outside the Worker (on your host or via provider).
    - *Verification*: Process an episode longer than 2 hours. Confirm the workflow completes without `exceededCpu` or step timeouts.

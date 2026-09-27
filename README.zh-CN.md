@@ -3,7 +3,7 @@
 [English](README.md) · **简体中文**
 
 > [!NOTE]
-> **Cloudflare Free 为目标，生产边界待实测**：维护者的 Cloudflare 部署使用 Workers、D1、Workflows、R2 的 Free 计划，但大 RSS、长节目、GitHub 发布和多任务恢复仍需完成 [#30](https://github.com/xielevi/read-podcast/issues/30) 的生产验证。转录与精修可能产生额外服务商费用。也可以在单机上用 Docker / Node、SQLite、本地对象存储和本地稿件目录运行同一套代码，无需 Cloudflare 账号。
+> **Cloudflare Free 为目标，部分发布边界待核验**：维护者的 Cloudflare 部署使用 Workers Free。大 RSS 和长节目已经实际跑过；单次 cron 恢复多任务及 CPU／子请求余量还需在 [#30](https://github.com/xielevi/read-podcast/issues/30) 留下验证依据。转录与精修可能产生额外服务商费用。也可以在单机上用 Docker / Node、SQLite、本地对象存储和本地稿件目录运行同一套代码，无需 Cloudflare 账号。
 >
 > **与 v0.x（Python / macOS App）的关系**：Read Podcast 最初是使用 Python、MLX Whisper 并以 DMG 分发的 macOS 原生桌面应用。桌面版开发目前暂停，v0.x 源码归档于 [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python)。从 v1.0 开始，同一套 TypeScript 代码支持 Cloudflare 与单机 Docker / Node 两种部署，提供响应式浏览器界面。
 
@@ -111,12 +111,11 @@ Cloudflare 路径由 Cloudflare 管理任务从创建到发布的生命周期；
 - **Cloudflare**：Cloudflare 账号与接入 DNS 的域名、转录机器或云端提供商、OpenAI 兼容 LLM API key，以及有 fine-grained 写入令牌的 GitHub 稿件仓库。使用 Workers（含静态资源）、D1、R2、Workflows、Cron、Access，按需使用 Tunnel。见 [Cloudflare 部署](docs/DEPLOYMENT.md#2-cloudflare-application)。
 - **Docker / Node**：单机 Docker Compose、OpenAI 兼容 LLM API key，以及存放 SQLite、临时对象和稿件的磁盘空间。Compose 包含 Faster-Whisper 转录容器；不需要 Cloudflare 账号、域名或 GitHub 仓库。见 [Docker 部署](docs/DEPLOYMENT.md#7-local-docker-deployment)。
 
-**Cloudflare 费用。** 维护者的生产部署使用 Workers Free，但以下发布边界场景尚待实测。
+**Cloudflare 费用。** 维护者的生产部署使用 Workers Free，但仍有部分发布边界待核验。
 Free 上限包括：每次调用 10 ms CPU（I/O 等待不计入）、每次调用 50 个外部子请求和 1,000 个
 Cloudflare 服务子请求、每天 3,000 个 Workflow step、每账号 5 个 Cron Trigger，以及 Workflow
-完成后 3 天的实例状态保留期。本应用使用 1 个 Cron Trigger。几百集的大 RSS 源、2–3 小时长节目、
-GitHub 发布及单次 cron 恢复多条任务，仍需在具体部署中检查 `exceededCpu` 和子请求超限错误；
-已有生产使用不能证明这些边界均已通过。请以 Cloudflare 当前的
+完成后 3 天的实例状态保留期。本应用使用 1 个 Cron Trigger。大 RSS 和长节目已经实际跑过，
+但不能仅据此量化 CPU／子请求余量；单次 cron 恢复多条任务仍待生产验证。请以 Cloudflare 当前的
 [Workers 限制](https://developers.cloudflare.com/workers/platform/limits/)、
 [Workflows 限制](https://developers.cloudflare.com/workflows/reference/limits/)及
 [Workflows 定价](https://developers.cloudflare.com/workflows/reference/pricing/)为准。LLM 费用主要由作为输入的转录

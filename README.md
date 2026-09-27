@@ -3,7 +3,7 @@
 **English** · [简体中文](README.zh-CN.md)
 
 > [!NOTE]
-> **Cloudflare Free target; production boundary checks pending.** The Cloudflare application uses Workers, D1, Workflows and R2 on the maintainer's Free plan; large feeds, long episodes, GitHub publication and multi-task recovery still need the production checks in [issue #30](https://github.com/xielevi/read-podcast/issues/30). Transcription and refinement may incur separate provider charges. Alternatively, run the same application on one host with Docker / Node, SQLite, local storage and local manuscripts—no Cloudflare account required.
+> **Cloudflare Free target; some release boundary checks pending.** The maintainer's Cloudflare application runs on the Workers Free plan. Large RSS feeds and long episodes have been exercised; multi-task cron recovery and CPU/subrequest headroom still need documented verification in [issue #30](https://github.com/xielevi/read-podcast/issues/30). Transcription and refinement may incur separate provider charges. Alternatively, run the same application on one host with Docker / Node, SQLite, local storage and local manuscripts—no Cloudflare account required.
 >
 > **Relation to v0.x (Python / macOS App)**: Read Podcast was originally a native macOS desktop app (v0.x, Python, MLX Whisper and DMG packaging). Desktop development is paused; the v0.x code is archived on [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python). Starting with v1.0, one TypeScript codebase supports both Cloudflare and single-host Docker / Node deployments, with a responsive browser interface.
 
@@ -129,13 +129,13 @@ Choose one deployment path:
 - **Cloudflare:** a Cloudflare account with a domain on Cloudflare DNS, a transcription machine or provider, an OpenAI-compatible LLM API key, and a GitHub manuscript repository with a fine-grained write token. Workers (with static assets), D1, R2, Workflows, Cron, Access and optionally Tunnel are used. See [Cloudflare deployment](docs/DEPLOYMENT.md#2-cloudflare-application).
 - **Docker / Node:** a single host with Docker Compose, an OpenAI-compatible LLM API key, and local disk space for SQLite, temporary objects and manuscripts. The Compose stack includes a Faster-Whisper transcription container; no Cloudflare account, domain or GitHub repository is required. See [Docker deployment](docs/DEPLOYMENT.md#7-local-docker-deployment).
 
-**Cloudflare cost.** The maintainer's production deployment uses Workers Free, but the release boundary scenarios below are pending verification. Free limits include 10 ms CPU per invocation (I/O waiting does not
+**Cloudflare cost.** The maintainer's production deployment uses Workers Free; some release boundary checks remain. Free limits include 10 ms CPU per invocation (I/O waiting does not
 count), 50 external subrequests and 1,000 Cloudflare service subrequests per invocation,
 3,000 Workflow steps/day, five Cron Triggers per account, and three-day Workflow instance
-state retention after completion. This application uses one Cron Trigger. Large RSS feeds,
-2–3 hour episodes, GitHub publication and recovery of several tasks in one cron invocation
-still need deployment-specific checks for `exceededCpu` and subrequest-limit errors; production
-use alone does not establish those boundaries. Check Cloudflare's current
+state retention after completion. This application uses one Cron Trigger. Large RSS feeds
+and long episodes have been exercised in production; that alone does not quantify
+CPU/subrequest headroom. Multi-task cron recovery still needs a production boundary
+check. See Cloudflare's current
 [Workers limits](https://developers.cloudflare.com/workers/platform/limits/),
 [Workflows limits](https://developers.cloudflare.com/workflows/reference/limits/) and
 [Workflows pricing](https://developers.cloudflare.com/workflows/reference/pricing/). The LLM cost is driven
