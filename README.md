@@ -9,7 +9,7 @@
 
 **A personal podcast reading system that runs on the Cloudflare Free plan.** Pick the episodes worth keeping, and Read Podcast turns
 each one into a complete, readable long-form manuscript — not a summary — that you can read on
-any device, share as a public page, and keep as Markdown in a repository you own.
+any device, share as a public page, and keep as Markdown in a store you own.
 
 <p align="center">
   <img src="docs/assets/readme/library.webp" alt="Read Podcast workspace: subscriptions, episodes and an episode being turned into a manuscript" width="920">
@@ -53,8 +53,10 @@ long as the transcript it came from. You read it instead of re-listening, and it
 </p>
 
 Every published manuscript is a Markdown file with YAML front matter (title, podcast, date,
-duration, source links), committed to **your own GitHub repository**. Read Podcast is the reading
-interface in front of it: D1 only indexes manuscripts, and the repository holds the one durable
+duration, source links), stored in the **Canonical Manuscript Store**: your own GitHub
+repository on a Cloudflare deployment, or a local directory on the host when running with
+Docker (ready for Obsidian or any editor). Read Podcast is the reading
+interface in front of it: the database only indexes manuscripts, and the store holds the one durable
 copy of each.
 
 > **Language.** Read Podcast currently targets Chinese-language podcasts: the interface, the
@@ -81,8 +83,9 @@ Podcast is built so that every expensive step happens once:
   A separate completeness guard rejects output below the configured hard floor (default 70%) or
   without basic manuscript structure. A rejected result is never published; the transcript is
   kept so you can retry.
-- **You own the output.** Manuscripts live in a GitHub repository you control — plain Markdown,
-  versioned, portable. Public readers are served the exact version recorded at publish time,
+- **You own the output.** Manuscripts live in a store you control — a GitHub repository (plain
+  Markdown, versioned) on Cloudflare, or a local directory on Docker. Public readers are served
+  the exact version recorded at publish time,
   cached at Cloudflare's edge, so anonymous traffic does not hit GitHub on every read.
 - **Public reading, private control, no accounts.** Access control is Cloudflare Access on two
   path prefixes. The application itself has no users, passwords or sessions.
@@ -102,7 +105,7 @@ flowchart LR
     TS -->|"raw transcript"| CF
     CF -->|"refine request"| RP["Refinement Provider<br/>(OpenAI-compatible API)"]
     RP -->|"refined text"| CF
-    CF -->|"publish"| CMS["Canonical Manuscript Store<br/>(your GitHub repository)"]
+    CF -->|"publish"| CMS["Canonical Manuscript Store<br/>(your GitHub repository,<br/>or a local directory on Docker)"]
 ```
 
 Cloudflare owns every task from creation to publication; the other three boxes are replaceable
@@ -116,7 +119,7 @@ dependencies it calls. Readers only ever talk to the Cloudflare application.
 | Uploaded audio | Cloudflare R2 `uploads/` | 1 day |
 | Raw transcripts | Cloudflare R2 `raw/` | 7 days |
 | Refined text checkpoints | Cloudflare R2 `refined/` | 7 days |
-| Published manuscripts | your GitHub repository | durable — until you delete them |
+| Published manuscripts | Canonical Manuscript Store: your GitHub repository (Cloudflare) or a local directory (Docker) | durable — until you delete them |
 | Podcast audio | not stored — the Transcription Service downloads it into a working directory for the job | deleted after the job |
 | Credentials (GitHub, LLM, R2 signing, Access service token) | Wrangler secrets on Cloudflare | — |
 
@@ -133,7 +136,8 @@ returns a secret. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the invar
   [transcription contract](docs/ARCHITECTURE.md#transcription-service-contract) can replace it.
 - **An OpenAI-compatible LLM API** and its API key.
 - **A GitHub repository** for manuscripts (private is fine) and a fine-grained token that can
-  write to it.
+  write to it. (Docker deployments instead get a local manuscript directory by default; the
+  repository is optional there.)
 
 **Cost.** **Workers Free is supported**; the maintainer's production deployment runs on it
 ($0/month for Workers). Free limits include 10 ms CPU per invocation (I/O waiting does not
@@ -157,13 +161,14 @@ electricity aside).
 - **Public by default for reading.** Your subscription list (names and feed hosts only) and all
   published manuscripts are visible at `/`. To keep everything private, put the whole hostname
   behind Access instead of just the two control paths.
-- **Publish snapshots.** Public pages serve the version committed at publish time. If you edit a
-  manuscript in your repository, the owner view shows the edit, but public readers keep seeing
-  the published version until you generate the episode again.
+- **Publish snapshots.** Public pages serve the version recorded at publish time. If you edit a
+  manuscript in your store (repository or local directory), the owner view shows the edit, but
+  public readers keep seeing the published version until you generate the episode again.
 - **The transcription machine must be reachable while transcribing.** Once the raw transcript
   is in R2 it can go offline; tasks already past transcription are unaffected.
 - **Manual, per-episode generation.** New episodes are not processed automatically.
-- **One manuscript store.** GitHub is the only store. There is no cloud-drive export, OAuth
+- **One manuscript store.** One store per deployment — GitHub on Cloudflare, a local directory
+  by default on Docker. There is no cloud-drive export, OAuth
   connector or chat assistant, by design.
 
 ## Try it locally

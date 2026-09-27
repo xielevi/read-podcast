@@ -8,7 +8,7 @@
 > **与 v0.x（Python / macOS App）的关系**：Read Podcast 最初是一个使用 Python 开发、带 DMG 打包与本地图形界面的 macOS 原生桌面应用（v0.x）。原生桌面版开发目前已暂停，v0.x 完整代码已归档至 [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python) 分支。从 v1.0 开始，项目彻底转向 Cloudflare 原生云端架构（Workers / D1 / Workflows / R2 + 外部独立算力），将阅读界面带到手机、平板与桌面所有浏览器中。
 
 **一个可在 Cloudflare Free 计划上运行的个人播客阅读系统。** 挑出值得留下的单集，Read Podcast 会把每一集整理成一份完整、可读的长文稿——
-不是摘要。你可以在任何设备上阅读它、以公开页面分享它，并以 Markdown 形式保存在你自己拥有的仓库里。
+不是摘要。你可以在任何设备上阅读它、以公开页面分享它，并以 Markdown 形式保存在你自己拥有的稿件存储里。
 
 <p align="center">
   <img src="docs/assets/readme/library.webp" alt="Read Podcast 工作区：订阅、单集列表与一集正在生成的稿件" width="920">
@@ -43,8 +43,9 @@ Read Podcast 走相反的路。它的产出是一份**稿件**：完整的对话
 </p>
 
 每份已发布稿件都是一个带 YAML frontmatter（标题、节目、日期、时长、来源链接）的 Markdown 文件，
-提交到**你自己的 GitHub 仓库**。Read Podcast 是它前面的阅读界面：D1 只保存稿件索引，
-仓库保存每份稿件唯一的持久副本。
+保存在 **Canonical Manuscript Store**：Cloudflare 部署是你自己的 GitHub 仓库，Docker 部署默认是
+宿主机上的本地目录（可直接放进 Obsidian 等工具）。Read Podcast 是它前面的阅读界面：数据库只保存
+稿件索引，稿件存储保存每份稿件唯一的持久副本。
 
 > **语言。** Read Podcast 目前面向中文播客：界面、内置整理 Prompt 与概念核验（中文维基百科）
 > 都是中文。转写本身会自动识别语言。
@@ -64,8 +65,9 @@ Read Podcast 走相反的路。它的产出是一份**稿件**：完整的对话
 - **编辑，而不是摘要。** 默认整理目标约为原始转录的 75%–85%：主动压缩口语冗余，同时保留独立信息与
   推理过程。独立的完整度保护会拒绝低于运行时硬下限（默认 70%）或缺少基本稿件结构的结果。
   被拒绝的结果绝不会发布；原始转录会保留，可以重试。
-- **产出归你所有。** 稿件存放在你控制的 GitHub 仓库里——纯 Markdown、有版本、可迁移。
-  公开读者读到的是发布时记录的那个版本，并在 Cloudflare 边缘缓存，匿名流量不会每次都打到 GitHub。
+- **产出归你所有。** 稿件存放在你控制的稿件存储里——Cloudflare 部署是 GitHub 仓库（纯 Markdown、
+  有版本），Docker 部署是本地目录。公开读者读到的是发布时记录的那个版本，并在 Cloudflare 边缘缓存，
+  匿名流量不会每次都打到 GitHub。
 - **公开阅读、私有控制、没有账号。** 访问控制就是 Cloudflare Access 保护的两个路径前缀。
   应用本身没有用户、密码或会话。
 
@@ -84,7 +86,7 @@ flowchart LR
     TS -->|"raw transcript"| CF
     CF -->|"refine request"| RP["Refinement Provider<br/>(OpenAI-compatible API)"]
     RP -->|"refined text"| CF
-    CF -->|"publish"| CMS["Canonical Manuscript Store<br/>(your GitHub repository)"]
+    CF -->|"publish"| CMS["Canonical Manuscript Store<br/>(your GitHub repository,<br/>or a local directory on Docker)"]
 ```
 
 Cloudflare 拥有每个任务从创建到发布的完整生命周期；另外三个方框都是它调用的、可替换的依赖。
@@ -98,7 +100,7 @@ Cloudflare 拥有每个任务从创建到发布的完整生命周期；另外三
 | 上传的音频 | Cloudflare R2 `uploads/` | 1 天 |
 | 原始转录 | Cloudflare R2 `raw/` | 7 天 |
 | 精修文本检查点 | Cloudflare R2 `refined/` | 7 天 |
-| 已发布稿件 | 你的 GitHub 仓库 | 持久保存，直到你删除 |
+| 已发布稿件 | Canonical Manuscript Store：你的 GitHub 仓库（Cloudflare）或本地目录（Docker） | 持久保存，直到你删除 |
 | 播客音频 | 不保存——转录服务把它下载到本次任务的工作目录 | 任务结束即删除 |
 | 凭据（GitHub、LLM、R2 签名、Access service token） | Cloudflare 上的 Wrangler secrets | — |
 
@@ -113,6 +115,7 @@ Cloudflare 拥有每个任务从创建到发布的完整生命周期；另外三
   任何实现了[转录协议](docs/ARCHITECTURE.md#transcription-service-contract)的机器或服务都可以替换它。
 - **一个 OpenAI 兼容的 LLM API** 及其 API key。
 - **一个用于存放稿件的 GitHub 仓库**（私有即可），以及一个能写入该仓库的 fine-grained token。
+  （Docker 部署默认使用本地稿件目录，GitHub 仓库在那里是可选的。）
 
 **费用。** **Workers Free 计划可用**，维护者的生产部署一直使用该计划（Workers $0/月）。
 Free 上限包括：每次调用 10 ms CPU（I/O 等待不计入）、每次调用 50 个外部子请求和 1,000 个
@@ -130,11 +133,12 @@ GitHub 发布及单次 cron 恢复多条任务，仍需在具体部署中检查 
 - **单一主人。** 没有多用户模型：谁通过了 Cloudflare Access，谁就控制这个工作区。
 - **阅读默认公开。** 你的订阅列表（只有名称与 feed 域名）和所有已发布稿件都会在 `/` 可见。
   如果希望完全私有，让 Access 保护整个域名，而不只是两个控制路径。
-- **发布快照。** 公开页面读取的是发布时提交的版本。如果你在仓库里修改了稿件，主人视图会显示修改，
-  但公开读者仍然看到已发布的版本，直到你重新生成这一集。
+- **发布快照。** 公开页面读取的是发布时记录的版本。如果你在稿件存储（仓库或本地目录）里修改了稿件，
+  主人视图会显示修改，但公开读者仍然看到已发布的版本，直到你重新生成这一集。
 - **转写期间转写机器必须可达。** 原始转录进入 R2 之后它就可以离线；已经过了转写阶段的任务不受影响。
 - **按单集手动生成。** 新单集不会被自动处理。
-- **唯一的稿件存储。** GitHub 是唯一的存储。没有网盘导出、OAuth 连接器或对话助手，这是刻意的设计。
+- **唯一的稿件存储。** 每个部署只有一种稿件存储——Cloudflare 是 GitHub 仓库，Docker 默认本地目录。
+  没有网盘导出、OAuth 连接器或对话助手，这是刻意的设计。
 
 ## 本地试用
 

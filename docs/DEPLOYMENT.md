@@ -569,6 +569,7 @@ Cloudflare services (#27). The same application codebase runs on Node.js 22 with
 | Object storage | Cloudflare R2 | Local volume (`/data/storage`), automated 1d/7d retention |
 | Task execution | Cloudflare Workflows | In-process step runner with SQLite checkpoints and restart resume |
 | Maintenance | Cloudflare Cron Trigger | In-process 5-minute timer (reconciliation + storage sweep) |
+| Manuscript store | GitHub repository (required) | Local directory (default, `./manuscripts` bind-mounted to `MANUSCRIPT_PATH=/data/manuscripts`, with `.versions/` history) or GitHub fallback |
 | Access control | Cloudflare Access | Optional Basic Auth on `/manage*` and `/api/control/*` (bound to `127.0.0.1`) |
 | Transcription | Mac host or DashScope | Containerized Faster-Whisper (`transcription` service) or DashScope |
 
@@ -580,7 +581,11 @@ Cloudflare services (#27). The same application codebase runs on Node.js 22 with
    ```
 2. Fill in the required credentials in `.env`:
    - `REFINER_API_KEY`: Your OpenAI-compatible LLM API key
-   - `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO`: Your manuscript store repository
+   - Manuscript storage is zero-configuration by default: published manuscripts land in the
+     local `./manuscripts/` directory on the host (plain Markdown with YAML front matter, ready
+     for Obsidian or any editor). To store manuscripts in a GitHub repository instead, remove
+     the `MANUSCRIPT_PATH` entry and the `./manuscripts` mount from `docker-compose.yml`, then
+     set `GITHUB_TOKEN`, `GITHUB_OWNER` and `GITHUB_REPO` in `.env`.
    - Optional: set `CONTROL_AUTH_USER` and `CONTROL_AUTH_PASSWORD` to protect the control plane with Basic Auth.
 3. Start the services:
    ```bash
@@ -597,7 +602,15 @@ Cloudflare services (#27). The same application codebase runs on Node.js 22 with
 ### Data persistence
 
 - `web-data`: Persists the SQLite database (`/data/read-podcast.db`) and temporary execution payloads (`/data/storage/`).
+- `./manuscripts` (bind mount): Published manuscripts — the Canonical Manuscript Store. Current
+  Markdown files sit directly in the mounted directory (readable by Obsidian or any editor);
+  `.versions/` keeps content-addressed snapshots so the public page can serve the version that
+  was published. Durable: never swept by retention, back it up like the database.
 - `transcription-data`: Persists downloaded Faster-Whisper models (Hugging Face cache) and logs.
+
+Switching between the local directory and the GitHub store after episodes have been published is
+not a migration: each deployment owns one store, and manuscripts published to the other store
+return 404 on the public page (task records and read state in SQLite are unaffected).
 
 
 ## Resource names and Free-plan boundary checks
