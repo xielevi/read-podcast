@@ -1,8 +1,11 @@
-import type { Database, ObjectStore, TaskWorkflowEngine } from "./platform/types";
+import type { Database, ManuscriptStore, ObjectStore, TaskWorkflowEngine } from "./platform/types";
 
 export interface Env {
   db: Database;
   storage: ObjectStore;
+  // Canonical Manuscript Store:成稿唯一长期事实源。CF = GitHub 仓库;Docker = 本地目录
+  // (默认)或 GitHub 回落。由平台装配层注入,业务层只经此读写,选择不在运行时发生。
+  manuscripts: ManuscriptStore;
   workflows?: TaskWorkflowEngine;
   assets?: { fetch: (request: Request) => Promise<Response> };
   APP_ENV: string;
@@ -52,8 +55,8 @@ export interface Env {
  * - queued       : 任务已创建，Processing Workflow 即将 / 刚刚启动；
  * - transcribing : Workflow 已向转录服务提交请求（取音频 / 准备 / 转录是其子阶段，见 transcription_phase）；
  * - refining     : raw 已持久化到 R2，Workflow 正在精修 / 质量门禁；
- * - finalizing   : AI 精修与质量门禁通过，正在向 canonical Output Backend 提交正式稿（不可取消边界）；
- * - success      : Output Backend 写入成功且 D1 task / article 索引已同步更新。
+ * - finalizing   : AI 精修与质量门禁通过，正在向 Canonical Manuscript Store 提交正式稿（不可取消边界）；
+ * - success      : Store 写入成功且 D1 task / article 索引已同步更新。
  */
 export type TaskStatus = "queued" | "transcribing" | "refining" | "finalizing" | "success" | "error" | "cancelled";
 

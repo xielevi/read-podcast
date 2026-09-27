@@ -1,5 +1,4 @@
 import { HttpError, error, json, parseLimit, parseOffset } from "./http";
-import { readPodcastContent } from "./github";
 import { sha256Hex } from "./crypto";
 import { proxyArtwork, searchItunes } from "./episodes";
 import type { Env } from "./types";
@@ -11,7 +10,8 @@ import type { Env } from "./types";
 // 只有已发布（articles 表中存在）的稿件对外可见；稿件在 Store 中的路径与 commit 不对外返回。
 
 const SEARCH_CACHE_SECONDS = 60 * 60;
-// 已发布正文在边缘的缓存时长。正文按发布时的 commit 读取、以 content_path@commit_sha 为键，
+// 已发布正文在边缘的缓存时长。正文按发布时的版本读取、以 content_path@commit_sha 为键
+// （commit_sha = Store 的不可变版本标识:GitHub commit sha 或本地内容哈希），
 // 内容不可变，这个时长只影响边缘存储占用，不影响正确性。
 const MANUSCRIPT_CACHE_SECONDS = 24 * 60 * 60;
 const MAX_SEARCH_QUERY_LENGTH = 100;
@@ -145,17 +145,18 @@ async function publishedContent(taskId: string, env: Env): Promise<PublishedCont
 }
 
 /**
- * 已发布正文 = 发布快照：按 articles.commit_sha 读取 Store 中那个 commit 的文件（与 article_concepts
- * 同一版本键），而不是分支 HEAD。内容不可变，因此以 content_path@commit_sha 为键在边缘缓存，
- * 匿名阅读不再逐次消耗 Store（GitHub API）配额；换版本只能通过重新发布（commit_sha 更新）。
- * 缓存只在公共面这一层；控制面与发布流程仍直接读取分支。
+ * 已发布正文 = 发布快照：按 articles.commit_sha（Store 的不可变版本标识，与 article_concepts
+ * 同一版本键）读取 Store 中那个版本的文件，而不是当前版本。内容不可变，因此以
+ * content_path@commit_sha 为键在边缘缓存，匿名阅读不再逐次消耗 Store（GitHub API）配额；
+ * 换版本只能通过重新发布（commit_sha 更新）。
+ * 缓存只在公共面这一层；控制面与发布流程仍直接读取当前版本。
  */
 function publishedMarkdown(article: PublishedContentRow, origin: string, env: Env): Promise<Response> {
   const key = `${origin}/api/public/articles/cache/${encodeURIComponent(article.commit_sha)}/${encodeURIComponent(article.content_path)}`;
   return cachedAtEdge(key, async () => {
-    const upstream = await readPodcastContent(env, article.content_path, article.commit_sha);
-    if (!upstream.ok) return upstream;
-    return new Response(upstream.body, {
+    const markdown = await env.manuscripts.read(article.content_path, article.commit_sha);
+    if (markdown === null) return new Response(null, { status: 404 });
+    return new Response(markdown, {
       headers: { "content-type": "text/markdown; charset=utf-8", "cache-control": `public, max-age=${MANUSCRIPT_CACHE_SECONDS}` },
     });
   });

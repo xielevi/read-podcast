@@ -1,5 +1,4 @@
 import { HttpError, json } from "./http";
-import { readPodcastContent } from "./github";
 import { proposeConceptCandidates } from "./refinement/concepts";
 import { createRefinerClient } from "./refinement/refiner";
 import { loadRefinerSettings } from "./refinement/settings";
@@ -21,7 +20,7 @@ interface TaskConceptRow {
  * 关键概念提取与维基百科核验管线（迁移后完全在 Cloudflare 执行）：
  * 1. 校验任务终态与稿件路径（必须 status === 'success' 且 final_content_path 存在）；
  * 2. 检查 D1 article_concepts 缓存（按 content_path + commit_sha 查询，命中则即刻返回）；
- * 3. Cache miss：从 GitHub writing 仓库读取最终 Markdown 正文；
+ * 3. Cache miss：从 Canonical Manuscript Store 读取最终 Markdown 正文；
  * 4. Edge refiner client 直接调用大模型提名候选概念（不经过任何转录服务）；
  * 5. Edge 并发调用 Wikipedia 官方 API 核验真实词条、摘要与规范 URL；
  * 6. 结果持久化至 D1 article_concepts 缓存并返回。
@@ -62,15 +61,18 @@ export async function taskConcepts(taskId: string, env: Env): Promise<Response> 
     }
   }
 
-  // 2. 从 GitHub writing 仓库读取最终 Markdown 稿件
-  const contentRes = await readPodcastContent(env, task.final_content_path);
-  if (contentRes.status === 404) {
-    throw new HttpError(404, "content_not_found", "Content not found in GitHub");
+  // 2. 从 Canonical Manuscript Store 读取最终 Markdown 稿件
+  let markdown: string;
+  try {
+    const stored = await env.manuscripts.read(task.final_content_path);
+    if (stored === null) {
+      throw new HttpError(404, "content_not_found", "Content not found in the manuscript store");
+    }
+    markdown = stored;
+  } catch (caught) {
+    if (caught instanceof HttpError) throw caught;
+    throw new HttpError(502, "store_error", "Failed to read content from the manuscript store");
   }
-  if (!contentRes.ok) {
-    throw new HttpError(502, "github_error", "Failed to read content from GitHub");
-  }
-  const markdown = await contentRes.text();
   if (!markdown.trim()) {
     return json({ concepts: [] });
   }

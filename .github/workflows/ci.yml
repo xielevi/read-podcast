@@ -47,7 +47,9 @@ jobs:
         run: docker build -t read-podcast:test .
       - name: Start container and verify health
         run: |
-          docker run -d --name test-app -p 3000:3000 -e PORT=3000 -e HOST=0.0.0.0 read-podcast:test
+          manuscripts="$(mktemp -d)"
+          docker run -d --name test-app -p 3000:3000 -e PORT=3000 -e HOST=0.0.0.0 \
+            -v "$manuscripts:/data/manuscripts" read-podcast:test
           for i in $(seq 1 30); do
             if curl -s -f http://127.0.0.1:3000/api/public/health; then
               echo "App is healthy!"
@@ -56,6 +58,9 @@ jobs:
             sleep 1
           done
           curl -s -f http://127.0.0.1:3000/api/public/health | grep '"status":"ok"'
+          # docker compose creates a missing bind-mount directory as root on Linux. The
+          # entrypoint must make the default manuscript mount writable by the node process.
+          docker exec -u node test-app sh -c 'touch /data/manuscripts/.write-test && rm /data/manuscripts/.write-test'
           docker stop test-app
 
   # 生产发布（CD）。仅当 push 到 main、且 edge / transcription-service / docker 三个 CI job 全部成功后执行；

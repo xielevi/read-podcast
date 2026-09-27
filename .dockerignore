@@ -3,6 +3,7 @@ dist
 .git
 .github
 data
+manuscripts
 .venv
 __pycache__
 .pytest_cache

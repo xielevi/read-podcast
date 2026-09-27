@@ -7,14 +7,15 @@
  *   不同 attempt（stale_attempt）或已取消（cancelled）一律拒绝；
  * - cancel vs finalization race：cancel_requested = 1 时 CAS 失败，拒绝提交；
  * - current_attempt_id CAS：旧 attempt 的提交不允许落库；
- * - GitHub commit first → D1 task success + article upsert 原子 batch；
- * - GitHub / D1 临时故障保持 status = 'finalizing'，抛 retryable error，
- *   让 publish step durable retry 直接重试（利用 GitHub 相同内容提交的幂等性，不制造重复 commit）；
+ * - Store publish first（GitHub commit）→ D1 task success + article upsert 原子 batch；
+ * - Store / D1 临时故障保持 status = 'finalizing'，抛 retryable error，
+ *   让 publish step durable retry 直接重试（利用同内容发布幂等性，不制造重复 commit）；
  * - 不在 persistFinalArticle 内部人工释放 claim 或二次覆写 error；
  *   publish retries 最终耗尽时由外层 ProcessingWorkflow 统一收敛为 error(final_persist_failed)。
  */
 import { describe, expect, it } from "vitest";
 import { FinalizeError, persistFinalArticle } from "../src/finalize";
+import { createGitHubManuscriptStore } from "../src/github";
 import type { Env } from "../src/types";
 
 const TASK = "12345678-1234-1234-1234-123456789abc";
@@ -151,6 +152,8 @@ function harness(options: {
     GITHUB_BRANCH: "main",
     GITHUB_PODCAST_PATH: "podcasts/transcripts",
   } as unknown as Env;
+  // 真实 GitHub store（Git Data API 语义）+ installGithub 的 fetch 桩，走完整发布路径。
+  h.env.manuscripts = createGitHubManuscriptStore(h.env);
 
   return h;
 }

@@ -85,7 +85,34 @@ export interface ObjectStore {
   createPresignedUrl?(key: string, options?: { nowMs?: number; expiresInSeconds?: number }): Promise<string>;
 }
 
-// ── 任务工作流接口（durable step 执行与实例管理）──
+// ── 稿件存储接口（Canonical Manuscript Store：成稿唯一长期事实源）──
+
+/**
+ * 一次发布对应的不可变版本。path 为 Store 内相对路径（如 podcasts/transcripts/xxx.md）；
+ * version 为版本标识：GitHub commit sha（40 位 hex）或本地内容哈希（sha-256，64 位 hex），
+ * 写入 D1 的 commit_sha 列（列名不变，语义 = Store 的不可变发布快照标识）。
+ */
+export interface ManuscriptVersion {
+  path: string;
+  version: string;
+}
+
+export interface ManuscriptStore {
+  /**
+   * 发布成稿（唯一写入口）。同路径 + 同内容幂等（publish step 重放 / durable retry 安全）；
+   * 覆盖不同内容时保留全部历史版本。
+   */
+  publish(input: { writingFilename: string; title: string; markdown: string }): Promise<ManuscriptVersion>;
+  /**
+   * 读取稿件正文。version 缺省 = 当前版本（控制面用途）；指定 version 时按发布快照读取
+   * （公开页语义）。文件或版本不存在返回 null；其余失败抛错。
+   */
+  read(path: string, version?: string): Promise<string | null>;
+  /** 列出已发布稿件（path + 当前 version），按 path 排序。 */
+  list(): Promise<Array<{ path: string; version: string }>>;
+}
+
+// ── 任务工作流接口(durable step 执行与实例管理)──
 
 export interface StepContextLike {
   attempt: number;

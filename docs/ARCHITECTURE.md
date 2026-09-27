@@ -33,25 +33,30 @@ Canonical Manuscript Store   final manuscript persistence
 | **R2** | expensive intermediate payloads: uploaded audio, raw transcripts and refined text (temporary) | Cloudflare R2 |
 | **Transcription Service** | turning audio into a raw transcript; no business state, no credential, no user-maintained configuration | `transcription_service/` |
 | **Refinement Provider** | turning a raw transcript into refined text | any OpenAI-compatible API |
-| **Canonical Manuscript Store** | the durable, canonical published manuscript | a user-configured GitHub repository |
+| **Canonical Manuscript Store** | the durable, canonical published manuscript | a user-configured GitHub repository (Cloudflare deployment) or a local directory volume (Docker deployment, default) |
 
 Cloudflare owns the task lifecycle from creation to publication. The Transcription
 Service is a replaceable compute dependency used during the transcription stage; once the
 raw transcript is in R2 it can be offline, restarted or replaced without affecting the task.
 
-Readers always go through the Cloudflare application. The Canonical Manuscript Store is a
-persistence layer that Cloudflare reads internally, never a browser-facing entry point.
+Readers always go through the application. The Canonical Manuscript Store is a
+persistence layer that the application reads internally, never a browser-facing entry point.
 A deployment has exactly one Canonical Manuscript Store per manuscript; any future export
-is a secondary copy, not a second source of truth. Introduce an abstraction (an
-`OutputBackend` interface, a selector, a D1 column, a Settings switch) only when a second
-concrete store exists.
+is a secondary copy, not a second source of truth. Two concrete stores exist — the GitHub
+repository and the Docker local directory — so they stand behind a single minimal
+`ManuscriptStore` interface (`src/platform/types.ts`). Which store a deployment uses is
+decided once at environment assembly (Cloudflare: GitHub; Docker: local directory by
+default, GitHub as an opt-in fallback). There is no runtime backend selector, no Settings
+switch and no D1 backend column.
 
 ## Platform Interfaces and Abstraction Boundary
 
 In accordance with the project rule that abstractions are introduced only when a second concrete
 implementation exists, the platform interfaces (`Database`, `ObjectStore`, `TaskWorkflow`, and
 `Scheduled`) are introduced to support both the Cloudflare deployment and the self-hosted Docker
-deployment (#27: SQLite + local volume + in-process task executor; #28: local manuscript persistence).
+deployment (#27: SQLite + local volume + in-process task executor). The `ManuscriptStore` interface
+(#28: local manuscript persistence) followed the same rule: it was introduced together with its
+second concrete implementation.
 
 The interface boundary is drawn strictly between platform runtimes and business domain logic:
 
@@ -70,6 +75,13 @@ The interface boundary is drawn strictly between platform runtimes and business 
 - **Scheduled Maintenance interface**:
   Trigger for background reconciliation (`runMaintenance`), invoked by Cloudflare Cron Triggers or
   container task runners.
+- **Manuscript Store interface (`ManuscriptStore`)**:
+  The Canonical Manuscript Store contract: `publish` (the only write path, idempotent on the
+  same path and content, history preserved on overwrite), a versioned `read` (publish-snapshot
+  semantics), and a minimal `list`. A version is an immutable snapshot identifier — a GitHub
+  commit sha (40-hex) or a local content hash (64-hex sha-256) — carried by the existing D1
+  `commit_sha` columns. Implemented by the GitHub Git Data API (`src/github.ts`) and by the
+  Docker local directory (`src/platform/node/manuscript.ts`).
 
 **Boundary Rule & Thin Adapter**:
 Business layer code (`src/*` outside `src/platform/`) depends exclusively on these minimal interfaces
@@ -91,14 +103,18 @@ logic is executed by pairing the platform interfaces with local implementations:
 | `ObjectStore` | Cloudflare R2 | Local directory volume (`uploads/`, `raw/`, `refined/`), temporary HMAC-signed download URLs (`/storage/download`), automated lifecycle retention (1d uploads, 7d raw/refined) |
 | `TaskWorkflowEngine` | Cloudflare Workflows | In-process step runner with SQLite checkpoint tables (`_workflow_instances`, `_workflow_checkpoints`), matching replay, retry, backoff, and non-retryable semantics; recovers running workflows across process restarts |
 | `ScheduledHandler` | Cloudflare Cron Trigger (every 5 min) | In-process timer (every 5 min) invoking `runMaintenance` (recovery and liveness reconciliation) and object store retention sweep |
+| `ManuscriptStore` | GitHub repository (Git Data API, `src/github.ts`) | Local directory volume (`MANUSCRIPT_PATH`, e.g. `/data/manuscripts`): current file plus `.versions/` content-addressed snapshots, temp-file + rename atomic writes; durable — never swept by retention |
 | Static Assets | Cloudflare Assets | Node HTTP server serving `public/` files with MIME mapping and SPA fallback |
 | Access Control | Cloudflare Access | Optional HTTP Basic Auth on `/manage*` and `/api/control/*`; Public Browse Mode (`/` and `/api/public/*`) remains open and side-effect free; defaults to listening on `127.0.0.1` |
 | Secrets / Vars | Wrangler secrets / vars | Environment variables and `.env` |
 
 In Docker Compose, the Web application container runs alongside the containerized Transcription
 Service (`transcription_service/docker-compose.yml`), communicating over an internal container network.
-Manuscript persistence uses the Canonical Manuscript Store (GitHub repository) as in the Cloudflare deployment;
-local directory persistence is planned for #28.
+Manuscript persistence defaults to the local directory store (`./manuscripts` bind-mounted to
+`/data/manuscripts`): current Markdown files sit directly in the mounted directory (readable by
+Obsidian or any editor) and `.versions/` keeps content-addressed snapshots for publish-snapshot
+reads. Configuring the GitHub credentials instead of `MANUSCRIPT_PATH` falls back to the GitHub
+store, matching the Cloudflare deployment.
 
 ### Internal Service Topology and Security Boundaries
 
@@ -167,8 +183,10 @@ Cloudflare Access can enforce the boundary before a request reaches the applicat
   published articles (content, download, cached concepts). Episodes expose only whether a
   published article exists and its id — never task progress, status, failures, read state,
   settings, Store paths or commits.
-- Public reading serves the **publish snapshot**: the Store file at `articles.commit_sha` (the
-  same version key as `article_concepts`), not the branch head. A new version reaches readers
+- Public reading serves the **publish snapshot**: the Store file at `articles.commit_sha` — a
+  GitHub commit sha or the local store's content-hash version identifier; both are immutable
+  publish-time snapshot keys (the same version key as `article_concepts`), not the current
+  head. A new version reaches readers
   only by re-publishing. Because that content is immutable, it is edge-cached by
   `content_path@commit_sha`; search results and cover art are edge-cached as well, so anonymous
   traffic does not reach upstream origins or spend the Store's API quota. The edge cache is a
@@ -251,7 +269,8 @@ in R2 (retry, recovery). Each `N` is a submission number.
   nothing is published and the raw transcript stays in R2 for a retry. The built-in editorial
   prompt normally targets roughly 75–85%; the ratio setting is a safety floor, not the editing target.
 - **Finalization.** The manuscript is committed to the Canonical Manuscript Store first
-  (same path and same content is a no-op), and only then is D1 marked `success`. A replay of
+  (same path and same content is a no-op — for the local store this means a content-addressed
+  snapshot plus an atomic overwrite), and only then is D1 marked `success`. A replay of
   the publish step for the same attempt resumes finalization; a stale attempt is rejected.
   Cancellation is honored until finalization begins.
 - **Cancel.** Cancel marks the task `cancelled`, terminates the workflow, and best-effort
@@ -364,7 +383,7 @@ Facts that differ from the self-hosted path and are accepted by design:
 | Uploaded audio | R2 `uploads/*` | 1 day |
 | Raw transcript | R2 `raw/*` | 7 days |
 | Refined text checkpoint | R2 `refined/*` | 7 days |
-| Published manuscript | Canonical Manuscript Store | durable |
+| Published manuscript | Canonical Manuscript Store (GitHub repo, or the local `MANUSCRIPT_PATH` directory with `.versions/` history on Docker) | durable |
 
 Refined checkpoints are temporary execution payloads, never a reader-facing manuscript store.
 Published manuscripts remain canonical only in the Canonical Manuscript Store.

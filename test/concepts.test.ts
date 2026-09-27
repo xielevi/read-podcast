@@ -277,6 +277,11 @@ describe("taskConcepts endpoint", () => {
     return {
       db: mockDB,
       DB: mockDB,
+      manuscripts: {
+        publish: vi.fn(),
+        read: vi.fn(async () => githubMarkdown),
+        list: vi.fn(async () => []),
+      },
       GITHUB_TOKEN: "ghp-test",
       GITHUB_OWNER: "test-owner",
       GITHUB_REPO: "writing",
