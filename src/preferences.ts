@@ -90,7 +90,7 @@ export function toPreferencesDto(prefs: UiPreferences): UiPreferencesDto {
 }
 
 export async function loadUiPreferences(env: Env): Promise<UiPreferences> {
-  const row = await env.DB.prepare(
+  const row = await env.db.prepare(
     "SELECT app_theme, reader_theme, font_preset, font_size, line_height, margin_width, updated_at FROM ui_preferences WHERE id = 1",
   ).first<UiPreferencesRow>();
   return toPreferences(row);
@@ -169,7 +169,7 @@ export async function updateUiPreferences(
     updatedAt: null,
   };
 
-  await env.DB.prepare(`INSERT INTO ui_preferences (id, app_theme, reader_theme, font_preset, font_size, line_height, margin_width, updated_at)
+  await env.db.prepare(`INSERT INTO ui_preferences (id, app_theme, reader_theme, font_preset, font_size, line_height, margin_width, updated_at)
     VALUES (1, ?, ?, ?, ?, ?, ?, ${NOW})
     ON CONFLICT(id) DO UPDATE SET
       app_theme = excluded.app_theme,

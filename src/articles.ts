@@ -17,7 +17,7 @@ export async function listArticles(url: URL, env: Env): Promise<Response> {
   const limit = parseLimit(url, 50, 200);
   const offset = parseOffset(url);
 
-  const result = await env.DB.prepare(
+  const result = await env.db.prepare(
     `SELECT task_id, episode_id, title, podcast_name, content_path, commit_sha, created_at, updated_at
      FROM articles
      ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
@@ -28,7 +28,7 @@ export async function listArticles(url: URL, env: Env): Promise<Response> {
 
 /** GET /articles/:task_id —— 根据 task_id 查询特定正式稿索引元数据。 */
 export async function getArticle(taskId: string, env: Env): Promise<Response> {
-  const article = await env.DB.prepare(
+  const article = await env.db.prepare(
     `SELECT task_id, episode_id, title, podcast_name, content_path, commit_sha, created_at, updated_at
      FROM articles WHERE task_id = ?`,
   ).bind(taskId).first<ArticleRow>();

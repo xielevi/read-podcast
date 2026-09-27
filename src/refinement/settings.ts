@@ -39,7 +39,7 @@ function toSettings(row: RefinerSettingsRow | null): RefinerSettings {
 }
 
 export async function loadRefinerSettings(env: Env): Promise<RefinerSettings> {
-  const row = await env.DB.prepare(
+  const row = await env.db.prepare(
     "SELECT api_base, model, temperature, max_tokens, min_output_ratio, updated_at FROM refiner_settings WHERE id = 1",
   ).first<RefinerSettingsRow>();
   return toSettings(row);
@@ -123,7 +123,7 @@ export async function updateRefinerSettings(
     maxTokens: patch.maxTokens ?? current.maxTokens,
     minOutputRatio: patch.minOutputRatio ?? current.minOutputRatio,
   };
-  await env.DB.prepare(`INSERT INTO refiner_settings (id, api_base, model, temperature, max_tokens, min_output_ratio, updated_at)
+  await env.db.prepare(`INSERT INTO refiner_settings (id, api_base, model, temperature, max_tokens, min_output_ratio, updated_at)
     VALUES (1, ?, ?, ?, ?, ?, ${NOW})
     ON CONFLICT(id) DO UPDATE SET
       api_base = excluded.api_base,

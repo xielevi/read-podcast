@@ -124,7 +124,7 @@ export function mapProviderProgress(snapshot: TranscriptionSnapshot): MappedProg
 const OWNED_TRANSCRIBING = `id = ? AND current_attempt_id = ? AND cancel_requested = 0 AND status = 'transcribing'`;
 
 async function applyProgress(env: Env, params: ProcessingWorkflowParams, mapped: MappedProgress): Promise<boolean> {
-  const result = await env.DB.prepare(`UPDATE tasks
+  const result = await env.db.prepare(`UPDATE tasks
     SET progress = MAX(progress, ?), message = ?, transcription_phase = ?, updated_at = ${NOW}
     WHERE ${OWNED_TRANSCRIBING}`)
     .bind(mapped.progress, mapped.message, mapped.phase, params.taskId, params.attemptId)
@@ -133,7 +133,7 @@ async function applyProgress(env: Env, params: ProcessingWorkflowParams, mapped:
 }
 
 async function recordMessage(env: Env, params: ProcessingWorkflowParams, message: string): Promise<void> {
-  await env.DB.prepare(`UPDATE tasks SET message = ?, updated_at = ${NOW} WHERE ${OWNED_TRANSCRIBING}`)
+  await env.db.prepare(`UPDATE tasks SET message = ?, updated_at = ${NOW} WHERE ${OWNED_TRANSCRIBING}`)
     .bind(message, params.taskId, params.attemptId)
     .run()
     .catch(() => undefined);
@@ -157,7 +157,7 @@ export async function resolveRawStep(env: Env, params: ProcessingWorkflowParams)
   if (!existing) return { rawKey: null };
 
   // 采纳已有 raw：记录 raw_object_key，随后 claim-refinement 直接进入精修（不联系转录服务）。
-  const adopted = await env.DB.prepare(`UPDATE tasks
+  const adopted = await env.db.prepare(`UPDATE tasks
     SET raw_object_key = ?, message = '已有原始转录，直接进入精修', updated_at = ${NOW}
     WHERE id = ? AND current_attempt_id = ? AND cancel_requested = 0
       AND status IN ('queued', 'transcribing')`)
@@ -170,7 +170,7 @@ export async function resolveRawStep(env: Env, params: ProcessingWorkflowParams)
 // ── start-transcription ──
 
 export async function startTranscriptionStep(env: Env, params: ProcessingWorkflowParams): Promise<void> {
-  const result = await env.DB.prepare(`UPDATE tasks
+  const result = await env.db.prepare(`UPDATE tasks
     SET status = 'transcribing', message = '正在准备音频…', transcription_phase = NULL, updated_at = ${NOW}
     WHERE id = ? AND current_attempt_id = ? AND cancel_requested = 0
       AND status IN ('queued', 'transcribing')`)
@@ -257,7 +257,7 @@ export async function submitTranscriptionStep(
     throw toWorkflowError(error);
   }
 
-  const recorded = await env.DB.prepare(`UPDATE tasks
+  const recorded = await env.db.prepare(`UPDATE tasks
     SET provider_request_id = ?, message = '转录服务已接收，正在获取音频…', transcription_phase = 'fetching', updated_at = ${NOW}
     WHERE ${OWNED_TRANSCRIBING}`)
     .bind(snapshot.provider_request_id, params.taskId, params.attemptId)
@@ -393,10 +393,10 @@ export async function persistRawStep(
   }
 
   const key = rawObjectKey(params.taskId, params.attemptId);
-  await env.RAW_BUCKET.put(key, text, { httpMetadata: { contentType: "text/plain; charset=utf-8" } });
+  await env.storage.put(key, text, { httpMetadata: { contentType: "text/plain; charset=utf-8" } });
 
   // D1 CAS：只有仍处于本 attempt 转录阶段的 raw 才能成为交付凭证。同一 key 重复写入幂等通过。
-  const stored = await env.DB.prepare(`UPDATE tasks
+  const stored = await env.db.prepare(`UPDATE tasks
     SET raw_object_key = ?, transcription_phase = NULL, progress = MAX(progress, 64),
         message = '原始转录已保存，进入精修…', updated_at = ${NOW}
     WHERE ${OWNED_TRANSCRIBING} AND (raw_object_key IS NULL OR raw_object_key = ?)`)
@@ -405,7 +405,7 @@ export async function persistRawStep(
   if (!stored.meta.changes) {
     const current = await loadTaskRow(env, params.taskId);
     // 落库前被取消 / 被替换：清掉刚写的（本 attempt 专属）对象，避免孤儿。
-    if (!current || current.raw_object_key !== key) await env.RAW_BUCKET.delete(key).catch(() => undefined);
+    if (!current || current.raw_object_key !== key) await env.storage.delete(key).catch(() => undefined);
     await explainInactive(env, params, "persist_raw");
   }
 
@@ -511,7 +511,7 @@ export async function runTranscriptionPhase(
 async function recordResubmit(env: Env, params: ProcessingWorkflowParams, step: StepRunner, submission: number): Promise<void> {
   await step.do(`note-resubmit-${submission}`, SMALL_STEP, async () => {
     await recordMessage(env, params, "转录未完成，正在重新提交…");
-    await env.DB.prepare(`UPDATE tasks SET provider_request_id = NULL, transcription_phase = NULL, updated_at = ${NOW} WHERE ${OWNED_TRANSCRIBING}`)
+    await env.db.prepare(`UPDATE tasks SET provider_request_id = NULL, transcription_phase = NULL, updated_at = ${NOW} WHERE ${OWNED_TRANSCRIBING}`)
       .bind(params.taskId, params.attemptId)
       .run();
   });

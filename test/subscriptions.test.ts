@@ -69,8 +69,9 @@ function mockEnv(options: {
   };
 
   const batches: number[] = [];
+  const db = { prepare: statementFor, batch: async (statements: unknown[]) => { batches.push(statements.length); return []; } };
   return {
-    env: { DB: { prepare: statementFor, batch: async (statements: unknown[]) => { batches.push(statements.length); return []; } } } as unknown as Env,
+    env: { db, DB: db } as unknown as Env,
     calls,
     batches,
   };

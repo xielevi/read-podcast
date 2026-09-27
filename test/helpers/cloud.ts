@@ -10,6 +10,7 @@ import type { StepConfigLike, StepContextLike, WorkflowStepLike } from "../../sr
 import type { PollTuning } from "../../src/workflows/transcription";
 import type { Env } from "../../src/types";
 import { createD1, type SqliteD1 } from "./sqlite-d1";
+import { adaptCloudflareEnv } from "../../src/platform/cloudflare";
 
 export const TASK = "12345678-1234-1234-1234-123456789abc";
 export const ATTEMPT = "aaaaaaaa-0000-0000-0000-000000000001";
@@ -567,7 +568,7 @@ export function makeCloud(): Cloud {
     return externals.fetch(input, init);
   }) as typeof fetch;
 
-  const env = {
+  const rawEnv = {
     DB: d1,
     RAW_BUCKET: r2,
     PROCESSING_WORKFLOW: workflow,
@@ -586,7 +587,8 @@ export function makeCloud(): Cloud {
     GITHUB_REPO: "test-repo",
     GITHUB_BRANCH: "main",
     GITHUB_PODCAST_PATH: "podcasts/transcripts",
-  } as unknown as Env;
+  };
+  const env = adaptCloudflareEnv(rawEnv as any);
 
   return { env, d1, r2, workflow, service, externals, fetch: router };
 }

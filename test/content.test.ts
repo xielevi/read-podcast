@@ -28,14 +28,16 @@ function mockEnv(row: Record<string, unknown> | null) {
     all: async () => ({ results: [] }),
     run: async () => ({ meta: { changes: 0 } }),
   };
+  const db = {
+    prepare: (sql: string) => {
+      calls.sql.push(sql);
+      return statement;
+    },
+  };
   return {
     env: {
-      DB: {
-        prepare: (sql: string) => {
-          calls.sql.push(sql);
-          return statement;
-        },
-      },
+      db,
+      DB: db,
       GITHUB_TOKEN: "gh-token",
       GITHUB_OWNER: "your-github-username",
       GITHUB_REPO: "your-manuscript-repository",

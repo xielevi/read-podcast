@@ -169,3 +169,42 @@ describe("转录服务代码不持有 Cloudflare 的业务概念", () => {
     }
   });
 });
+
+describe("平台抽象边界与适配层护栏", () => {
+  it("业务代码不直接依赖 Cloudflare 专有模块与原始绑定", () => {
+    const businessFiles = walk("src/").filter(
+      file => file.endsWith(".ts") && !file.startsWith("src/platform/cloudflare") && file !== "src/index.ts"
+    );
+
+    expect(businessFiles.length).toBeGreaterThan(10);
+    for (const file of businessFiles) {
+      const text = read(file);
+      // 业务层不导入 cloudflare:*
+      expect(text, file).not.toMatch(/from\s+["']cloudflare:/);
+      // 业务层不直接访问 CF 专有绑定属性
+      expect(text, file).not.toMatch(/env\.(DB|RAW_BUCKET|PROCESSING_WORKFLOW)\b/);
+      // 业务层不引用 CF 专有绑定类型
+      expect(text, file).not.toMatch(/\b(D1Database|R2Bucket|Workflow<)\b/);
+    }
+  });
+
+  it("回归断言：业务层脱离平台适配器直接传入原始 CF 绑定时确定性失败，适配后正常工作", async () => {
+    const cloud = makeCloud();
+    const rawCfEnv = {
+      DB: cloud.d1,
+      RAW_BUCKET: cloud.r2,
+      PROCESSING_WORKFLOW: cloud.workflow,
+    };
+
+    // 1. 未经适配：业务函数直接访问 env.db 抛出 TypeError（证明业务层已彻底与原始 env.DB 解耦）
+    const { listTasks } = await import("../src/tasks");
+    const url = new URL("https://app.test/api/control/tasks");
+    await expect(listTasks(url, rawCfEnv as any)).rejects.toThrow(TypeError);
+
+    // 2. 经过 Cloudflare 适配器：成功执行
+    const { adaptCloudflareEnv } = await import("../src/platform/cloudflare");
+    const adaptedEnv = adaptCloudflareEnv(rawCfEnv as any);
+    const res = await listTasks(url, adaptedEnv);
+    expect(res.status).toBe(200);
+  });
+});

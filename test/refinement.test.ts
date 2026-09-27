@@ -398,18 +398,21 @@ describe("naming: 与既有 writing 产物字节级一致", () => {
 });
 
 describe("settings: D1 refiner_settings 读写与校验", () => {
-  const envWithRow = (row: Record<string, unknown> | null): Env =>
-    ({
-      DB: {
-        prepare: () => ({
-          bind: () => ({
-            first: async () => row,
-            run: async () => ({ meta: { changes: 1 } }),
-          }),
+  const envWithRow = (row: Record<string, unknown> | null): Env => {
+    const db = {
+      prepare: () => ({
+        bind: () => ({
           first: async () => row,
+          run: async () => ({ meta: { changes: 1 } }),
         }),
-      },
+        first: async () => row,
+      }),
+    };
+    return ({
+      db,
+      DB: db,
     }) as unknown as Env;
+  };
 
   it("无行时使用内建默认（生产 OpenCode 配置）", async () => {
     const settings = await loadRefinerSettings(envWithRow(null));
@@ -467,22 +470,24 @@ describe("settings: D1 refiner_settings 读写与校验", () => {
   it("updateRefinerSettings 使用 upsert 单行写入（合并现有值）", async () => {
     const statements: string[] = [];
     let insertBindings: unknown[] = [];
-    const env = {
-      DB: {
-        prepare: (statement: string) => {
-          statements.push(statement);
-          return {
-            bind: (...args: unknown[]) => {
-              if (statement.includes("INSERT INTO refiner_settings")) insertBindings = args;
-              return {
-                run: async () => ({ meta: { changes: 1 } }),
-                first: async () => null,
-              };
-            },
-            first: async () => null,
-          };
-        },
+    const db = {
+      prepare: (statement: string) => {
+        statements.push(statement);
+        return {
+          bind: (...args: unknown[]) => {
+            if (statement.includes("INSERT INTO refiner_settings")) insertBindings = args;
+            return {
+              run: async () => ({ meta: { changes: 1 } }),
+              first: async () => null,
+            };
+          },
+          first: async () => null,
+        };
       },
+    };
+    const env = {
+      db,
+      DB: db,
     } as unknown as Env;
     await updateRefinerSettings(env, { model: "m2" });
     const insert = statements.find(statement => statement.includes("INSERT INTO refiner_settings"));

@@ -1,35 +1,24 @@
 /**
  * Processing Workflow 各阶段共享的类型与小工具（转录阶段 / 精修阶段都依赖，独立成模块避免循环引用）。
  */
-import { NonRetryableError } from "cloudflare:workflows";
+import {
+  NonRetryableError,
+  type DelayFunction,
+  type StepConfigLike,
+  type StepContextLike,
+  type WorkflowStepLike,
+} from "../platform/types";
 import type { RefinerConfigSnapshot } from "../refinement/refiner";
 import type { TaskRow } from "../db";
 import type { Env } from "../types";
+
+export type { DelayFunction, StepConfigLike, StepContextLike, WorkflowStepLike };
 
 /** Workflow event 只传 metadata：raw transcript 绝不进入 event / step 返回值（R2 才是 raw SSOT）。 */
 export interface ProcessingWorkflowParams {
   taskId: string;
   attemptId: string;
   config: RefinerConfigSnapshot;
-}
-
-// ── Workflow step 的最小结构化接口（生产实现由 workerd 的 WorkflowStep 满足；测试用内存实现） ──
-
-export interface StepContextLike {
-  attempt: number;
-  step: { name: string; count: number };
-}
-
-export type DelayFunction = (input: { ctx: StepContextLike; error: Error }) => number | string;
-
-export interface StepConfigLike {
-  retries?: { limit: number; delay: number | string | DelayFunction; backoff?: "constant" | "linear" | "exponential" };
-  timeout?: number | string;
-}
-
-export interface WorkflowStepLike {
-  do<T>(name: string, config: StepConfigLike, callback: (ctx: StepContextLike) => Promise<T>): Promise<T>;
-  sleep(name: string, duration: string | number): Promise<void>;
 }
 
 

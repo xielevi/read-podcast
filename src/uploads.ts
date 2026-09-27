@@ -85,7 +85,8 @@ export async function handleStartMultipartUpload(request: Request, url: URL, env
   const uploadId = crypto.randomUUID();
   const key = `uploads/${uploadId}/${safeFilename}`;
 
-  const multi = await env.RAW_BUCKET.createMultipartUpload(key, {
+  if (!env.storage.createMultipartUpload) throw new HttpError(500, "storage_error", "Multipart upload not supported");
+  const multi = await env.storage.createMultipartUpload(key, {
     httpMetadata: { contentType },
     customMetadata: { upload_id: uploadId, original_name: rawFilename },
   });
@@ -135,7 +136,8 @@ export async function handleUploadPart(request: Request, uploadId: string, partN
   // 有 Content-Length：直接把原始 body（已知长度）交给 R2；否则缓冲这一片（≤ 10 MiB）再上传。
   const partBody = declared !== null ? request.body : await bufferPart(request.body);
 
-  const multi = env.RAW_BUCKET.resumeMultipartUpload(key, r2UploadId);
+  if (!env.storage.resumeMultipartUpload) throw new HttpError(500, "storage_error", "Multipart upload not supported");
+  const multi = env.storage.resumeMultipartUpload(key, r2UploadId);
   try {
     const uploadedPart = await multi.uploadPart(partNumber, partBody);
     return json({
@@ -184,13 +186,14 @@ export async function handleCompleteMultipartUpload(request: Request, uploadId: 
   }
 
   const sortedParts = [...parts].sort((a, b) => a.partNumber - b.partNumber);
-  const multi = env.RAW_BUCKET.resumeMultipartUpload(key, r2UploadId);
+  if (!env.storage.resumeMultipartUpload) throw new HttpError(500, "storage_error", "Multipart upload not supported");
+  const multi = env.storage.resumeMultipartUpload(key, r2UploadId);
 
   try {
     const obj = await multi.complete(sortedParts);
     // 权威复核：以 R2 里真实组装出的对象大小为准，超限则销毁对象——不可能留下 >200 MiB 的合法上传。
     if (obj.size > MAX_UPLOAD_BYTES) {
-      await env.RAW_BUCKET.delete(key).catch(() => undefined);
+      await env.storage.delete(key).catch(() => undefined);
       throw new HttpError(413, "file_too_large", `Assembled audio exceeds the ${capLabel} limit`);
     }
     return json({
@@ -223,7 +226,8 @@ export async function handleAbortMultipartUpload(request: Request, uploadId: str
     throw new HttpError(400, "invalid_key", "Upload key does not match upload_id");
   }
 
-  const multi = env.RAW_BUCKET.resumeMultipartUpload(key, r2UploadId);
+  if (!env.storage.resumeMultipartUpload) throw new HttpError(500, "storage_error", "Multipart upload not supported");
+  const multi = env.storage.resumeMultipartUpload(key, r2UploadId);
   try {
     await multi.abort();
     return json({ ok: true, aborted: true });
@@ -266,7 +270,7 @@ export async function handleUploadAudio(request: Request, url: URL, env: Env): P
 
   let stored: { size: number };
   try {
-    stored = await env.RAW_BUCKET.put(key, request.body, {
+    stored = await env.storage.put(key, request.body, {
       httpMetadata: {
         contentType,
       },
@@ -277,13 +281,13 @@ export async function handleUploadAudio(request: Request, url: URL, env: Env): P
     });
   } catch (err) {
     if (err instanceof HttpError) throw err;
-    console.error("Failed to stream audio to R2:", err);
+    console.error("Failed to stream audio to storage:", err);
     throw new HttpError(500, "upload_failed", "Failed to write audio stream to storage");
   }
 
-  // 权威复核：以 R2 里真实落地的对象大小为准（声明与实际不符时销毁对象）。
+  // 权威复核：以存储里真实落地的对象大小为准（声明与实际不符时销毁对象）。
   if (stored.size > MAX_UPLOAD_BYTES) {
-    await env.RAW_BUCKET.delete(key).catch(() => undefined);
+    await env.storage.delete(key).catch(() => undefined);
     throw new HttpError(413, "file_too_large", `Audio exceeds the ${capLabel} limit`);
   }
 
@@ -297,13 +301,13 @@ export async function handleUploadAudio(request: Request, url: URL, env: Env): P
 }
 
 /**
- * 主动删除 R2 中的上传音频（raw checkpoint 成功持久化后立即调用）。
+ * 主动删除存储中的上传音频（raw checkpoint 成功持久化后立即调用）。
  */
 export async function deleteUploadObjects(env: Env, uploadId: string): Promise<void> {
   if (!uploadId) return;
   const prefix = `uploads/${uploadId}/`;
-  const listed = await env.RAW_BUCKET.list({ prefix });
+  const listed = await env.storage.list({ prefix });
   for (const obj of listed.objects) {
-    await env.RAW_BUCKET.delete(obj.key).catch(() => undefined);
+    await env.storage.delete(obj.key).catch(() => undefined);
   }
 }

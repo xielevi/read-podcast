@@ -38,7 +38,7 @@ function sourceHost(rssUrl: string): string {
 
 /** GET /api/public/subscriptions —— 当前订阅列表（供左栏浏览）。 */
 export async function publicListSubscriptions(env: Env): Promise<Response> {
-  const result = await env.DB.prepare(
+  const result = await env.db.prepare(
     "SELECT name, rss_url, image_url FROM subscriptions ORDER BY name COLLATE NOCASE",
   ).all<{ name: string; rss_url: string; image_url: string }>();
   return json(result.results.map((row): PublicSubscription => ({
@@ -99,7 +99,7 @@ async function cachedArtwork(origin: string, target: string): Promise<Response> 
 export async function publicArtwork(url: URL, env: Env): Promise<Response> {
   const podcast = (url.searchParams.get("podcast") ?? "").trim();
   if (podcast) {
-    const row = await env.DB.prepare("SELECT image_url FROM subscriptions WHERE name = ?").bind(podcast).first<{ image_url: string }>();
+    const row = await env.db.prepare("SELECT image_url FROM subscriptions WHERE name = ?").bind(podcast).first<{ image_url: string }>();
     if (!row?.image_url) return error(404, "artwork_not_found", "Artwork not found");
     return cachedArtwork(url.origin, row.image_url);
   }
@@ -131,7 +131,7 @@ export async function publicListArticles(url: URL, env: Env): Promise<Response> 
   const limit = parseLimit(url, 50, 200);
   const offset = parseOffset(url);
 
-  const result = await env.DB.prepare(
+  const result = await env.db.prepare(
     `SELECT ${PUBLIC_ARTICLE_COLUMNS} FROM articles ORDER BY updated_at DESC LIMIT ? OFFSET ?`,
   ).bind(limit, offset).all<PublicArticleRow>();
 
@@ -139,7 +139,7 @@ export async function publicListArticles(url: URL, env: Env): Promise<Response> 
 }
 
 async function publishedContent(taskId: string, env: Env): Promise<PublishedContentRow | null> {
-  return env.DB.prepare("SELECT title, content_path, commit_sha FROM articles WHERE task_id = ?")
+  return env.db.prepare("SELECT title, content_path, commit_sha FROM articles WHERE task_id = ?")
     .bind(taskId)
     .first<PublishedContentRow>();
 }
@@ -194,7 +194,7 @@ export async function publicArticleDownload(taskId: string, url: URL, env: Env):
 export async function publicArticleConcepts(taskId: string, env: Env): Promise<Response> {
   const article = await publishedContent(taskId, env);
   if (!article) return error(404, "article_not_found", "Article not found");
-  const cached = await env.DB.prepare("SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ?")
+  const cached = await env.db.prepare("SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ?")
     .bind(article.content_path, article.commit_sha)
     .first<{ concepts_json: string }>();
   if (cached?.concepts_json) {

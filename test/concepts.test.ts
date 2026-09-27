@@ -275,6 +275,7 @@ describe("taskConcepts endpoint", () => {
     });
 
     return {
+      db: mockDB,
       DB: mockDB,
       GITHUB_TOKEN: "ghp-test",
       GITHUB_OWNER: "test-owner",
@@ -407,7 +408,7 @@ describe("taskConcepts endpoint", () => {
     });
 
     // 验证 D1 缓存未被污染（再次调用不应命中缓存）
-    const cachedRow = await env.DB.prepare(
+    const cachedRow = await env.db.prepare(
       "SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ?"
     ).bind(FINAL_PATH, COMMIT_SHA).first();
     expect(cachedRow).toBeNull();
@@ -441,7 +442,7 @@ describe("taskConcepts endpoint", () => {
     expect(body.concepts).toEqual([]);
 
     // 验证确实写入了 D1 空缓存，后续请求不再重复调用
-    const cachedRow = await env.DB.prepare(
+    const cachedRow = await env.db.prepare(
       "SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ?"
     ).bind(FINAL_PATH, COMMIT_SHA).first<{ concepts_json: string }>();
     expect(cachedRow).not.toBeNull();

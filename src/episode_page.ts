@@ -78,15 +78,15 @@ async function queryPage(env: Env, plane: Plane, podcastName: string, q: string,
   if (filter !== "all") matching.push(where[filter]);
   const whereClause = (conditions: string[]) => (conditions.length ? `WHERE ${conditions.join(" AND ")}` : "");
 
-  const [items, total, counts] = await env.DB.batch([
-    env.DB.prepare(`SELECT e.id, e.podcast_name, e.title, e.published, e.duration_seconds,
+  const [items, total, counts] = await env.db.batch([
+    env.db.prepare(`SELECT e.id, e.podcast_name, e.title, e.published, e.duration_seconds,
         COALESCE(
           (SELECT a.task_id FROM articles a WHERE a.episode_id = e.id LIMIT 1),
           (SELECT a.task_id FROM articles a WHERE a.podcast_name = e.podcast_name AND a.title = e.title LIMIT 1)
         ) AS article_task_id
       FROM episodes e ${whereClause(matching)} ${ORDER} LIMIT ? OFFSET ?`).bind(...matchingParams, limit, offset),
-    env.DB.prepare(`SELECT COUNT(*) AS n FROM episodes e ${whereClause(matching)}`).bind(...matchingParams),
-    env.DB.prepare(`SELECT COUNT(*) AS all_count,
+    env.db.prepare(`SELECT COUNT(*) AS n FROM episodes e ${whereClause(matching)}`).bind(...matchingParams),
+    env.db.prepare(`SELECT COUNT(*) AS all_count,
         COALESCE(SUM(${where.readable}), 0) AS readable,
         COALESCE(SUM(${where.unread}), 0) AS unread,
         COALESCE(SUM(${where.read}), 0) AS read
@@ -145,7 +145,7 @@ export async function listEpisodePage(url: URL, env: Env, plane: Plane, ctx?: Ex
   const limit = parseLimit(url, 20, 100);
   const offset = parseOffset(url);
 
-  const subs = await env.DB.prepare(
+  const subs = await env.db.prepare(
     `SELECT id, name, rss_url, image_url, episodes_synced_at FROM subscriptions${podcastName ? " WHERE name = ?" : ""}`,
   ).bind(...(podcastName ? [podcastName] : [])).all<SubscriptionRow>();
   if (podcastName && !subs.results.length) return error(404, "podcast_not_found", `Podcast '${podcastName}' not found`);

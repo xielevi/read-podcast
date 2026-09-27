@@ -143,6 +143,7 @@ function harness(options: {
   };
 
   h.env = {
+    db: db as any,
     DB: db,
     GITHUB_TOKEN: "gh-token",
     GITHUB_OWNER: "test-owner",

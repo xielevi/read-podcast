@@ -94,11 +94,11 @@ export async function createTask(request: Request, env: Env, _ctx: ExecutionCont
   if (!episode) return error(404, "episode_not_found", "未找到该单集，请刷新节目列表后重试");
 
   if (!force) {
-    const done = await env.DB.prepare("SELECT task_id FROM articles WHERE episode_id = ? LIMIT 1").bind(episode.id).first<{ task_id: string }>();
+    const done = await env.db.prepare("SELECT task_id FROM articles WHERE episode_id = ? LIMIT 1").bind(episode.id).first<{ task_id: string }>();
     if (done) return error(409, "already_processed", "该节目已转录完成，如需重做请点击「重新转录」。");
   }
 
-  const active = await env.DB.prepare(
+  const active = await env.db.prepare(
     `SELECT id FROM tasks WHERE episode_id = ? AND status IN (${ACTIVE_PLACEHOLDERS}) ORDER BY created_at DESC LIMIT 1`,
   ).bind(episode.id, ...ACTIVE_STATUSES).first<{ id: string }>();
   if (active) return json({ task_id: active.id, status: "existing" });
@@ -106,13 +106,13 @@ export async function createTask(request: Request, env: Env, _ctx: ExecutionCont
   const id = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
   try {
-    await env.DB.prepare(`INSERT INTO tasks
+    await env.db.prepare(`INSERT INTO tasks
       (id, episode_id, source_type, podcast_name, episode_title, audio_url, status, message, current_attempt_id)
       VALUES (?, ?, 'rss', ?, ?, ?, 'queued', '已排队，等待转录', ?)`)
       .bind(id, episode.id, episode.podcast_name, episode.title, episode.audio_url, attemptId)
       .run();
   } catch (caught) {
-    const existing = await env.DB.prepare(
+    const existing = await env.db.prepare(
       `SELECT id FROM tasks WHERE episode_id = ? AND status IN (${ACTIVE_PLACEHOLDERS}) ORDER BY created_at DESC LIMIT 1`,
     ).bind(episode.id, ...ACTIVE_STATUSES).first<{ id: string }>();
     if (existing) return json({ task_id: existing.id, status: "existing" });
@@ -130,7 +130,7 @@ export async function createCustomTask(request: Request, env: Env, _ctx: Executi
 
   // 校验 R2 uploads/ 是否存在该上传文件
   const prefix = `uploads/${uploadId}/`;
-  const listed = await env.RAW_BUCKET.list({ prefix, limit: 1 });
+  const listed = await env.storage.list({ prefix, limit: 1 });
   if (listed.objects.length === 0) {
     return error(404, "upload_not_found", "上传音频未找到或已过期，请重新上传");
   }
@@ -152,7 +152,7 @@ export async function createCustomTask(request: Request, env: Env, _ctx: Executi
   const id = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
 
-  await env.DB.prepare(`INSERT INTO tasks
+  await env.db.prepare(`INSERT INTO tasks
     (id, episode_id, source_type, podcast_name, episode_title, audio_url, status, message, current_attempt_id, custom_prompt)
     VALUES (?, NULL, 'upload', '本地音频', ?, ?, 'queued', '已排队，等待转录', ?, ?)`)
     .bind(id, title, `r2://${audioKey}`, attemptId, customPrompt)
@@ -170,10 +170,10 @@ export async function listTasks(url: URL, env: Env): Promise<Response> {
   const limit = parseLimit(url, 20, 200);
   const status = url.searchParams.get("status");
   const statement = url.searchParams.get("active") === "true"
-    ? env.DB.prepare(`SELECT * FROM tasks WHERE status IN (${ACTIVE_PLACEHOLDERS}) ORDER BY created_at DESC LIMIT ?`).bind(...ACTIVE_STATUSES, 200)
+    ? env.db.prepare(`SELECT * FROM tasks WHERE status IN (${ACTIVE_PLACEHOLDERS}) ORDER BY created_at DESC LIMIT ?`).bind(...ACTIVE_STATUSES, 200)
     : status
-      ? env.DB.prepare("SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?").bind(status, limit)
-      : env.DB.prepare("SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?").bind(limit);
+      ? env.db.prepare("SELECT * FROM tasks WHERE status = ? ORDER BY created_at DESC LIMIT ?").bind(status, limit)
+      : env.db.prepare("SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?").bind(limit);
   const result = await statement.all<TaskRow>();
   return json(result.results.map(toPublicTask));
 }
@@ -202,7 +202,7 @@ export async function cancelOrDeleteTask(id: string, env: Env, ctx: ExecutionCon
     return cancelActiveTask(env, ctx, task);
   }
   if (task.status === "error" || task.status === "cancelled") {
-    await env.DB.prepare("DELETE FROM tasks WHERE id = ?").bind(id).run();
+    await env.db.prepare("DELETE FROM tasks WHERE id = ?").bind(id).run();
     // 记录删除后其 R2 原始转录也无意义了，顺手清理（lifecycle 亦兜底）。
     ctx.waitUntil(purgeRaw(env, id).catch(() => undefined));
     return json({ task_id: id, status: "deleted" });
@@ -212,13 +212,13 @@ export async function cancelOrDeleteTask(id: string, env: Env, ctx: ExecutionCon
 
 async function cancelActiveTask(env: Env, ctx: ExecutionContext, task: TaskRow): Promise<Response> {
   // 原子 CAS 记录取消意图：只能在 queued / transcribing / refining 时置 1，finalizing 不可取消
-  const marked = await env.DB.prepare(`UPDATE tasks SET cancel_requested = 1, message = '取消中…', updated_at = ${NOW}
+  const marked = await env.db.prepare(`UPDATE tasks SET cancel_requested = 1, message = '取消中…', updated_at = ${NOW}
     WHERE id = ? AND status IN ('queued', 'transcribing', 'refining') AND cancel_requested = 0`)
     .bind(task.id)
     .run();
 
   if (!marked.meta.changes) {
-    const current = await env.DB.prepare("SELECT status, cancel_requested FROM tasks WHERE id = ?")
+    const current = await env.db.prepare("SELECT status, cancel_requested FROM tasks WHERE id = ?")
       .bind(task.id)
       .first<{ status: string; cancel_requested: number }>();
     if (!current) return error(404, "task_not_found", "Task not found");
@@ -232,7 +232,7 @@ async function cancelActiveTask(env: Env, ctx: ExecutionContext, task: TaskRow):
   }
 
   // 取最新的 provider 句柄与 attempt id
-  const latest = await env.DB.prepare("SELECT provider_request_id, current_attempt_id FROM tasks WHERE id = ?")
+  const latest = await env.db.prepare("SELECT provider_request_id, current_attempt_id FROM tasks WHERE id = ?")
     .bind(task.id)
     .first<{ provider_request_id: string | null; current_attempt_id: string | null }>();
 
@@ -241,7 +241,7 @@ async function cancelActiveTask(env: Env, ctx: ExecutionContext, task: TaskRow):
     await terminateProcessingWorkflow(env, task.id, attemptId);
   }
 
-  await env.DB.prepare(`UPDATE tasks SET status = 'cancelled', message = '任务已取消', transcription_phase = NULL,
+  await env.db.prepare(`UPDATE tasks SET status = 'cancelled', message = '任务已取消', transcription_phase = NULL,
     completed_at = ${NOW}, updated_at = ${NOW}
     WHERE id = ? AND status != 'success' AND status != 'finalizing'`)
     .bind(task.id)
@@ -283,7 +283,7 @@ export async function retryTask(id: string, env: Env, _ctx: ExecutionContext): P
 
   if (!rawKey && task.source_type === "upload") {
     const uploadId = uploadIdFromAudioUrl(task.audio_url);
-    const uploadListing = uploadId ? await env.RAW_BUCKET.list({ prefix: `uploads/${uploadId}/`, limit: 1 }) : { objects: [] };
+    const uploadListing = uploadId ? await env.storage.list({ prefix: `uploads/${uploadId}/`, limit: 1 }) : { objects: [] };
     if (uploadListing.objects.length === 0) {
       return error(409, "upload_expired", "原音频与转录缓存均已过期，请重新上传音频");
     }
@@ -291,7 +291,7 @@ export async function retryTask(id: string, env: Env, _ctx: ExecutionContext): P
 
   const attemptId = crypto.randomUUID();
   try {
-    const rotated = await env.DB.prepare(`UPDATE tasks SET status = 'queued', progress = 0,
+    const rotated = await env.db.prepare(`UPDATE tasks SET status = 'queued', progress = 0,
       message = ?, current_attempt_id = ?, raw_object_key = ?, provider_request_id = NULL,
       transcription_phase = NULL, refinement_started_at = NULL, cancel_requested = 0,
       error_code = NULL, completed_at = NULL, updated_at = ${NOW}
@@ -311,14 +311,14 @@ export async function retryTask(id: string, env: Env, _ctx: ExecutionContext): P
 }
 
 export async function taskContent(id: string, env: Env): Promise<Response> {
-  const task = await env.DB.prepare("SELECT final_content_path FROM tasks WHERE id = ? AND status = 'success'").bind(id).first<{ final_content_path: string | null }>();
+  const task = await env.db.prepare("SELECT final_content_path FROM tasks WHERE id = ? AND status = 'success'").bind(id).first<{ final_content_path: string | null }>();
   if (!task?.final_content_path) return error(404, "content_not_found", "Completed content not found");
   const response = await readPodcastContent(env, task.final_content_path);
   return response.status === 404 ? error(404, "content_not_found", "Completed content not found") : response;
 }
 
 export async function taskDownload(id: string, env: Env): Promise<Response> {
-  const task = await env.DB.prepare("SELECT episode_title, final_content_path FROM tasks WHERE id = ? AND status = 'success'")
+  const task = await env.db.prepare("SELECT episode_title, final_content_path FROM tasks WHERE id = ? AND status = 'success'")
     .bind(id).first<{ episode_title: string; final_content_path: string | null }>();
   if (!task?.final_content_path) return error(404, "content_not_found", "Completed content not found");
   const response = await readPodcastContent(env, task.final_content_path);
@@ -341,7 +341,7 @@ export async function taskDownload(id: string, env: Env): Promise<Response> {
  * 启动是幂等的（确定性 instance id）；超过 30 分钟仍无法启动则转 error，避免任务永久停在 queued。
  */
 export async function recoverQueuedTasks(env: Env, limit = 10): Promise<number> {
-  const stuck = await env.DB.prepare(`SELECT id, current_attempt_id, created_at, updated_at FROM tasks
+  const stuck = await env.db.prepare(`SELECT id, current_attempt_id, created_at, updated_at FROM tasks
     WHERE status = 'queued' AND current_attempt_id IS NOT NULL AND cancel_requested = 0
       AND updated_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-45 seconds')
     ORDER BY created_at ASC LIMIT ?`)
@@ -353,7 +353,7 @@ export async function recoverQueuedTasks(env: Env, limit = 10): Promise<number> 
     if (!task.current_attempt_id) continue;
     const age = Date.now() - Date.parse(task.updated_at);
     if (Number.isFinite(age) && age > 30 * 60_000) {
-      await env.DB.prepare(`UPDATE tasks SET status = 'error', error_code = 'workflow_unavailable',
+      await env.db.prepare(`UPDATE tasks SET status = 'error', error_code = 'workflow_unavailable',
         message = '无法启动处理工作流，请稍后重试', completed_at = ${NOW}, updated_at = ${NOW}
         WHERE id = ? AND current_attempt_id = ? AND status = 'queued'`)
         .bind(task.id, task.current_attempt_id)
@@ -380,7 +380,7 @@ const DEAD_WORKFLOW_STATUSES = new Set(["errored", "terminated", "complete"]);
  * 绝不在 10-15 分钟内仅凭一次查询失败把正常运行的 finalizing 误判为 workflow_lost。
  */
 export async function reconcileWorkflowLiveness(env: Env, limit = 20): Promise<number> {
-  const candidates = await env.DB.prepare(`SELECT id, status, current_attempt_id, updated_at FROM tasks
+  const candidates = await env.db.prepare(`SELECT id, status, current_attempt_id, updated_at FROM tasks
     WHERE status IN (${ACTIVE_PLACEHOLDERS}) AND cancel_requested = 0
       AND current_attempt_id IS NOT NULL
       AND (
@@ -398,7 +398,7 @@ export async function reconcileWorkflowLiveness(env: Env, limit = 20): Promise<n
     const isDeadWorkflow = status !== null && DEAD_WORKFLOW_STATUSES.has(status);
     const isVanished = status === null && Date.now() - Date.parse(task.updated_at) > 6 * 3_600_000;
     if (!isDeadWorkflow && !isVanished) continue;
-    const res = await env.DB.prepare(`UPDATE tasks SET status = 'error', error_code = 'workflow_lost',
+    const res = await env.db.prepare(`UPDATE tasks SET status = 'error', error_code = 'workflow_lost',
       message = '处理工作流异常终止，请重试', transcription_phase = NULL, completed_at = ${NOW}, updated_at = ${NOW}
       WHERE id = ? AND current_attempt_id = ? AND status IN (${ACTIVE_PLACEHOLDERS})`)
       .bind(task.id, task.current_attempt_id, ...ACTIVE_STATUSES)

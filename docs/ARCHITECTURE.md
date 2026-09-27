@@ -46,6 +46,40 @@ is a secondary copy, not a second source of truth. Introduce an abstraction (an
 `OutputBackend` interface, a selector, a D1 column, a Settings switch) only when a second
 concrete store exists.
 
+## Platform Interfaces and Abstraction Boundary
+
+In accordance with the project rule that abstractions are introduced only when a second concrete
+implementation exists, the platform interfaces (`Database`, `ObjectStore`, `TaskWorkflow`, and
+`Scheduled`) are introduced to support both the Cloudflare deployment and the self-hosted Docker
+deployment (#27: SQLite + local volume + in-process task executor; #28: local manuscript persistence).
+
+The interface boundary is drawn strictly between platform runtimes and business domain logic:
+
+- **Database interface (`Database`, `Statement`)**:
+  Minimal prepared statement semantics: `prepare`, `bind`, `first`, `all`, `run`, and `batch`.
+  D1 and SQLite directly satisfy these semantics without translation layers.
+- **Object Storage interface (`ObjectStore`, `MultipartUpload`)**:
+  Object lifecycle primitives: `get`, `put`, `delete`, `head`, `list`, multipart uploads
+  (`createMultipartUpload`, `resumeMultipartUpload`), and generating signed access URLs
+  (`createPresignedUrl`). Implemented by Cloudflare R2 (+ S3 SigV4 presign) and local/S3-compatible
+  storage in Docker.
+- **Task Workflow interface (`TaskWorkflowEngine`, `WorkflowStepLike`, `NonRetryableError`)**:
+  Durable step execution (`step.do`), delay/retry calculation, non-retryable error semantics, and
+  instance lifecycle management (`create`, `get`, `status`, `terminate`). Implemented by Cloudflare
+  Workflows in edge deployments and an in-process step runner in Docker.
+- **Scheduled Maintenance interface**:
+  Trigger for background reconciliation (`runMaintenance`), invoked by Cloudflare Cron Triggers or
+  container task runners.
+
+**Boundary Rule & Thin Adapter**:
+Business layer code (`src/*` outside `src/platform/`) depends exclusively on these minimal interfaces
+via `Env` (`env.db`, `env.storage`, `env.workflows`), with zero imports of `cloudflare:workers` or
+`cloudflare:workflows` and zero references to Cloudflare binding types (`D1Database`, `R2Bucket`,
+`Workflow`, etc.). The Cloudflare adapter (`src/platform/cloudflare.ts`) provides a thin wrapper
+around Cloudflare runtime bindings with unchanged behavior. An architecture test enforces that
+no business files bypass the adapter or reference Cloudflare binding types.
+
+
 ## Public Browse Mode and Authenticated Control Mode
 
 > **Read / browse is public. Mutations and execution are private. Authentication belongs to Cloudflare Access.**
