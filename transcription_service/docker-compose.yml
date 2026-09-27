@@ -19,6 +19,12 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    # 如需使用 OpenAI 兼容上传代理模式（openai-proxy），配置如下环境变量：
+    # environment:
+    #   - READ_PODCAST_TRANSCRIPTION_ENGINE=openai-proxy
+    #   - READ_PODCAST_OPENAI_API_BASE=https://api.openai.com/v1
+    #   - READ_PODCAST_OPENAI_API_KEY=${READ_PODCAST_OPENAI_API_KEY}
+    #   - READ_PODCAST_OPENAI_MODEL=whisper-1
     restart: unless-stopped
 
 volumes:

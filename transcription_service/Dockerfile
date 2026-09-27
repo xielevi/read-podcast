@@ -1,12 +1,18 @@
 # Read Podcast Transcription Service —— Linux / NAS / 服务器部署的转录计算容器。
 #
-# 引擎是进程内 Faster-Whisper（CPU / CUDA，由 core.config.resolve_engine 按平台默认选择）。
-# 构建只安装依赖，**不下载任何 Whisper 模型**：模型在首次转录时按需经 Hugging Face
-# 缓存机制下载，并落进 /data 卷（HF_HOME），换镜像 / 升级不会重复下载。
+# 引擎支持进程内 Faster-Whisper（CPU / CUDA，Linux / 容器平台默认）或 OpenAI 兼容代理模式
+# （openai-proxy，通过 ffmpeg 进行低码率转码与分段）。
+# 构建只安装依赖与 ffmpeg，**不下载任何 Whisper 模型**：Faster-Whisper 引擎首次转录时按需经
+# Hugging Face 缓存机制下载，并落进 /data 卷（HF_HOME），换镜像 / 升级不会重复下载。
 #
 # 协议与 macOS reference deployment 完全一致（/health、/v1/transcriptions），远程认证由
-# Cloudflare Access 承担；本容器不持有任何凭据。
+# Cloudflare Access 承担。
 FROM python:3.12-slim
+
+# 安装 ffmpeg（供音频转码、静音检测与切片）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # 用 uv 按锁文件精确安装依赖（与仓库内 uv.lock 一致，含 faster-whisper）。
 COPY --from=ghcr.io/astral-sh/uv:0.12.19 /uv /uvx /usr/local/bin/

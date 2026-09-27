@@ -46,6 +46,8 @@ def test_auto_intel_mac_defaults_to_faster_whisper(monkeypatch):
 # ── 环境变量强制指定 ──
 
 def test_env_forces_engine_on_any_platform(monkeypatch):
+    from core.openai_proxy_engine import OpenAIProxyTranscriber
+
     auto_platform(monkeypatch, platform="linux")
     monkeypatch.setenv(ENGINE_ENV_VAR, "mlx")
     assert isinstance(get_transcriber(), WhisperApiTranscriber)
@@ -53,6 +55,11 @@ def test_env_forces_engine_on_any_platform(monkeypatch):
     auto_platform(monkeypatch, platform="darwin", machine="arm64")
     monkeypatch.setenv(ENGINE_ENV_VAR, "faster-whisper")
     assert isinstance(get_transcriber(), FasterWhisperTranscriber)
+
+    auto_platform(monkeypatch, platform="darwin", machine="arm64")
+    monkeypatch.setenv(ENGINE_ENV_VAR, "openai-proxy")
+    assert isinstance(get_transcriber(), OpenAIProxyTranscriber)
+    assert engine_name() == "openai-proxy"
 
 
 def test_env_value_is_normalized(monkeypatch):
@@ -120,6 +127,75 @@ def test_health_reports_the_selected_engine(monkeypatch):
         body = client.get("/health").json()
         assert body["engine"] == engine_name() == "faster-whisper"
 
+    monkeypatch.setenv(ENGINE_ENV_VAR, "openai-proxy")
+    with TestClient(create_app(JobManager(tempfile.mkdtemp()))) as client:
+        body = client.get("/health").json()
+        assert body["engine"] == engine_name() == "openai-proxy"
+
+
+# ── OpenAI-Proxy 运行参数：内建默认值 + 仅环境变量可覆盖 ──
+
+def test_openai_proxy_options_built_in_defaults(monkeypatch):
+    monkeypatch.delenv("READ_PODCAST_OPENAI_API_BASE", raising=False)
+    monkeypatch.delenv("READ_PODCAST_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("READ_PODCAST_OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("OPENAI_MODEL", raising=False)
+    monkeypatch.delenv("READ_PODCAST_OPENAI_CHUNK_SIZE_MB", raising=False)
+    monkeypatch.delenv("READ_PODCAST_OPENAI_OVERLAP_SECONDS", raising=False)
+    monkeypatch.delenv("READ_PODCAST_OPENAI_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("READ_PODCAST_OPENAI_MAX_RETRIES", raising=False)
+
+    options = config.openai_proxy_options()
+    assert options.api_base == config.DEFAULT_OPENAI_PROXY_API_BASE
+    assert options.api_key == ""
+    assert options.model == config.DEFAULT_OPENAI_PROXY_MODEL
+    assert options.chunk_size_mb == config.DEFAULT_OPENAI_PROXY_CHUNK_SIZE_MB
+    assert options.overlap_seconds == config.DEFAULT_OPENAI_PROXY_OVERLAP_SECONDS
+    assert options.timeout_seconds == config.DEFAULT_OPENAI_PROXY_TIMEOUT_SECONDS
+    assert options.max_retries == config.DEFAULT_OPENAI_PROXY_MAX_RETRIES
+
+
+def test_openai_proxy_options_env_overrides(monkeypatch):
+    monkeypatch.setenv("READ_PODCAST_OPENAI_API_BASE", "https://api.groq.com/openai/v1")
+    monkeypatch.setenv("READ_PODCAST_OPENAI_API_KEY", "gsk-test-key")
+    monkeypatch.setenv("READ_PODCAST_OPENAI_MODEL", "whisper-large-v3")
+    monkeypatch.setenv("READ_PODCAST_OPENAI_CHUNK_SIZE_MB", "15")
+    monkeypatch.setenv("READ_PODCAST_OPENAI_OVERLAP_SECONDS", "3.5")
+    monkeypatch.setenv("READ_PODCAST_OPENAI_TIMEOUT_SECONDS", "90")
+    monkeypatch.setenv("READ_PODCAST_OPENAI_MAX_RETRIES", "5")
+
+    options = config.openai_proxy_options()
+    assert options.api_base == "https://api.groq.com/openai/v1"
+    assert options.api_key == "gsk-test-key"
+    assert options.model == "whisper-large-v3"
+    assert options.chunk_size_mb == 15
+    assert options.overlap_seconds == 3.5
+    assert options.timeout_seconds == 90
+    assert options.max_retries == 5
+
+
+def test_openai_proxy_options_fallback_env(monkeypatch):
+    monkeypatch.delenv("READ_PODCAST_OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("READ_PODCAST_OPENAI_MODEL", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "fallback-key")
+    monkeypatch.setenv("OPENAI_MODEL", "fallback-model")
+
+    options = config.openai_proxy_options()
+    assert options.api_key == "fallback-key"
+    assert options.model == "fallback-model"
+
+
+def test_openai_proxy_options_rejects_garbage(monkeypatch):
+    monkeypatch.setenv("READ_PODCAST_OPENAI_CHUNK_SIZE_MB", "bad")
+    with pytest.raises(ValueError):
+        config.openai_proxy_options()
+
+    monkeypatch.setenv("READ_PODCAST_OPENAI_CHUNK_SIZE_MB", "20")
+    monkeypatch.setenv("READ_PODCAST_OPENAI_OVERLAP_SECONDS", "not-a-number")
+    with pytest.raises(ValueError):
+        config.openai_proxy_options()
+
 
 def test_transcriber_source_holds_no_credential_or_env_machinery():
     """引擎适配层不读环境、不持令牌（env 解析只属于 core.config）。"""
@@ -132,4 +208,11 @@ def test_faster_whisper_transcriber_is_process_singleton(monkeypatch):
     """JobManager 每个任务都调用 get_transcriber()：模型必须常驻，不能每个任务重新加载。"""
     auto_platform(monkeypatch, platform="linux")
     monkeypatch.setattr(transcriber, "_faster_whisper", None)
+    assert get_transcriber() is get_transcriber()
+
+
+def test_openai_proxy_transcriber_is_process_singleton(monkeypatch):
+    """openai-proxy 引擎实例也跨任务复用。"""
+    monkeypatch.setenv(ENGINE_ENV_VAR, "openai-proxy")
+    monkeypatch.setattr(transcriber, "_openai_proxy", None)
     assert get_transcriber() is get_transcriber()
