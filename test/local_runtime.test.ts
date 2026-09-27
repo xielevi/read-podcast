@@ -9,10 +9,11 @@
 import { existsSync, mkdirSync, readFileSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyLocalMigrations,
   createLocalAssetFetcher,
+  createLocalManuscriptStore,
   createLocalObjectStore,
   createLocalWorkflowEngine,
   createNodeEnv,
@@ -27,6 +28,7 @@ import {
 import { NonRetryableError } from "../src/platform/types";
 import { runProcessingPipeline } from "../src/workflows/pipeline";
 import { processingWorkflowId } from "../src/workflows/processing";
+import { publicArticleContent } from "../src/public";
 import {
   ATTEMPT,
   FAST_POLL,
@@ -743,5 +745,146 @@ describe("本地 Node HTTP 服务（Server & Basic Auth）", () => {
     const wrongRes = await fetch(`${base}/manage`, { headers: { authorization: wrongHeader, connection: "close" } });
     expect(wrongRes.status).toBe(401);
     await wrongRes.text();
+  });
+});
+
+describe("稿件存储装配（ManuscriptStore，#28）", () => {
+  const realFetch = globalThis.fetch;
+
+  afterEach(() => {
+    globalThis.fetch = realFetch;
+    vi.restoreAllMocks();
+  });
+
+  it("配置 manuscriptDir → 本地目录 store:发布落盘且全程零 GitHub API 请求", async () => {
+    const manuscriptDir = resolve(TEST_DIR, "e2e-manuscripts");
+    const githubCalls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("api.github.com")) githubCalls.push(url);
+      return realFetch(input, init);
+    }) as typeof globalThis.fetch;
+
+    const runtime = createNodeEnv({
+      databasePath: ":memory:",
+      storageDir: resolve(TEST_DIR, "e2e-storage"),
+      manuscriptDir,
+      env: { APP_ENV: "test", GITHUB_TOKEN: "t", GITHUB_OWNER: "o", GITHUB_REPO: "r" },
+    });
+
+    const markdown = "# 装配端到端\n\n正文。";
+    const published = await runtime.env.manuscripts.publish({
+      writingFilename: "20260927_测试播客_装配",
+      title: "装配",
+      markdown,
+    });
+    expect(published.path).toBe("podcasts/transcripts/20260927_测试播客_装配.md");
+    expect(existsSync(resolve(manuscriptDir, published.path))).toBe(true);
+    expect(githubCalls).toHaveLength(0);
+    runtime.close();
+  });
+
+  it("未配置 MANUSCRIPT_PATH 但 GITHUB_* 齐全 → GitHub store:发布请求 api.github.com", async () => {
+    const githubCalls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("api.github.com")) {
+        githubCalls.push(url);
+        if (url.includes("/contents/")) return new Response(null, { status: 404 });
+        if (url.includes("/git/ref/heads/")) return Response.json({ object: { sha: "base-sha" } });
+        if (url.includes("/git/commits/")) return Response.json({ tree: { sha: "tree-sha" } });
+        if (url.includes("/git/blobs")) return Response.json({ sha: "blob-sha" }, { status: 201 });
+        if (url.includes("/git/trees")) return Response.json({ sha: "new-tree-sha" }, { status: 201 });
+        if (url.includes("/git/refs/heads/")) return Response.json({ sha: "commit-sha" });
+        if (url.endsWith("/git/commits")) return Response.json({ sha: "commit-sha" }, { status: 201 });
+      }
+      return realFetch(input, init);
+    }) as typeof globalThis.fetch;
+
+    const runtime = createNodeEnv({
+      databasePath: ":memory:",
+      storageDir: resolve(TEST_DIR, "e2e-storage-github"),
+      env: { APP_ENV: "test", GITHUB_TOKEN: "t", GITHUB_OWNER: "o", GITHUB_REPO: "r" },
+    });
+
+    const published = await runtime.env.manuscripts.publish({
+      writingFilename: "20260927_测试播客_回落",
+      title: "回落",
+      markdown: "# GitHub 回落",
+    });
+    expect(published.version).toBe("commit-sha");
+    expect(githubCalls.length).toBeGreaterThan(0);
+    runtime.close();
+  });
+
+  it("两者皆缺 → 启动警告但不失败,回落 GitHub store(凭据在 publish 时明确报错)", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const runtime = createNodeEnv({
+      databasePath: ":memory:",
+      storageDir: resolve(TEST_DIR, "e2e-storage-none"),
+      env: { APP_ENV: "test" },
+    });
+
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("No manuscript store configured"));
+    await expect(runtime.env.manuscripts.publish({
+      writingFilename: "x", title: "x", markdown: "# x",
+    })).rejects.toThrow(/GITHUB_TOKEN is not configured|GITHUB_OWNER/);
+    runtime.close();
+  });
+
+  it("端到端:本地 store 发布 → articles 行(commit_sha = 内容哈希) → 公开页读发布快照", async () => {
+    const runtime = createNodeEnv({
+      databasePath: ":memory:",
+      storageDir: resolve(TEST_DIR, "e2e-storage-e2e"),
+      manuscriptDir: resolve(TEST_DIR, "e2e-manuscripts-e2e"),
+      env: { APP_ENV: "test" },
+    });
+
+    const markdown = "---\ntitle: 端到端\n---\n\n# 端到端\n\n正文内容。";
+    const published = await runtime.env.manuscripts.publish({
+      writingFilename: "20260927_测试播客_端到端",
+      title: "端到端",
+      markdown,
+    });
+
+    const taskId = "12345678-1234-1234-1234-123456789abe";
+    runtime.dbSync.prepare(
+      `INSERT INTO tasks (id, source_type, episode_title, status, progress, message, updated_at)
+       VALUES (?, 'upload', '端到端', 'success', 100, '已完成', strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
+    ).run(taskId);
+    runtime.dbSync.prepare(
+      `INSERT INTO articles (task_id, title, podcast_name, content_path, commit_sha, updated_at)
+       VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))`,
+    ).run(taskId, "端到端", "测试播客", published.path, published.version);
+
+    // 覆盖发布新内容,公开页仍按 articles.commit_sha 读旧版本(发布快照语义)
+    const url = new URL(`http://localhost/api/public/articles/${taskId}/content`);
+    const res = await publicArticleContent(taskId, url, runtime.env);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(markdown);
+
+    // 更新 D1 指向新版本 → 公开页读到新内容
+    const v2 = await runtime.env.manuscripts.publish({
+      writingFilename: "20260927_测试播客_端到端",
+      title: "端到端",
+      markdown: "# 第二版",
+    });
+    runtime.dbSync.prepare("UPDATE articles SET content_path = ?, commit_sha = ? WHERE task_id = ?")
+      .run(v2.path, v2.version, taskId);
+    const res2 = await publicArticleContent(taskId, url, runtime.env);
+    expect(res2.status).toBe(200);
+    expect(await res2.text()).toBe("# 第二版");
+
+    // 不存在的版本 → 404 content_not_found
+    runtime.dbSync.prepare("UPDATE articles SET commit_sha = ? WHERE task_id = ?")
+      .run("f".repeat(64), taskId);
+    const res3 = await publicArticleContent(taskId, url, runtime.env);
+    expect(res3.status).toBe(404);
+
+    runtime.close();
+  });
+
+  it("createLocalManuscriptStore 直接导出可用(与 barrel 一致)", () => {
+    expect(typeof createLocalManuscriptStore).toBe("function");
   });
 });
