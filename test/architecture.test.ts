@@ -190,6 +190,24 @@ describe("平台抽象边界与适配层护栏", () => {
     }
   });
 
+  it("成稿读写必经 env.manuscripts：业务文件不得直接导入 GitHub Store 实现", () => {
+    // src/github.ts 是 Cloudflare 装配层注入的 Store 实现,只允许装配点(cloudflare.ts / node env.ts)与
+    // 入口 index.ts 及其自身引用;其余业务文件一律通过 env.manuscripts 接口读写成稿。
+    const businessFiles = walk("src/").filter(
+      file =>
+        file.endsWith(".ts") &&
+        file !== "src/github.ts" &&
+        file !== "src/index.ts" &&
+        file !== "src/platform/cloudflare.ts" &&
+        !file.startsWith("src/platform/node/"),
+    );
+
+    expect(businessFiles.length).toBeGreaterThan(10);
+    for (const file of businessFiles) {
+      expect(read(file), file).not.toMatch(/from\s+["'](\.\.?\/)*github["']/);
+    }
+  });
+
   it("回归断言：业务层脱离平台适配器直接传入原始 CF 绑定时确定性失败，适配后正常工作", async () => {
     const cloud = makeCloud();
     const rawCfEnv = {

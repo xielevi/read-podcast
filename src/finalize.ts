@@ -7,12 +7,11 @@
  *   不同 attempt / 已取消 / 终态一律拒绝；
  * - cancel vs finalization race：cancel_requested = 1 时拒绝进入 finalizing；
  * - current_attempt_id CAS：旧 attempt 的提交不允许落库；
- * - GitHub commit first → D1 task success + article upsert 原子 batch；
- * - GitHub 临时故障保持 status = 'finalizing' 并抛 retryable error，由 publish step durable retry
- *   直接重试（利用 GitHub 相同内容提交的幂等性，不额外制造 commit）；
+ * - Store publish first（GitHub commit 或本地目录写入）→ D1 task success + article upsert 原子 batch；
+ * - Store 临时故障保持 status = 'finalizing' 并抛 retryable error，由 publish step durable retry
+ *   直接重试（利用两种实现同内容发布的幂等性，不额外制造 commit / 版本）；
  * - publish 重试最终耗尽时，由 Workflow 外层 failure handling 统一收敛为 error(final_persist_failed)。
  */
-import { commitPodcast } from "./github";
 import { MAX_FINAL_MARKDOWN_BYTES } from "./refinement/defaults";
 import { NOW } from "./db";
 import type { Env } from "./types";
@@ -110,9 +109,14 @@ export async function persistFinalArticle(
     .first<{ episode_id: string | null; episode_title: string; podcast_name: string }>();
   if (!task) throw new FinalizeError("task_not_found", "Task not found", false);
 
-  // 顺序不可颠倒：先提交 GitHub 成稿（幂等），成功后才标记 D1 success 并建立成稿索引。原始转录不入 GitHub。
+  // 顺序不可颠倒：先发布成稿到 Store（幂等），成功后才标记 D1 success 并建立成稿索引。原始转录不入 Store。
   try {
-    const saved = await commitPodcast(env, input.writingFilename, task.episode_title, markdown);
+    const published = await env.manuscripts.publish({
+      writingFilename: input.writingFilename,
+      title: task.episode_title,
+      markdown,
+    });
+    const saved = { finalPath: published.path, commitSha: published.version };
 
     const taskUpdateStmt = env.db.prepare(`UPDATE tasks SET status = 'success', progress = 100, message = '已完成',
       final_content_path = ?, content_commit_sha = ?, transcript_source = 'ai_refined', refinement_success = 1,

@@ -5,6 +5,7 @@
  * 架构护栏：只有本文件与 src/index.ts 允许直接导入 cloudflare:* 或引用 CF 绑定类型。
  */
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
+import { createGitHubManuscriptStore } from "../github";
 import { presignR2Get, type R2SigningCredentials } from "../transcription/r2_presign";
 import { r2Credentials } from "../transcription/source";
 import type { ProcessingWorkflowParams } from "../workflows/common";
@@ -219,6 +220,9 @@ export function adaptCloudflareEnv(raw: CloudflareEnv | Env): Env {
   result.storage = storage;
   result.workflows = workflows;
   result.assets = assets;
+  // Canonical Manuscript Store:Cloudflare 部署固定 GitHub 实现(惰性闭包,未配置凭据时在
+  // publish 时明确失败,与既有行为一致);测试装置可预挂自己的 store。
+  result.manuscripts = result.manuscripts ?? createGitHubManuscriptStore(result as Env);
 
   return result as Env;
 }

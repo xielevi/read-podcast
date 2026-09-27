@@ -1,3 +1,4 @@
+import type { ManuscriptStore } from "./platform/types";
 import type { Env } from "./types";
 
 interface GitRef { object: { sha: string } }
@@ -87,20 +88,29 @@ function safeStem(writingFilename: string): string {
 }
 
 /**
- * 最终稿在 Canonical Manuscript Store 中的相对路径。
- * 目录为 GITHUB_PODCAST_PATH（默认 `podcasts/transcripts`，扁平）；
+ * 成稿在 Store 中的相对路径（两种 Store 实现共用，文件名规则一致）。
+ * 目录为配置的相对根（默认 `podcasts/transcripts`，扁平）；
  * 文件名优先用 Edge 的 build_filename_base 产物，缺省回退安全命名。
- * 原始转录不入 GitHub（计划 §3），因此只返回 finalPath。
+ * 原始转录不入 Store（计划 §3），因此只返回 finalPath。
  */
+export function manuscriptRelativePath(
+  root: string,
+  writingFilename: string,
+  title = "",
+  now = new Date(),
+): { finalPath: string } {
+  const stem = safeStem(writingFilename) || fallbackStem(title, now);
+  const base = root.replace(/^\/+|\/+$/g, "");
+  return { finalPath: `${base}/${stem}.md` };
+}
+
 export function podcastPaths(
   env: Env,
   writingFilename: string,
   title = "",
   now = new Date(),
 ): { finalPath: string } {
-  const stem = safeStem(writingFilename) || fallbackStem(title, now);
-  const root = env.GITHUB_PODCAST_PATH.replace(/^\/+|\/+$/g, "");
-  return { finalPath: `${root}/${stem}.md` };
+  return manuscriptRelativePath(env.GITHUB_PODCAST_PATH, writingFilename, title, now);
 }
 
 async function commitFilesOnce(
@@ -197,4 +207,36 @@ export async function readPodcastContent(env: Env, path: string, ref: string = e
   return new Response(response.body, {
     headers: { "content-type": "text/markdown; charset=utf-8", "cache-control": "private, no-store" },
   });
+}
+
+/**
+ * Canonical Manuscript Store 的 GitHub 实现（Cloudflare 部署装配；Docker 未配置本地目录时回落）。
+ * publish / read 包装既有 Git Data API 与 Contents API 逻辑，一行不变；version = git commit sha。
+ */
+export function createGitHubManuscriptStore(env: Env): ManuscriptStore {
+  return {
+    async publish(input) {
+      const { finalPath, commitSha } = await commitPodcast(env, input.writingFilename, input.title, input.markdown);
+      return { path: finalPath, version: commitSha };
+    },
+    async read(path, version) {
+      const response = await readPodcastContent(env, path, version ?? env.GITHUB_BRANCH);
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`Manuscript store read failed: HTTP ${response.status}`);
+      return response.text();
+    },
+    async list() {
+      const head = await branchHeadSha(env);
+      const root = env.GITHUB_PODCAST_PATH.replace(/^\/+|\/+$/g, "");
+      const entries = await github<Array<{ name: string; type: string }>>(
+        env,
+        `${repoPath(env)}/contents/${encodePath(root)}`,
+        { headers: githubHeaders(env) },
+      );
+      return entries
+        .filter((entry) => entry.type === "file" && entry.name.endsWith(".md"))
+        .map((entry) => ({ path: `${root}/${entry.name}`, version: head }))
+        .sort((a, b) => a.path.localeCompare(b.path));
+    },
+  };
 }

@@ -4,6 +4,7 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { createGitHubManuscriptStore } from "../../github";
 import type { Env } from "../../types";
 import { runProcessingPipeline } from "../../workflows/pipeline";
 import { createLocalAssetFetcher, type LocalAssetFetcher } from "./assets";
@@ -99,6 +100,10 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
     CF_ACCESS_CLIENT_SECRET: rawEnv.CF_ACCESS_CLIENT_SECRET,
     TRUSTED_INTERNAL_TRANSCRIPTION: rawEnv.TRUSTED_INTERNAL_TRANSCRIPTION ?? "true",
   } as unknown as Env;
+
+  // Canonical Manuscript Store:GitHub 实现(Git Data API)。与 Cloudflare 部署同构;
+  // 凭据缺失在 publish 时明确失败(现状行为)。
+  platformEnv.manuscripts = createGitHubManuscriptStore(platformEnv);
 
   return {
     env: platformEnv,

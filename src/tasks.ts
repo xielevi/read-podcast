@@ -1,5 +1,4 @@
 import { HttpError, error, json, parseLimit, parseOffset, readJson } from "./http";
-import { readPodcastContent } from "./github";
 import { episodeById } from "./episodes";
 import { MAX_UPLOAD_BYTES } from "./limits";
 import { STAGE_PROGRESS_RANGES, mapGlobalProgress } from "./progress";
@@ -313,18 +312,21 @@ export async function retryTask(id: string, env: Env, _ctx: ExecutionContext): P
 export async function taskContent(id: string, env: Env): Promise<Response> {
   const task = await env.db.prepare("SELECT final_content_path FROM tasks WHERE id = ? AND status = 'success'").bind(id).first<{ final_content_path: string | null }>();
   if (!task?.final_content_path) return error(404, "content_not_found", "Completed content not found");
-  const response = await readPodcastContent(env, task.final_content_path);
-  return response.status === 404 ? error(404, "content_not_found", "Completed content not found") : response;
+  const markdown = await env.manuscripts.read(task.final_content_path);
+  if (markdown === null) return error(404, "content_not_found", "Completed content not found");
+  return new Response(markdown, {
+    headers: { "content-type": "text/markdown; charset=utf-8", "cache-control": "private, no-store" },
+  });
 }
 
 export async function taskDownload(id: string, env: Env): Promise<Response> {
   const task = await env.db.prepare("SELECT episode_title, final_content_path FROM tasks WHERE id = ? AND status = 'success'")
     .bind(id).first<{ episode_title: string; final_content_path: string | null }>();
   if (!task?.final_content_path) return error(404, "content_not_found", "Completed content not found");
-  const response = await readPodcastContent(env, task.final_content_path);
-  if (response.status === 404) return error(404, "content_not_found", "Completed content not found");
+  const markdown = await env.manuscripts.read(task.final_content_path);
+  if (markdown === null) return error(404, "content_not_found", "Completed content not found");
   const filename = encodeURIComponent(`${task.episode_title || "podcast"}.md`);
-  return new Response(response.body, {
+  return new Response(markdown, {
     headers: {
       "content-type": "text/markdown; charset=utf-8",
       "content-disposition": `attachment; filename*=UTF-8''${filename}`,
