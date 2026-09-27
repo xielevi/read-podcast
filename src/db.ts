@@ -33,6 +33,7 @@ export interface TaskRow {
   /** 仅供 scripts/audit_suspicious_articles.sh 的历史审计；成稿时写入固定值。 */
   transcript_source: string | null;
   refinement_success: number;
+  content_language: "zh" | "en" | null;
 }
 
 /** TaskRow 的列名（与 `tasks` 表 schema 对照用）。 */
@@ -40,7 +41,7 @@ export const TASK_COLUMNS: ReadonlyArray<keyof TaskRow> = [
   "id", "episode_id", "source_type", "podcast_name", "episode_title", "audio_url", "status", "progress", "message",
   "final_content_path", "content_commit_sha", "error_code", "created_at", "updated_at", "completed_at",
   "transcript_source", "refinement_success", "current_attempt_id", "cancel_requested", "custom_prompt",
-  "raw_object_key", "refinement_started_at", "provider_request_id", "transcription_phase",
+  "raw_object_key", "refinement_started_at", "provider_request_id", "transcription_phase", "content_language",
 ];
 
 export async function loadTaskRow(env: Env, taskId: string): Promise<TaskRow | null> {

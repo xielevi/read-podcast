@@ -4,7 +4,7 @@
       section.className = 'concepts-section';
 
       var title = document.createElement('h3');
-      title.textContent = '关键概念';
+      title.textContent = getLocale() === 'en' ? t('concepts.title') : '关键概念';
       section.appendChild(title);
 
       var body = document.createElement('div');
@@ -27,13 +27,15 @@
       body.replaceChildren();
       var loading = document.createElement('div');
       loading.className = 'concepts-empty';
-      loading.textContent = IS_MANAGE ? '正在抽取关键概念…' : '正在读取关键概念…';
+      loading.textContent = IS_MANAGE ? (getLocale() === 'en' ? t('concepts.extracting') : '正在抽取关键概念…') : (getLocale() === 'en' ? t('concepts.reading') : '正在读取关键概念…');
       body.appendChild(loading);
 
       // 控制模式按需抽取（会调用模型并写缓存）；公开浏览只读取已缓存的结果。
+      var lang = getLocale() === 'en' ? 'en' : 'zh';
+      var suffix = lang === 'en' ? '/concepts?lang=en' : '/concepts';
       var request = IS_MANAGE
-        ? fetch(safeTaskUrl(taskId, '/concepts'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
-        : fetch(articleUrl(taskId, '/concepts'));
+        ? fetch(safeTaskUrl(taskId, suffix), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+        : fetch(articleUrl(taskId, suffix));
       request
         .then(function (response) {
           return response.text().then(function (raw) {
@@ -55,7 +57,7 @@
           if (!concepts.length) {
             var empty = document.createElement('div');
             empty.className = 'concepts-empty';
-            empty.textContent = '没有找到可链接到维基百科的概念。';
+            empty.textContent = getLocale() === 'en' ? t('concepts.empty') : '没有找到可链接到维基百科的概念。';
             body.appendChild(empty);
             return;
           }
@@ -101,12 +103,12 @@
           }
           var failed = document.createElement('div');
           failed.className = 'concepts-empty';
-          failed.textContent = '抽取失败：' + errorMessage(error);
+          failed.textContent = (getLocale() === 'en' ? t('concepts.failed') : '抽取失败：') + errorMessage(error);
           body.appendChild(failed);
           var retry = document.createElement('button');
           retry.type = 'button';
           retry.className = 'concepts-load-btn';
-          retry.textContent = '重试';
+          retry.textContent = getLocale() === 'en' ? t('concepts.retry') : '重试';
           retry.addEventListener('click', function () { loadConcepts(taskId, body); });
           body.appendChild(retry);
         });
@@ -162,7 +164,7 @@
       link.href = url;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.title = '维基百科';
+      link.title = getLocale() === 'en' ? t('concepts.wiki_title') : '维基百科';
       link.textContent = match.nodeValue;
       match.parentNode.replaceChild(link, match);
     }
@@ -385,6 +387,28 @@
       else if (byId('task-panel').classList.contains('is-open')) setTaskPanel(false);
       else if (byId('episode-summary-drawer').classList.contains('is-open')) closeEpisodeSummary();
     });
+
+    function reloadReaderConcepts() {
+      if (!_currentReadingTaskId) return;
+      var tocContainer = byId('reader-toc');
+      if (!tocContainer) return;
+      var existingSection = tocContainer.querySelector('.concepts-section');
+      if (existingSection) existingSection.remove();
+      var root = byId('manuscript-body');
+      if (root) {
+        var inlineLinks = root.querySelectorAll('a.concept-inline-link');
+        inlineLinks.forEach(function (link) {
+          var textNode = document.createTextNode(link.textContent);
+          link.parentNode.replaceChild(textNode, link);
+        });
+        root.normalize();
+      }
+      renderConceptsSection(_currentReadingTaskId, tocContainer);
+      setHidden(tocContainer, false);
+    }
+
+    byId('lang-toggle-btn').addEventListener('click', toggleLocale);
+    byId('reader-lang-toggle-btn').addEventListener('click', toggleLocale);
 
     // 两种模式进入同一个工作区。
     switchMode('podcast');

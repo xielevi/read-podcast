@@ -214,11 +214,11 @@
 
       if (runningCount > 0) {
         setHidden(triggerBtn, false);
-        if (triggerLabel) triggerLabel.textContent = '处理中 ' + runningCount;
+        if (triggerLabel) triggerLabel.textContent = getLocale() === 'en' ? t('tasks.processing_count', runningCount) : ('处理中 ' + runningCount);
         if (triggerDot) triggerDot.style.display = '';
       } else if (attentionCount > 0) {
         setHidden(triggerBtn, false);
-        if (triggerLabel) triggerLabel.textContent = attentionCount + ' 个任务需要处理';
+        if (triggerLabel) triggerLabel.textContent = getLocale() === 'en' ? t('tasks.attention_count', attentionCount) : (attentionCount + ' 个任务需要处理');
         if (triggerDot) triggerDot.style.display = 'none';
       } else {
         setHidden(triggerBtn, true);
@@ -437,11 +437,14 @@
         var copy = document.createElement('div');
         var source = document.createElement('span'); source.className = 'library-source'; source.textContent = String(article.podcast_name || '导入音频');
         var title = document.createElement('strong'); title.textContent = String(article.title || article.episode_title || '未命名稿件');
-        var meta = document.createElement('span'); meta.textContent = new Date(article.updated_at || article.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+        var meta = document.createElement('span'); meta.textContent = new Date(article.updated_at || article.created_at).toLocaleDateString(getLocale() === 'en' ? 'en-US' : 'zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
         copy.append(source, title, meta);
         var actions = document.createElement('div'); actions.className = 'library-actions';
-        var read = document.createElement('button'); read.type = 'button'; read.className = 'episode-action'; read.textContent = '阅读'; read.addEventListener('click', function () { openManuscript(taskId, null, article); });
-        var download = document.createElement('a'); download.className = 'download-btn'; download.href = articleUrl(taskId, '/download'); download.download = ''; download.innerHTML = uiIcon('download'); download.appendChild(document.createTextNode('下载'));
+        var read = document.createElement('button'); read.type = 'button'; read.className = 'episode-action'; read.textContent = getLocale() === 'en' ? t('library.read') : '阅读'; read.addEventListener('click', function () { openManuscript(taskId, null, article); });
+        var download = document.createElement('a'); download.className = 'download-btn'; download.href = articleUrl(taskId, '/download'); download.download = ''; download.innerHTML = uiIcon('download');
+        var dlText = document.createTextNode('下载');
+        if (getLocale() === 'en') dlText.textContent = t('library.download');
+        download.appendChild(dlText);
         actions.append(read, download); item.append(copy, actions); list.appendChild(item);
       });
     }

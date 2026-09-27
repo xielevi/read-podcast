@@ -293,11 +293,11 @@
       var name = document.createElement('span');
       name.className = 'pod-name';
       name.style.display = 'block';
-      name.textContent = '全部订阅';
+      name.textContent = getLocale() === 'en' ? t('content.all_subscriptions') : '全部订阅';
       var meta = document.createElement('span');
       meta.className = 'pod-meta';
       meta.style.display = 'block';
-      meta.textContent = '按时间线浏览';
+      meta.textContent = getLocale() === 'en' ? 'Chronological' : '按时间线浏览';
       copy.append(name, meta);
       selectBtn.append(dot, copy);
       selectBtn.addEventListener('click', selectAllPodcasts);
@@ -421,12 +421,19 @@
     function updateTimelineHeading() {
       var scopeCount = getScopedSubscriptions().length;
       var total = Number(_episodeCounts.all) || 0;
-      byId('center-title').textContent = selectedPodcast || '全部订阅';
+      byId('center-title').textContent = selectedPodcast || (getLocale() === 'en' ? t('content.all_subscriptions') : '全部订阅');
       var pieces = [];
-      if (total) pieces.push('按时间线');
-      if (selectedPodcast) pieces.push(total + ' 期');
-      else if (scopeCount) pieces.push(scopeCount + ' 档节目 · ' + total + ' 期');
-      byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? '正在读取订阅…' : '先添加一档节目，时间线会从这里开始');
+      if (getLocale() === 'en') {
+        if (total) pieces.push('Chronological');
+        if (selectedPodcast) pieces.push(total + ' episode' + (total === 1 ? '' : 's'));
+        else if (scopeCount) pieces.push(scopeCount + ' show' + (scopeCount === 1 ? '' : 's') + ' · ' + total + ' episode' + (total === 1 ? '' : 's'));
+        byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? 'Loading subscriptions…' : 'Add a podcast show to start');
+      } else {
+        if (total) pieces.push('按时间线');
+        if (selectedPodcast) pieces.push(total + ' 期');
+        else if (scopeCount) pieces.push(scopeCount + ' 档节目 · ' + total + ' 期');
+        byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? '正在读取订阅…' : '先添加一档节目，时间线会从这里开始');
+      }
     }
 
     // 切换节目范围（全部订阅 / 某一档）：重置搜索、筛选与页码，再向服务端取第一页。

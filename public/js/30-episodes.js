@@ -67,6 +67,10 @@
 
     // 公开浏览只区分「可阅读 / 未生成」：任务进度、失败与已读都属于控制模式的状态。
     function episodeStatusLabel(episode, task, activeTask, failedTask) {
+      if (getLocale() === 'en') {
+        if (!IS_MANAGE) return task ? 'Readable' : 'Not generated';
+        return activeTask ? 'Processing · ' + activeTask.progress + '%' : failedTask ? 'Failed' : isEpisodeRead(episode) ? 'Read' : task ? 'Unread' : 'Not generated';
+      }
       if (!IS_MANAGE) return task ? '可阅读' : '未生成';
       return activeTask ? '生成中 · ' + activeTask.progress + '%' : failedTask ? '失败' : isEpisodeRead(episode) ? '已读' : task ? '待读' : '未生成';
     }
@@ -114,8 +118,8 @@
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'episode-action rerun owner-state-only';
-      button.textContent = '重新生成';
-      button.setAttribute('aria-label', '重新生成「' + String(episode.title || '这期节目') + '」');
+      button.textContent = getLocale() === 'en' ? t('episode.regenerate') : '重新生成';
+      button.setAttribute('aria-label', (getLocale() === 'en' ? 'Regenerate "' : '重新生成「') + String(episode.title || '这期节目') + (getLocale() === 'en' ? '"' : '」'));
       button.addEventListener('click', function (event) {
         event.stopPropagation();
         renderEpisodeInspector(episode);
@@ -133,14 +137,15 @@
         setHidden(progress, !active && !failed);
         if (active) {
           var stageIndex = Object.prototype.hasOwnProperty.call(STAGE_STEP_INDEX, active.stage) ? STAGE_STEP_INDEX[active.stage] : 0;
-          progress.innerHTML = '<div class="inspector-progress-head"><span>正在生成稿件</span><span>' + active.progress + '%</span></div><div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + active.progress + '"><div class="progress-inner" style="width:' + active.progress + '%"></div></div><div class="progress-stage-row">' + ['获取音频','转写','整理','保存'].map(function (label, index) { return '<span class="' + (index < stageIndex ? 'done' : index === stageIndex ? 'active' : '') + '">' + (index < stageIndex ? '✓ ' : index === stageIndex ? '● ' : '○ ') + label + '</span>'; }).join('') + '</div><div class="progress-message">' + escapeHtml(active.message || ('正在' + (STAGE_LABELS[active.stage] || '处理'))) + '</div>';
+          var stageLabels = getLocale() === 'en' ? ['Get Audio', 'Transcribe', 'Refine', 'Save'] : ['获取音频', '转写', '整理', '保存'];
+          progress.innerHTML = '<div class="inspector-progress-head"><span>' + (getLocale() === 'en' ? 'Generating manuscript' : '正在生成稿件') + '</span><span>' + active.progress + '%</span></div><div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + active.progress + '"><div class="progress-inner" style="width:' + active.progress + '%"></div></div><div class="progress-stage-row">' + stageLabels.map(function (label, index) { return '<span class="' + (index < stageIndex ? 'done' : index === stageIndex ? 'active' : '') + '">' + (index < stageIndex ? '✓ ' : index === stageIndex ? '● ' : '○ ') + label + '</span>'; }).join('') + '</div><div class="progress-message">' + escapeHtml(active.message || ('正在' + (STAGE_LABELS[active.stage] || '处理'))) + '</div>';
         } else if (failed) {
-          progress.innerHTML = '<div class="inspector-progress-head text-danger"><span>生成未成功</span></div><div class="progress-message text-danger">' + escapeHtml(resolveTaskFailureMessage(failed)) + '</div>';
+          progress.innerHTML = '<div class="inspector-progress-head text-danger"><span>' + (getLocale() === 'en' ? 'Generation failed' : '生成未成功') + '</span></div><div class="progress-message text-danger">' + escapeHtml(resolveTaskFailureMessage(failed)) + '</div>';
         }
         var primary = document.createElement('button');
         primary.type = 'button';
         primary.className = completed ? 'episode-action' : 'solid-btn';
-        primary.textContent = active ? '生成中 ' + active.progress + '%' : completed ? '阅读' : failed ? '重试' : '生成稿件';
+        primary.textContent = active ? (getLocale() === 'en' ? 'Processing ' + active.progress + '%' : '生成中 ' + active.progress + '%') : completed ? (getLocale() === 'en' ? t('library.read') : '阅读') : failed ? (getLocale() === 'en' ? t('tasks.retry') : '重试') : (getLocale() === 'en' ? t('episode.generate') : '生成稿件');
         primary.disabled = Boolean(active);
         primary.addEventListener('click', function (event) {
           if (completed) openManuscript(completed.id, episode);
@@ -149,7 +154,7 @@
         });
         actions.appendChild(primary);
         if (completed) {
-          actions.appendChild(createEpisodeDownloadAction(completed.id, '下载 Markdown'));
+          actions.appendChild(createEpisodeDownloadAction(completed.id, getLocale() === 'en' ? t('episode.download_md') : '下载 Markdown'));
           if (IS_MANAGE) actions.appendChild(createEpisodeRerunAction(episode));
         }
       });
@@ -328,7 +333,7 @@
       var primaryButton = document.createElement('button');
       primaryButton.type = 'button';
       primaryButton.className = 'episode-action' + (task ? '' : ' primary');
-      primaryButton.textContent = activeTask ? '生成中 · ' + activeTask.progress + '%' : task ? '阅读' : failedTask ? '重试' : '生成稿件';
+      primaryButton.textContent = activeTask ? (getLocale() === 'en' ? 'Processing · ' + activeTask.progress + '%' : '生成中 · ' + activeTask.progress + '%') : task ? (getLocale() === 'en' ? t('library.read') : '阅读') : failedTask ? (getLocale() === 'en' ? t('tasks.retry') : '重试') : (getLocale() === 'en' ? t('episode.generate') : '生成稿件');
       primaryButton.disabled = Boolean(activeTask);
       primaryButton.addEventListener('click', function (event) {
         event.stopPropagation();
@@ -340,7 +345,7 @@
       });
       actions.appendChild(primaryButton);
       if (task) {
-        actions.appendChild(createEpisodeDownloadAction(task.id, '下载'));
+        actions.appendChild(createEpisodeDownloadAction(task.id, getLocale() === 'en' ? t('library.download') : '下载'));
         if (IS_MANAGE) actions.appendChild(createEpisodeRerunAction(episode));
       }
       return actions;
@@ -356,7 +361,7 @@
         var empty = document.createElement('div'); empty.className = 'empty-state';
         var emptyIcon = document.createElement('span'); emptyIcon.className = 'empty-state-icon'; emptyIcon.innerHTML = uiIcon(_subscriptions.length ? 'search' : 'rss');
         empty.appendChild(emptyIcon);
-        var copy = document.createElement('span'); copy.innerHTML = _subscriptions.length ? '<strong>没有找到匹配内容</strong><br>试试更短的关键词。' : '<strong>还没有订阅</strong><br>添加一档播客，最新单集会自动出现在这里。'; empty.appendChild(copy);
+        var copy = document.createElement('span'); copy.innerHTML = _subscriptions.length ? (getLocale() === 'en' ? '<strong>No matching content found</strong><br>Try a shorter keyword.' : '<strong>没有找到匹配内容</strong><br>试试更短的关键词。') : (getLocale() === 'en' ? '<strong>No subscriptions yet</strong><br>Add a podcast to see latest episodes here.' : '<strong>还没有订阅</strong><br>添加一档播客，最新单集会自动出现在这里。'); empty.appendChild(copy);
         container.appendChild(empty);
         setHidden(pagination, true);
         return;
@@ -406,7 +411,7 @@
         fragment.append(row);
       });
       container.appendChild(fragment);
-      byId('page-label').textContent = '第 ' + currentPage + ' / ' + totalPages + ' 页';
+      byId('page-label').textContent = getLocale() === 'en' ? t('pagination.page', currentPage, totalPages) : ('第 ' + currentPage + ' / ' + totalPages + ' 页');
       byId('page-prev').disabled = currentPage <= 1;
       byId('page-next').disabled = currentPage >= totalPages;
       setHidden(pagination, totalPages <= 1);

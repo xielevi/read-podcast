@@ -20,6 +20,14 @@ export const CONCEPTS_SYSTEM_PROMPT =
   "3. 独立词条：只选维基百科上极可能拥有独立条目的专有名词，不带修饰短语（如选「马克斯·韦伯」而非「韦伯的学术思想」）。\n" +
   "4. 数量与格式：按重要性从高到低排序，只返回合法的 JSON 对象，形如 {\"concepts\": [\"概念1\", \"概念2\"]}，严禁输出任何额外解释或散文。";
 
+export const CONCEPTS_SYSTEM_PROMPT_EN =
+  "You are a knowledge editor responsible for selecting key proper nouns and concepts from podcast transcripts that are most worth readers looking up on Wikipedia.\n" +
+  "[Selection Principles]\n" +
+  "1. Prioritize: People, organizations/institutions, historical events, academic theories, technical/domain terms, notable works, significant locations.\n" +
+  "2. Strictly exclude: Everyday generic words (e.g., 'communication', 'era', 'logic', 'method', 'problem'), the podcast show name or episode title itself, and common knowledge words.\n" +
+  "3. Standalone entries: Only select proper nouns highly likely to have standalone Wikipedia articles, without modifying phrases (e.g., select 'Max Weber' rather than 'Weber's academic thought').\n" +
+  "4. Quantity and format: Rank from most important to least important, return only a valid JSON object of the form {\"concepts\": [\"Concept 1\", \"Concept 2\"]}. Never output any additional explanation or prose.";
+
 export function stripCodeFence(text: string): string {
   let value = String(text ?? "").trim();
   if (value.startsWith("```")) {
@@ -162,6 +170,7 @@ export interface ConceptCandidateInput {
   podcast: string;
   content: string;
   limit?: number;
+  lang?: "zh" | "en";
 }
 
 /** 调用 LLM 提名候选概念（数量略多要 2-3 个备选以抵消维基核验损耗）。 */
@@ -169,16 +178,23 @@ export async function proposeConceptCandidates(input: ConceptCandidateInput, cli
   const body = String(input.content ?? "").trim();
   if (!body) return [];
 
+  const lang = input.lang === "en" ? "en" : "zh";
   const targetCount = Math.max(1, Math.min(Math.trunc(input.limit ?? DEFAULT_CANDIDATES), MAX_CANDIDATES));
   const requestCount = Math.min(MAX_CANDIDATES, targetCount + 3);
 
   const sampledText = sampleContent(body, MAX_CONTEXT_CHARS);
-  const header = `《${input.title}》` + (input.podcast ? `（播客：${input.podcast}）` : "");
-  const userPrompt = `播客单集：${header}\n请从以下文字稿中挑选 ${requestCount} 个最值得在维基百科查阅的关键概念：\n\n"""\n${sampledText}\n"""`;
+  const header = lang === "en"
+    ? `"${input.title}"` + (input.podcast ? ` (Podcast: ${input.podcast})` : "")
+    : `《${input.title}》` + (input.podcast ? `（播客：${input.podcast}）` : "");
+  const userPrompt = lang === "en"
+    ? `Podcast episode: ${header}\nPlease select ${requestCount} key concepts most worth looking up on Wikipedia from the following transcript:\n\n"""\n${sampledText}\n"""`
+    : `播客单集：${header}\n请从以下文字稿中挑选 ${requestCount} 个最值得在维基百科查阅的关键概念：\n\n"""\n${sampledText}\n"""`;
+
+  const systemPrompt = lang === "en" ? CONCEPTS_SYSTEM_PROMPT_EN : CONCEPTS_SYSTEM_PROMPT;
 
   const result = await client.chat(
     [
-      { role: "system", content: CONCEPTS_SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     { maxTokens: 800, temperature: 0.2 },

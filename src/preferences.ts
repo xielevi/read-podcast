@@ -10,6 +10,7 @@ import { NOW } from "./db";
 import { HttpError, json, readJson } from "./http";
 import type { Env } from "./types";
 
+export type UiLocale = "zh" | "en";
 export type AppTheme = "auto" | "light" | "dark";
 export type ReaderTheme = "follow" | "paper" | "warm" | "green" | "dark";
 export type FontPreset = "classical" | "modern";
@@ -17,6 +18,7 @@ export type LineHeight = "compact" | "normal" | "relaxed";
 export type MarginWidth = "compact" | "normal" | "wide";
 
 export interface UiPreferences {
+  locale: UiLocale;
   appTheme: AppTheme;
   readerTheme: ReaderTheme;
   fontPreset: FontPreset;
@@ -27,6 +29,7 @@ export interface UiPreferences {
 }
 
 export interface UiPreferencesDto {
+  locale: UiLocale;
   app_theme: AppTheme;
   reader_theme: ReaderTheme;
   font_preset: FontPreset;
@@ -37,6 +40,7 @@ export interface UiPreferencesDto {
 }
 
 export const DEFAULT_UI_PREFERENCES: UiPreferences = {
+  locale: "zh",
   appTheme: "auto",
   readerTheme: "follow",
   fontPreset: "classical",
@@ -47,6 +51,7 @@ export const DEFAULT_UI_PREFERENCES: UiPreferences = {
 };
 
 interface UiPreferencesRow {
+  locale: string | null;
   app_theme: string | null;
   reader_theme: string | null;
   font_preset: string | null;
@@ -56,6 +61,7 @@ interface UiPreferencesRow {
   updated_at: string | null;
 }
 
+const VALID_LOCALES = new Set<string>(["zh", "en"]);
 const VALID_APP_THEMES = new Set<string>(["auto", "light", "dark"]);
 const VALID_READER_THEMES = new Set<string>(["follow", "paper", "warm", "green", "dark"]);
 const VALID_FONT_PRESETS = new Set<string>(["classical", "modern"]);
@@ -65,6 +71,7 @@ const VALID_MARGIN_WIDTHS = new Set<string>(["compact", "normal", "wide"]);
 function toPreferences(row: UiPreferencesRow | null): UiPreferences {
   if (!row) return { ...DEFAULT_UI_PREFERENCES };
   return {
+    locale: VALID_LOCALES.has(row.locale ?? "") ? (row.locale as UiLocale) : DEFAULT_UI_PREFERENCES.locale,
     appTheme: VALID_APP_THEMES.has(row.app_theme ?? "") ? (row.app_theme as AppTheme) : DEFAULT_UI_PREFERENCES.appTheme,
     readerTheme: VALID_READER_THEMES.has(row.reader_theme ?? "") ? (row.reader_theme as ReaderTheme) : DEFAULT_UI_PREFERENCES.readerTheme,
     fontPreset: VALID_FONT_PRESETS.has(row.font_preset ?? "") ? (row.font_preset as FontPreset) : DEFAULT_UI_PREFERENCES.fontPreset,
@@ -79,6 +86,7 @@ function toPreferences(row: UiPreferencesRow | null): UiPreferences {
 
 export function toPreferencesDto(prefs: UiPreferences): UiPreferencesDto {
   return {
+    locale: prefs.locale,
     app_theme: prefs.appTheme,
     reader_theme: prefs.readerTheme,
     font_preset: prefs.fontPreset,
@@ -91,7 +99,7 @@ export function toPreferencesDto(prefs: UiPreferences): UiPreferencesDto {
 
 export async function loadUiPreferences(env: Env): Promise<UiPreferences> {
   const row = await env.db.prepare(
-    "SELECT app_theme, reader_theme, font_preset, font_size, line_height, margin_width, updated_at FROM ui_preferences WHERE id = 1",
+    "SELECT locale, app_theme, reader_theme, font_preset, font_size, line_height, margin_width, updated_at FROM ui_preferences WHERE id = 1",
   ).first<UiPreferencesRow>();
   return toPreferences(row);
 }
@@ -102,6 +110,14 @@ export function parseUiPreferencesPatch(body: unknown): Partial<Omit<UiPreferenc
   }
   const raw = body as Record<string, unknown>;
   const patch: Partial<Omit<UiPreferences, "updatedAt">> = {};
+
+  if (raw.locale !== undefined) {
+    const val = String(raw.locale).trim().toLowerCase();
+    if (!VALID_LOCALES.has(val)) {
+      throw new HttpError(400, "invalid_preferences", "locale 必须是 zh 或 en");
+    }
+    patch.locale = val as UiLocale;
+  }
 
   if (raw.app_theme !== undefined) {
     const val = String(raw.app_theme).trim();
@@ -160,6 +176,7 @@ export async function updateUiPreferences(
 ): Promise<UiPreferences> {
   const current = await loadUiPreferences(env);
   const next: UiPreferences = {
+    locale: patch.locale ?? current.locale,
     appTheme: patch.appTheme ?? current.appTheme,
     readerTheme: patch.readerTheme ?? current.readerTheme,
     fontPreset: patch.fontPreset ?? current.fontPreset,
@@ -169,9 +186,10 @@ export async function updateUiPreferences(
     updatedAt: null,
   };
 
-  await env.db.prepare(`INSERT INTO ui_preferences (id, app_theme, reader_theme, font_preset, font_size, line_height, margin_width, updated_at)
-    VALUES (1, ?, ?, ?, ?, ?, ?, ${NOW})
+  await env.db.prepare(`INSERT INTO ui_preferences (id, locale, app_theme, reader_theme, font_preset, font_size, line_height, margin_width, updated_at)
+    VALUES (1, ?, ?, ?, ?, ?, ?, ?, ${NOW})
     ON CONFLICT(id) DO UPDATE SET
+      locale = excluded.locale,
       app_theme = excluded.app_theme,
       reader_theme = excluded.reader_theme,
       font_preset = excluded.font_preset,
@@ -179,7 +197,7 @@ export async function updateUiPreferences(
       line_height = excluded.line_height,
       margin_width = excluded.margin_width,
       updated_at = excluded.updated_at`)
-    .bind(next.appTheme, next.readerTheme, next.fontPreset, next.fontSize, next.lineHeight, next.marginWidth)
+    .bind(next.locale, next.appTheme, next.readerTheme, next.fontPreset, next.fontSize, next.lineHeight, next.marginWidth)
     .run();
 
   return loadUiPreferences(env);

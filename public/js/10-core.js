@@ -99,6 +99,8 @@
         }
         var leading = localStorage.getItem('reader_line_height');
         if (leading) _cloudPrefs.line_height = leading;
+        var loc = localStorage.getItem('app_locale');
+        if (loc === 'zh' || loc === 'en') _cloudPrefs.locale = loc;
       } catch (ignore) {}
     }
     loadLocalPreferences();
@@ -133,7 +135,8 @@
             reader_theme: 'reader_theme',
             font_preset: 'reader_font_preset',
             font_size: 'reader_font_size',
-            line_height: 'reader_line_height'
+            line_height: 'reader_line_height',
+            locale: 'app_locale'
           };
           var localKey = map[key] || key;
           localStorage.setItem(localKey, String(value));
@@ -148,6 +151,9 @@
           if (!data) return null;
           if (IS_MANAGE) {
             Object.assign(_cloudPrefs, data);
+            if (data.locale && typeof setLocale === 'function') {
+              setLocale(data.locale, false);
+            }
           } else {
             // 未登录态：若本地未自定义过，则继承站长云端默认值；若已设置过则保留本地偏好
             try {
@@ -156,6 +162,9 @@
               if (!localStorage.getItem('reader_font_preset') && data.font_preset) _cloudPrefs.font_preset = data.font_preset;
               if (!localStorage.getItem('reader_font_size') && data.font_size) _cloudPrefs.font_size = data.font_size;
               if (!localStorage.getItem('reader_line_height') && data.line_height) _cloudPrefs.line_height = data.line_height;
+              if (!localStorage.getItem('app_locale') && data.locale && typeof setLocale === 'function') {
+                setLocale(data.locale, false);
+              }
             } catch (ignore) {
               Object.assign(_cloudPrefs, data);
             }

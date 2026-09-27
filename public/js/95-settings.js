@@ -23,29 +23,73 @@
       else if (_appearanceMedia.addListener) _appearanceMedia.addListener(handler);
     }
 
+    function buildLanguageGroup() {
+      var section = document.createElement('section');
+      section.className = 'settings-group';
+      var head = document.createElement('div');
+      head.className = 'settings-group-head';
+      var title = document.createElement('h3');
+      title.textContent = t('settings.lang');
+      head.appendChild(title);
+      section.appendChild(head);
+      var desc = document.createElement('p');
+      desc.className = 'settings-group-desc';
+      desc.textContent = t('settings.lang_desc');
+      section.appendChild(desc);
+
+      var segmented = document.createElement('div');
+      segmented.className = 'appearance-segmented';
+      segmented.setAttribute('role', 'group');
+      segmented.setAttribute('aria-label', t('settings.lang'));
+      var current = getLocale();
+      [
+        { value: 'zh', label: '中文' },
+        { value: 'en', label: 'English' }
+      ].forEach(function (option) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'appearance-btn' + (current === option.value ? ' active' : '');
+        btn.dataset.langValue = option.value;
+        btn.setAttribute('aria-pressed', current === option.value ? 'true' : 'false');
+        btn.textContent = option.label;
+        btn.addEventListener('click', function () {
+          setLocale(option.value, true);
+          segmented.querySelectorAll('.appearance-btn').forEach(function (b) {
+            var active = b.dataset.langValue === option.value;
+            b.classList.toggle('active', active);
+            b.setAttribute('aria-pressed', active ? 'true' : 'false');
+          });
+          loadSettings();
+        });
+        segmented.appendChild(btn);
+      });
+      section.appendChild(segmented);
+      return section;
+    }
+
     function buildAppearanceGroup() {
       var section = document.createElement('section');
       section.className = 'settings-group';
       var head = document.createElement('div');
       head.className = 'settings-group-head';
       var title = document.createElement('h3');
-      title.textContent = '外观';
+      title.textContent = t('appearance.theme');
       head.appendChild(title);
       section.appendChild(head);
       var desc = document.createElement('p');
       desc.className = 'settings-group-desc';
-      desc.textContent = '选择界面外观；「自动」跟随系统深浅色。';
+      desc.textContent = t('appearance.desc');
       section.appendChild(desc);
 
       var segmented = document.createElement('div');
       segmented.className = 'appearance-segmented';
       segmented.setAttribute('role', 'group');
-      segmented.setAttribute('aria-label', '应用外观');
+      segmented.setAttribute('aria-label', t('appearance.group'));
       var stored = _cloudPrefs.app_theme || 'auto';
       [
-        { value: 'light', label: '浅色', icon: 'sun' },
-        { value: 'dark', label: '深色', icon: 'moon' },
-        { value: 'auto', label: '自动', icon: 'auto' }
+        { value: 'light', label: t('appearance.light'), icon: 'sun' },
+        { value: 'dark', label: t('appearance.dark'), icon: 'moon' },
+        { value: 'auto', label: t('appearance.auto'), icon: 'auto' }
       ].forEach(function (option) {
         var btn = document.createElement('button');
         btn.type = 'button';
@@ -104,12 +148,12 @@
       body.replaceChildren();
       var state = document.createElement('p');
       state.className = 'settings-state';
-      state.textContent = '正在读取配置…';
+      state.textContent = getLocale() === 'en' ? 'Loading configuration…' : '正在读取配置…';
       body.appendChild(state);
       fetch(appUrl('/api/control/settings'))
         .then(readApiResponse)
         .then(function (data) { renderSettings(data); })
-        .catch(function (error) { state.textContent = '配置读取失败：' + errorMessage(error); });
+        .catch(function (error) { state.textContent = (getLocale() === 'en' ? 'Failed to read configuration: ' : '配置读取失败：') + errorMessage(error); });
     }
 
     function buildSettingsField(field) {
@@ -127,7 +171,7 @@
       if (isSecret) {
         var badge = document.createElement('span');
         badge.className = 'settings-badge' + (field.configured ? ' is-set' : '');
-        badge.textContent = field.configured ? '已配置' : '未配置';
+        badge.textContent = field.configured ? (getLocale() === 'en' ? 'Configured' : '已配置') : (getLocale() === 'en' ? 'Not configured' : '未配置');
         label.appendChild(badge);
       }
       wrap.appendChild(label);
@@ -138,7 +182,7 @@
         // 不可编辑项不展示输入框。
         var hintP = document.createElement('p');
         hintP.className = 'settings-field-hint settings-field-locked';
-        hintP.textContent = String(field.hint || '此项不能在这里修改');
+        hintP.textContent = String(field.hint || (getLocale() === 'en' ? 'This item cannot be edited here' : '此项不能在这里修改'));
         wrap.appendChild(hintP);
         _settingsEntries.push(entry);
         return wrap;
@@ -188,12 +232,13 @@
       var body = byId('settings-body');
       body.replaceChildren();
       _settingsEntries = [];
+      body.appendChild(buildLanguageGroup());
       body.appendChild(buildAppearanceGroup());
       var groups = data && Array.isArray(data.groups) ? data.groups : [];
       if (!groups.length) {
         var empty = document.createElement('p');
         empty.className = 'settings-state';
-        empty.textContent = '没有可编辑的配置项。';
+        empty.textContent = getLocale() === 'en' ? 'No editable configuration items.' : '没有可编辑的配置项。';
         body.appendChild(empty);
         return;
       }
@@ -202,18 +247,18 @@
       if (refiner) {
         var section = document.createElement('section'); section.className = 'settings-group';
         var head = document.createElement('div'); head.className = 'settings-group-head';
-        var title = document.createElement('h3'); title.textContent = '文字整理'; head.appendChild(title);
-        var testBtn = document.createElement('button'); testBtn.type = 'button'; testBtn.className = 'ghost-btn settings-test-btn'; testBtn.textContent = '测试'; testBtn.addEventListener('click', function () { testSettings('refiner', testBtn); }); head.appendChild(testBtn);
+        var title = document.createElement('h3'); title.textContent = getLocale() === 'en' ? 'Editorial Refinement' : '文字整理'; head.appendChild(title);
+        var testBtn = document.createElement('button'); testBtn.type = 'button'; testBtn.className = 'ghost-btn settings-test-btn'; testBtn.textContent = getLocale() === 'en' ? 'Test' : '测试'; testBtn.addEventListener('click', function () { testSettings('refiner', testBtn); }); head.appendChild(testBtn);
         section.appendChild(head);
         var fields = refiner.fields || [];
         fields.filter(function (field) { return field.key === 'refiner.model'; }).forEach(function (field) { section.appendChild(buildSettingsField(field)); });
         body.appendChild(section);
         var advanced = document.createElement('details'); advanced.className = 'settings-group settings-advanced';
-        var summary = document.createElement('summary'); summary.textContent = '高级设置'; advanced.appendChild(summary);
+        var summary = document.createElement('summary'); summary.textContent = getLocale() === 'en' ? 'Advanced' : '高级设置'; advanced.appendChild(summary);
         fields.filter(function (field) { return field.key !== 'refiner.model'; }).forEach(function (field) { advanced.appendChild(buildSettingsField(field)); });
         if (quality) {
           (quality.fields || []).forEach(function (field) { advanced.appendChild(buildSettingsField(field)); });
-          var hint = document.createElement('p'); hint.className = 'settings-group-desc'; hint.textContent = '成稿明显过短时不会发布。'; advanced.appendChild(hint);
+          var hint = document.createElement('p'); hint.className = 'settings-group-desc'; hint.textContent = getLocale() === 'en' ? 'Manuscripts that are significantly too short will not be published.' : '成稿明显过短时不会发布。'; advanced.appendChild(hint);
         }
         body.appendChild(advanced);
       }
@@ -237,7 +282,7 @@
       var saveBtn = byId('settings-save-btn');
       _settingsBusy = true;
       saveBtn.disabled = true;
-      saveBtn.textContent = '保存中…';
+      saveBtn.textContent = getLocale() === 'en' ? 'Saving…' : '保存中…';
       fetch(appUrl('/api/control/settings'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -246,12 +291,12 @@
         .then(readApiResponse)
         .then(function (data) {
           renderSettings(data);
-          addLog('设置已保存。', 'success');
+          addLog(getLocale() === 'en' ? 'Settings saved.' : '设置已保存。', 'success');
         })
-        .catch(function (error) { addLog('保存失败：' + errorMessage(error), 'error'); })
+        .catch(function (error) { addLog((getLocale() === 'en' ? 'Failed to save: ' : '保存失败：') + errorMessage(error), 'error'); })
         .then(function () {
           _settingsBusy = false;
-          saveBtn.textContent = '保存';
+          saveBtn.textContent = getLocale() === 'en' ? 'Save' : '保存';
           saveBtn.disabled = false;
         });
     }
@@ -259,15 +304,15 @@
     function testSettings(target, button) {
       var original = button.textContent;
       button.disabled = true;
-      button.textContent = '测试中…';
+      button.textContent = getLocale() === 'en' ? 'Testing…' : '测试中…';
       fetch(appUrl('/api/control/settings/test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target: target })
       })
         .then(readApiResponse)
-        .then(function (data) { addLog((data && data.detail) || '连接正常。', 'success'); })
-        .catch(function (error) { addLog('测试失败：' + errorMessage(error), 'error'); })
+        .then(function (data) { addLog((data && data.detail) || (getLocale() === 'en' ? 'Connection OK.' : '连接正常。'), 'success'); })
+        .catch(function (error) { addLog((getLocale() === 'en' ? 'Test failed: ' : '测试失败：') + errorMessage(error), 'error'); })
         .then(function () { button.disabled = false; button.textContent = original; });
     }
 
@@ -289,9 +334,9 @@
       });
       var summary = byId('public-theme-btn');
       if (summary) {
-        var labels = { auto: '自动', light: '浅色', dark: '深色' };
-        summary.title = '外观：' + (labels[stored] || '自动');
-        summary.setAttribute('aria-label', '选择外观，当前' + (labels[stored] || '自动'));
+        var labels = getLocale() === 'en' ? { auto: 'Auto', light: 'Light', dark: 'Dark' } : { auto: '自动', light: '浅色', dark: '深色' };
+        summary.title = (getLocale() === 'en' ? 'Appearance: ' : '外观：') + (labels[stored] || (getLocale() === 'en' ? 'Auto' : '自动'));
+        summary.setAttribute('aria-label', (getLocale() === 'en' ? 'Select appearance, current ' : '选择外观，当前') + (labels[stored] || (getLocale() === 'en' ? 'Auto' : '自动')));
       }
     }
 
@@ -332,6 +377,7 @@
 
     watchSystemTheme();
     initSettings();
+    applyLocale(getLocale());
     loadCloudPreferences();
     // 订阅、单集快照与稿件在两种模式下都可浏览（browseApi 决定走 public 还是 control）。
     var subscriptionsReady = loadSubscriptions();

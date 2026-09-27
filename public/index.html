@@ -18,6 +18,19 @@
       document.documentElement.dataset.appTheme = dark ? 'dark' : 'light';
       var meta = document.querySelector('meta[name="color-scheme"]');
       if (meta) meta.setAttribute('content', dark ? 'dark' : 'light');
+
+      var loc = 'zh';
+      try {
+        var savedLoc = localStorage.getItem('app_locale');
+        if (savedLoc === 'zh' || savedLoc === 'en') {
+          loc = savedLoc;
+        } else {
+          var navLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+          loc = navLang.startsWith('zh') ? 'zh' : 'en';
+        }
+      } catch (ignore) {}
+      document.documentElement.lang = loc === 'zh' ? 'zh-CN' : 'en';
+      document.documentElement.dataset.locale = loc;
     }());
   </script>
   <script>
@@ -36,7 +49,7 @@
   </script>
 </head>
 <body data-mode="podcast">
-  <a class="skip-link" href="#episode-list">跳到单集列表</a>
+  <a class="skip-link" href="#episode-list" data-i18n="skip.link">跳到单集列表</a>
 
   <div class="app-shell">
     <header class="masthead">
@@ -44,21 +57,22 @@
         <div class="logo-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></div>
         <div class="brand-copy">
           <h1>Read Podcast</h1>
-          <span class="brand-kicker">让播客，从声音变成阅读</span>
+          <span class="brand-kicker" data-i18n="brand.kicker">让播客，从声音变成阅读</span>
         </div>
       </div>
       <div class="mast-actions">
+        <button class="ghost-btn lang-toggle-btn" id="lang-toggle-btn" type="button" aria-label="切换语言" title="切换语言">中 / EN</button>
         <details class="public-theme-menu public-only" id="public-theme-menu">
-          <summary class="ghost-btn public-theme-summary" id="public-theme-btn" aria-label="选择外观">外观</summary>
+          <summary class="ghost-btn public-theme-summary" id="public-theme-btn" aria-label="选择外观" data-i18n="appearance.theme">外观</summary>
           <div class="public-theme-popover" role="group" aria-label="应用外观">
-            <button type="button" data-public-theme="auto" aria-pressed="false">自动</button>
-            <button type="button" data-public-theme="light" aria-pressed="false">浅色</button>
-            <button type="button" data-public-theme="dark" aria-pressed="false">深色</button>
+            <button type="button" data-public-theme="auto" aria-pressed="false" data-i18n="appearance.auto">自动</button>
+            <button type="button" data-public-theme="light" aria-pressed="false" data-i18n="appearance.light">浅色</button>
+            <button type="button" data-public-theme="dark" aria-pressed="false" data-i18n="appearance.dark">深色</button>
           </div>
         </details>
-        <a class="ghost-btn manage-link public-only" id="manage-link" href="/manage">登录管理</a>
+        <a data-i18n="masthead.manage" class="ghost-btn manage-link public-only" id="manage-link" href="/manage">登录管理</a>
         <button class="task-trigger owner-state-only" id="task-panel-btn" type="button" hidden aria-haspopup="dialog"><span class="task-trigger-dot" aria-hidden="true"></span><span id="task-trigger-label">处理中 0</span></button>
-        <button class="icon-btn" id="settings-btn" type="button" title="设置" aria-label="打开设置" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h8M16 8h4M4 16h4M12 16h8"/><circle cx="14" cy="8" r="2.4"/><circle cx="10" cy="16" r="2.4"/></svg></button>
+        <button class="icon-btn" id="settings-btn" type="button" title="设置" aria-label="打开设置" aria-haspopup="dialog" data-i18n-title="masthead.settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h8M16 8h4M4 16h4M12 16h8"/><circle cx="14" cy="8" r="2.4"/><circle cx="10" cy="16" r="2.4"/></svg></button>
       </div>
     </header>
 
@@ -290,6 +304,7 @@
               </div>
             </div>
           </details>
+          <button class="ghost-btn reader-lang-btn" id="reader-lang-toggle-btn" type="button" aria-label="切换语言" title="切换语言">中 / EN</button>
           <a class="reader-download" id="reader-download" href="#" download title="下载 Markdown"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v11M7.5 11.5 12 16l4.5-4.5"/><path d="M4 16.5v1.8A2.7 2.7 0 0 0 6.7 21h10.6a2.7 2.7 0 0 0 2.7-2.7v-1.8"/></svg><span class="reader-download-label">下载 Markdown</span></a>
           <button class="control-btn reader-read-toggle owner-state-only" id="reader-read-toggle" type="button" aria-pressed="false" hidden>标记为已读</button>
           <button class="close-btn" id="reader-close-btn" type="button" aria-label="关闭阅读"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>

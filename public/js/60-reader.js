@@ -1,10 +1,17 @@
     function updateReaderStats(rawText) {
-      var cleanText = String(rawText || '').replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n*/, '').replace(/\s+/g, '');
+      var withoutFrontmatter = String(rawText || '').replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n*/, '');
+      var cleanText = withoutFrontmatter.replace(/\s+/g, '');
       var count = cleanText.length;
-      var minutes = Math.max(1, Math.round(count / 750));
-      var countStr = count >= 10000 ? (count / 10000).toFixed(1) + ' 万字' : count + ' 字';
       var statsEl = byId('reader-meta-stats');
-      if (statsEl) {
+      if (!statsEl) return;
+      if (!count) { statsEl.textContent = ''; return; }
+      if (getLocale() === 'en') {
+        var words = withoutFrontmatter.trim().split(/\s+/).filter(Boolean).length;
+        var minutes = Math.max(1, Math.round(words / 220));
+        statsEl.textContent = words ? (words + ' words · ~' + minutes + ' min') : '';
+      } else {
+        var minutes = Math.max(1, Math.round(count / 750));
+        var countStr = count >= 10000 ? (count / 10000).toFixed(1) + ' 万字' : count + ' 字';
         statsEl.textContent = count ? (countStr + ' · 约 ' + minutes + ' 分钟') : '';
       }
     }
@@ -23,7 +30,7 @@
       if (sheetProgressVal) sheetProgressVal.textContent = rounded + '%';
 
       var barProgressLabel = byId('reader-bar-progress-label');
-      if (barProgressLabel) barProgressLabel.textContent = '进度 ' + rounded + '%';
+      if (barProgressLabel) barProgressLabel.textContent = (getLocale() === 'en' ? 'Progress ' : '进度 ') + rounded + '%';
 
       if (bounded >= 99.5 && _currentReadingRef && !isRead(_currentReadingRef)) {
         setRead(_currentReadingRef, true);
@@ -76,7 +83,7 @@
       var leadingWs = leadingWsMatch ? leadingWsMatch[0] : '';
       var content = body.slice(leadingWs.length);
 
-      var headingMatch = content.match(/^#{1,6}\s+(?:[📌⏱️🕒]\s*)?节目大纲与时间线\s*[:：]?[^\S\n]*(?:\n|$)/u);
+      var headingMatch = content.match(/^#{1,6}\s+(?:[📌⏱️🕒]\s*)?(?:节目大纲与时间线|(?:Episode\s+)?Outline\s*(?:&|and)\s*Timeline|Timeline\s*(?:&|and)\s*Outline)\s*[:：]?[^\S\n]*(?:\n|$)/iu);
       if (!headingMatch) return raw;
 
       var rest = content.slice(headingMatch[0].length);

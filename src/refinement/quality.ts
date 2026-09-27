@@ -9,7 +9,7 @@ export const QUALITY_FEATURE_PATTERNS: Record<string, RegExp> = {
   has_header: /^#+\s+.+/m,
   has_bold: /\*\*.+\*\*/m,
   has_speaker: /^(?:说话人|主持人|嘉宾|主播|.+[：:])\s*.+/m,
-  has_outline: /节目大纲|时间线|📌/m,
+  has_outline: /节目大纲|时间线|📌|outline|timeline/im,
 };
 
 /** 统计非空白字符数，用于判断精修稿是否被过度压缩。 */

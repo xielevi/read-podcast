@@ -27,7 +27,7 @@ interface TaskConceptRow {
  *
  * 即使转录服务完全下线，已生成稿件仍然可以完成阅读、概念提取与维基百科核验。
  */
-export async function taskConcepts(taskId: string, env: Env): Promise<Response> {
+export async function taskConcepts(taskId: string, env: Env, lang: "zh" | "en" = "zh"): Promise<Response> {
   const task = await env.db.prepare(
     `SELECT id, status, podcast_name, episode_title, final_content_path, content_commit_sha
      FROM tasks WHERE id = ?`
@@ -43,12 +43,12 @@ export async function taskConcepts(taskId: string, env: Env): Promise<Response> 
     throw new HttpError(409, "task_not_finished", "Task is not finished or has no final content");
   }
 
-  // 1. D1 缓存查询（绑定 commit_sha，确保不重复消耗 Token）
+  // 1. D1 缓存查询（绑定 commit_sha 与语言，确保不重复消耗 Token）
   if (task.content_commit_sha) {
     const cached = await env.db.prepare(
-      "SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ?"
+      "SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ? AND lang = ?"
     )
-      .bind(task.final_content_path, task.content_commit_sha)
+      .bind(task.final_content_path, task.content_commit_sha, lang)
       .first<{ concepts_json: string }>();
 
     if (cached?.concepts_json) {
@@ -90,7 +90,7 @@ export async function taskConcepts(taskId: string, env: Env): Promise<Response> 
       timeoutMs: 60_000,
     });
     candidates = await proposeConceptCandidates(
-      { title: task.episode_title, podcast: task.podcast_name, content: markdown, limit: 10 },
+      { title: task.episode_title, podcast: task.podcast_name, content: markdown, limit: 10, lang },
       client,
     );
   } catch (err) {
@@ -98,8 +98,8 @@ export async function taskConcepts(taskId: string, env: Env): Promise<Response> 
     throw new HttpError(502, "refiner_error", "Concept nomination failed");
   }
 
-  // 4. Edge 进行维基百科事实存在性核验
-  const { concepts, hasErrors } = await verifyConceptsWikipedia(candidates, { limit: 10 });
+  // 4. Edge 进行维基百科事实存在性核验（针对当前语言）
+  const { concepts, hasErrors } = await verifyConceptsWikipedia(candidates, { limit: 10, lang });
   const result = { concepts };
 
   // 5. 写入 D1 缓存
@@ -109,10 +109,10 @@ export async function taskConcepts(taskId: string, env: Env): Promise<Response> 
     if (concepts.length > 0 || !hasErrors) {
       try {
         await env.db.prepare(
-          `INSERT OR REPLACE INTO article_concepts (content_path, commit_sha, concepts_json)
-           VALUES (?, ?, ?)`
+          `INSERT OR REPLACE INTO article_concepts (content_path, commit_sha, lang, concepts_json)
+           VALUES (?, ?, ?, ?)`
         )
-          .bind(task.final_content_path, task.content_commit_sha, JSON.stringify(result))
+          .bind(task.final_content_path, task.content_commit_sha, lang, JSON.stringify(result))
           .run();
       } catch (err) {
         console.warn("Failed to write article_concepts cache:", err);

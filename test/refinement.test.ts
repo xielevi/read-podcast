@@ -9,11 +9,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_REFINER_SETTINGS,
   DEFAULT_REFINE_PROMPT,
+  DEFAULT_REFINE_PROMPT_EN,
   FALLBACK_REFINE_PROMPT,
+  FALLBACK_REFINE_PROMPT_EN,
   REFINE_ERROR_RETENTION,
   REFINE_RETRY_LIMIT,
   REFINE_SUCCESS_RETENTION,
   REFINER_SYSTEM_PROMPT,
+  REFINER_SYSTEM_PROMPT_EN,
 } from "../src/refinement/defaults";
 import {
   RefinerError,
@@ -75,6 +78,19 @@ describe("defaults: 默认杂志级精修 Prompt（Edge 唯一维护者）", () 
 
   it("system prompt 与迁移前完全一致", () => {
     expect(REFINER_SYSTEM_PROMPT).toBe("你是一位专业的播客文字整理者。严格按照用户指令处理文本。");
+    expect(REFINER_SYSTEM_PROMPT_EN).toBe("You are a professional podcast transcript editor. Follow user instructions strictly.");
+  });
+
+  it("英文默认 Prompt 保留同一产品契约", () => {
+    for (const invariant of ["approximately 80%", "75%–85%", "Strictly No Summarization", "Speaker Names", "Episode Outline", "Preserve Substantive Thought"]) {
+      expect(DEFAULT_REFINE_PROMPT_EN).toContain(invariant);
+    }
+    expect(DEFAULT_REFINE_PROMPT_EN).toContain("{summary}");
+    expect(DEFAULT_REFINE_PROMPT_EN.trim()).not.toBe(FALLBACK_REFINE_PROMPT_EN);
+    for (const section of ["## Role & Mission", "## Editorial Workflow", "## Permitted Revisions", "## Prohibited Revisions", "## Length Target", "## Output Format"]) {
+      expect(DEFAULT_REFINE_PROMPT_EN).toContain(section);
+    }
+    expect(new TextEncoder().encode(DEFAULT_REFINE_PROMPT_EN).byteLength).toBeGreaterThan(2000);
   });
 
   it("生产配置默认值：OpenCode Go + deepseek-v4.1-flash", () => {

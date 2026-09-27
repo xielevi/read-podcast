@@ -255,11 +255,16 @@ in R2 (retry, recovery). Each `N` is a submission number.
   that, refinement failures retry entirely on Cloudflare and never re-transcribe.
 - **Refinement.** The only expensive LLM call is its own durable step; a publish failure
   retries publishing without calling the model again. The refiner configuration is
-  snapshotted when the workflow is created. After the completeness guard passes, refined text
+  snapshotted when the workflow is created. Prompt selection automatically respects the task's
+  content language (`zh` -> Chinese editorial prompt, `en` -> English magazine-style prompt),
+  with custom prompts retaining highest precedence. After the completeness guard passes, refined text
   is written to R2 (`refined/<task>/<attempt>.md`, 7-day lifecycle); the step returns only
   the object key. Each publish attempt reads that checkpoint, without isolate-local caching.
   Keep it after publication so a replay after the Store / D1 write can finish idempotently.
   A missing or empty checkpoint fails explicitly; it never publishes an empty manuscript.
+  Key concepts proposed for published manuscripts are verified against Wikipedia in the
+  reader's chosen language (`zh` -> Chinese Wikipedia, `en` -> English Wikipedia) and cached
+  independently in D1 (`article_concepts` keyed by `(content_path, commit_sha, lang)`).
 - **Completeness guard.** Two checks keep a degraded run from being published as a manuscript.
   Before refining, a raw transcript with fewer than 200 non-whitespace characters fails the
   task (transcription degraded; the model must not invent an article from show notes). After
