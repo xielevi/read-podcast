@@ -83,8 +83,12 @@ def _allowed_audio_source_hosts() -> set[str]:
     return {h.strip().lower() for h in raw.split(",") if h.strip()}
 
 
-def validate_public_url(url: str) -> str:
-    """只允许解析到全局可路由地址（或 Fake-IP 地址池、或显式受信来源主机白名单）的 http(s) URL。"""
+def validate_public_url(url: str, *, allow_trusted_hosts: bool = False) -> str:
+    """只允许解析到全局可路由地址（或 Fake-IP 地址池）的 http(s) URL。
+
+    ``allow_trusted_hosts=True`` 时额外放行 ``ALLOWED_AUDIO_SOURCE_HOSTS`` 中的主机——只用于
+    调用方直接给出的首跳（应用自己签发的下载地址），绝不用于重定向目标。
+    """
     candidate = str(url or "").strip()
     parts = urlsplit(candidate)
     if parts.scheme not in {"http", "https"} or not parts.hostname:
@@ -100,8 +104,7 @@ def validate_public_url(url: str) -> str:
         raise UrlResolutionError("URL host could not be resolved") from exc
     if not addresses:
         raise UrlResolutionError("URL host did not resolve")
-    allowed_hosts = _allowed_audio_source_hosts()
-    if parts.hostname.lower() in allowed_hosts:
+    if allow_trusted_hosts and parts.hostname.lower() in _allowed_audio_source_hosts():
         return candidate
     if any(not _is_allowed_address(address) for address in addresses):
         raise UnsafeUrlError("URL points to a private or local network")
@@ -112,8 +115,9 @@ def safe_get(url: str, *, max_redirects: int = 5, **kwargs) -> requests.Response
     """逐跳校验重定向目标后再发起 GET。"""
     current = str(url or "").strip()
     kwargs.pop("allow_redirects", None)
-    for _ in range(max_redirects + 1):
-        validate_public_url(current)
+    for hop in range(max_redirects + 1):
+        # 受信来源白名单只对首跳生效：公网地址 302 到白名单内网主机必须被拒绝。
+        validate_public_url(current, allow_trusted_hosts=hop == 0)
         response = requests.get(current, allow_redirects=False, **kwargs)
         if response.is_redirect or response.is_permanent_redirect:
             location = response.headers.get("Location")

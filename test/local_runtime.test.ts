@@ -700,6 +700,19 @@ describe("本地 Node HTTP 服务（Server & Basic Auth）", () => {
     expect(rangeRes.headers.get("content-length")).toBe("4");
     expect(await rangeRes.text()).toBe("fake");
 
+    // end 超过文件长度：截断到最后一个字节，content-length 与实际字节一致
+    const overRange = await fetch(downloadUrl, { headers: { range: "bytes=30-999" } });
+    expect(overRange.status).toBe(206);
+    expect(overRange.headers.get("content-range")).toBe("bytes 30-33/34");
+    expect(overRange.headers.get("content-length")).toBe("4");
+    expect((await overRange.arrayBuffer()).byteLength).toBe(4);
+
+    // 后缀范围 bytes=-N：最后 N 个字节
+    const suffixRange = await fetch(downloadUrl, { headers: { range: "bytes=-4" } });
+    expect(suffixRange.status).toBe(206);
+    expect(suffixRange.headers.get("content-range")).toBe("bytes 30-33/34");
+    expect((await suffixRange.arrayBuffer()).byteLength).toBe(4);
+
     // 超出范围的 Range -> 416
     const badRange = await fetch(downloadUrl, { headers: { range: "bytes=100-200" } });
     expect(badRange.status).toBe(416);

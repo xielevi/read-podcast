@@ -101,9 +101,19 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
 
         const rangeHeader = req.headers.range;
         if (rangeHeader && /^bytes=\d*-\d*$/.test(rangeHeader)) {
-          const rangeParts = rangeHeader.replace(/bytes=/, "").split("-");
-          const start = rangeParts[0] ? parseInt(rangeParts[0], 10) : 0;
-          const end = rangeParts[1] ? parseInt(rangeParts[1], 10) : obj.size - 1;
+          const [rawStart, rawEnd] = rangeHeader.replace(/bytes=/, "").split("-");
+          let start: number;
+          let end: number;
+          if (!rawStart) {
+            // 后缀范围 bytes=-N：最后 N 个字节
+            const suffix = rawEnd ? parseInt(rawEnd, 10) : 0;
+            start = suffix > 0 ? Math.max(0, obj.size - suffix) : obj.size;
+            end = obj.size - 1;
+          } else {
+            start = parseInt(rawStart, 10);
+            // end 超出文件长度时按规范截断，否则 content-length 与实际字节数不符
+            end = rawEnd ? Math.min(parseInt(rawEnd, 10), obj.size - 1) : obj.size - 1;
+          }
 
           if (start >= obj.size || start > end) {
             res.statusCode = 416;

@@ -121,9 +121,11 @@ This requires explicit security boundary trade-offs:
    bridge IP (RFC 1918 private network), which standard SSRF protection would reject.
    Rather than disabling SSRF checks or permitting private networks globally, the Transcription Service supports
    an explicit opt-in allowlist `ALLOWED_AUDIO_SOURCE_HOSTS` (configured as `web` in `docker-compose.yml`).
-   Only hostnames in this allowlist are permitted to resolve to private network addresses for audio downloading.
-   Per-hop redirect validation in `safe_get` remains active: even if `web` is in the allowlist, any redirect
-   to unlisted internal targets or cloud metadata endpoints (`169.254.169.254`, loopback, or LAN) is strictly rejected.
+   Only hostnames in this allowlist are permitted to resolve to private network addresses, and only for the
+   initial URL handed to the service (the application's own signed download URL) — never for redirect targets.
+   Per-hop redirect validation in `safe_get` stays strict: a public audio URL that redirects to `web`, and a
+   redirect from `web` to any internal target or cloud metadata endpoint (`169.254.169.254`, loopback, LAN), are
+   both rejected.
 3. **Storage Signing Key Persistence**:
    Temporary download URLs are signed with HMAC-SHA256. If `INTERNAL_SIGNING_SECRET` is not provided via
    environment variables, the local runtime generates a cryptographically random secret on first startup and

@@ -157,7 +157,7 @@ def test_allowed_audio_source_hosts_permits_private_resolution(monkeypatch):
 
     # With allowlist, trusted host is permitted even if resolving to private IP
     monkeypatch.setenv("ALLOWED_AUDIO_SOURCE_HOSTS", "web,other-host")
-    assert validate_public_url("http://web:3000/storage/download?key=uploads/a.mp3") == "http://web:3000/storage/download?key=uploads/a.mp3"
+    assert validate_public_url("http://web:3000/storage/download?key=uploads/a.mp3", allow_trusted_hosts=True) == "http://web:3000/storage/download?key=uploads/a.mp3"
 
 
 def test_allowed_audio_source_hosts_still_rejects_redirect_to_unlisted_private_ip(monkeypatch):
@@ -172,3 +172,18 @@ def test_allowed_audio_source_hosts_still_rejects_redirect_to_unlisted_private_i
 
     with pytest.raises(UnsafeUrlError):
         safe_get("http://web:3000/storage/download?key=uploads/a.mp3")
+
+
+def test_allowed_audio_source_hosts_does_not_apply_to_redirect_targets(monkeypatch):
+    """公网音频 302 到白名单内网主机（如 http://web:3000/api/control/...）必须被拒绝。"""
+    hosts = {"cdn.example.com": "93.184.216.34", "web": "172.18.0.2"}
+
+    def fake_getaddrinfo(host, port, type=0, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (hosts[host], port))]
+
+    monkeypatch.setenv("ALLOWED_AUDIO_SOURCE_HOSTS", "web")
+    monkeypatch.setattr(ns.socket, "getaddrinfo", fake_getaddrinfo)
+    monkeypatch.setattr(ns.requests, "get", lambda url, **kw: FakeResponse(302, location="http://web:3000/api/control/settings"))
+
+    with pytest.raises(UnsafeUrlError):
+        safe_get("https://cdn.example.com/episode.mp3")
