@@ -531,7 +531,7 @@ function defaultPrompt(query, defaultValue) {
 }
 
 /** 密钥输入：TTY 上进入 raw 模式逐字符收集、不回显；非 TTY（管道）直接读行。 */
-function defaultPromptHidden(query) {
+export function defaultPromptHidden(query) {
   return new Promise(resolve => {
     const input = process.stdin;
     const output = process.stdout;
@@ -548,23 +548,29 @@ function defaultPromptHidden(query) {
     }
     const wasRaw = input.isRaw;
     input.setRawMode(true);
+    // 不设编码时 data 事件给的是 Buffer，逐字符比较永远不成立；粘贴时一个 chunk 含多个字符（可能带回车）。
+    input.setEncoding("utf8");
     let value = "";
     const cleanup = () => {
       input.removeListener("data", onData);
       input.setRawMode(wasRaw);
+      input.pause();
       output.write("\n");
     };
-    const onData = ch => {
-      if (ch === "\r" || ch === "\n" || ch === "\u0004") {
-        cleanup();
-        resolve(value);
-      } else if (ch === "\u0003") {
-        cleanup();
-        process.exit(130);
-      } else if (ch === "\u007f" || ch === "\b") {
-        value = value.slice(0, -1);
-      } else {
-        value += ch;
+    const onData = chunk => {
+      for (const ch of chunk) {
+        if (ch === "\r" || ch === "\n" || ch === "\u0004") {
+          cleanup();
+          resolve(value);
+          return;
+        } else if (ch === "\u0003") {
+          cleanup();
+          process.exit(130);
+        } else if (ch === "\u007f" || ch === "\b") {
+          value = value.slice(0, -1);
+        } else {
+          value += ch;
+        }
       }
     };
     output.write(query);
