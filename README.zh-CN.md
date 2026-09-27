@@ -186,6 +186,7 @@ npx wrangler deploy --dry-run
 | [docs/design.md](docs/design.md) | WebUI 产品语言与视觉系统 |
 | [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) | 本地开发、验收命令与提交规范 |
 | [.github/SECURITY.md](.github/SECURITY.md) | 安全漏洞报告与架构安全边界 |
+| [CHANGELOG.md](CHANGELOG.md) | 版本发布历史与变更说明 |
 | [AGENTS.md](AGENTS.md) | 维护者与 Agent 指南 |
 
 ## 许可证
