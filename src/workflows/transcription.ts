@@ -188,11 +188,11 @@ export async function startTranscriptionStep(env: Env, params: ProcessingWorkflo
  * 刻意不引入任何「已签名 URL 缓存表」：durable step 的结果就是那份缓存，而且它天然只属于这一个
  * submission，不会跨 submission 泄漏旧 URL。
  */
-export async function resolveSourceStep(env: Env, params: ProcessingWorkflowParams): Promise<TranscriptionSource> {
+export async function resolveSourceStep(env: Env, params: ProcessingWorkflowParams, fetchFn: Fetch = fetch): Promise<TranscriptionSource> {
   const task = assertTaskOwned(await loadTaskRow(env, params.taskId), params.attemptId);
   if (task.status !== "transcribing") throw new Error(`resolve_source: unexpected task status ${task.status}`);
   try {
-    return await resolveTranscriptionSource(env, task);
+    return await resolveTranscriptionSource(env, task, Date.now(), undefined, fetchFn);
   } catch (error) {
     throw toWorkflowError(error);
   }
@@ -243,6 +243,12 @@ export async function submitTranscriptionStep(
   const task = assertTaskOwned(await loadTaskRow(env, params.taskId), params.attemptId);
   if (task.status !== "transcribing") throw new Error(`submit_transcription: unexpected task status ${task.status}`);
   const requestId = transcriptionRequestId(params.taskId, params.attemptId);
+
+  // 提交成功、provider 句柄已写入 D1，但 step checkpoint 丢失（isolate 崩溃在两者之间）时：
+  // 直接复用 D1 里的句柄，绝不重复提交。recordResubmit / retryTask 都会先把 provider_request_id
+  // 清空，所以非空即代表「本 attempt 的这次 submission 已经提交过」——这对没有幂等键的云端
+  // 服务商（dashscope）是唯一的重放防线；对自托管路径则等价于以 request_id 幂等。
+  if (task.provider_request_id) return { providerRequestId: task.provider_request_id };
 
   let snapshot: TranscriptionSnapshot;
   try {
@@ -446,7 +452,7 @@ export async function runTranscriptionPhase(
     const source = await step.do(
       resolveSourceStepName(submission),
       { retries: { limit: SOURCE_RETRY_LIMIT, delay: exponentialRetryDelay }, timeout: "2 minutes" },
-      async () => resolveSourceStep(env, params),
+      async () => resolveSourceStep(env, params, fetchFn),
     );
 
     const submitted = await step.do(

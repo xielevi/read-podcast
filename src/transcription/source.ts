@@ -1,5 +1,6 @@
 import { MAX_UPLOAD_BYTES } from "../limits";
 import { checkPublicHttpUrl, type UrlRejection } from "../net/url_guard";
+import { transcriptionProvider } from "./client";
 import {
   PRESIGNED_SOURCE_TTL_SECONDS,
   R2PresignError,
@@ -60,6 +61,43 @@ export function assertPublicAudioUrl(raw: string): string {
   const checked = checkPublicHttpUrl(raw);
   if (!checked.ok) throw new SourceError("source_not_allowed", AUDIO_URL_REJECTIONS[checked.reason]);
   return checked.url.toString();
+}
+
+// ── 跟随跳转拿到最终音频地址（云端服务商路径专用） ──
+
+/** 播客统计跳转普遍存在，但真实音频只隔 1–2 跳；5 跳仍未落定按 URL 不合规处理。 */
+const MAX_AUDIO_REDIRECTS = 5;
+const AUDIO_REDIRECT_TIMEOUT_MS = 10_000;
+
+/**
+ * 沿 3xx 跳转找到最终音频 URL，每一跳都做公网预检（与自托管抓取层的逐跳复核同一防线）。
+ *
+ * 请求用 `redirect: "manual"` 逐跳进行；落定的响应（非 3xx）**立刻取消 body**——Worker 只取
+ * 跳转链与响应头，绝不读取音频字节（音频不经过 Worker 的边界在这里保持）。落定响应的状态码
+ * 不在这里判断：可达性由服务商抓取时报告（云端路径的 provider_fetch_failed），
+ * 与自托管路径的 source_fetch_failed 同构。
+ *
+ * 传输错误原样上抛（durable retry 会重试）；跳转链耗尽 / 私网跳转是确定性失败（SourceError）。
+ */
+export async function resolveFinalAudioUrl(url: string, fetchFn: typeof fetch = fetch): Promise<string> {
+  let current = url;
+  for (let hop = 0; ; hop += 1) {
+    const response = await fetchFn(current, { redirect: "manual", signal: AbortSignal.timeout(AUDIO_REDIRECT_TIMEOUT_MS) });
+    await response.body?.cancel().catch(() => undefined);
+    if (response.status < 300 || response.status >= 400) return current;
+    if (hop >= MAX_AUDIO_REDIRECTS) {
+      throw new SourceError("source_not_allowed", `audio URL did not settle after ${MAX_AUDIO_REDIRECTS} redirects`);
+    }
+    const location = response.headers.get("location");
+    if (!location) return current;
+    let next: string;
+    try {
+      next = new URL(location, current).toString();
+    } catch {
+      throw new SourceError("source_not_allowed", "audio URL redirect location is not a valid URL");
+    }
+    current = assertPublicAudioUrl(next);
+  }
 }
 
 // ── 上传音频的确切 object key ──
@@ -136,14 +174,22 @@ export interface SourceTask {
  *
  * 调用方（Workflow 的 `resolve-source-N` durable step）负责让结果**只算一次**：同一 submission 的
  * 任何 retry 都复用这个结果，因此同一 request_id 永远不会因为 URL 变化而触发 409 request_conflict。
+ *
+ * 云端服务商路径（dashscope）下，RSS 公网地址先跟随跳转拿到最终 URL 再交给服务商
+ * （统计跳转 / 防盗链地址服务商通常取不到）；presigned URL 本身就是最终地址，不需要解析。
  */
 export async function resolveTranscriptionSource(
   env: Env,
   task: SourceTask,
   nowMs: number = Date.now(),
   ttlSeconds: number = PRESIGNED_SOURCE_TTL_SECONDS,
+  fetchFn: typeof fetch = fetch,
 ): Promise<TranscriptionSource> {
-  if (task.source_type !== "upload") return { type: "url", url: assertPublicAudioUrl(task.audio_url ?? "") };
+  if (task.source_type !== "upload") {
+    const url = assertPublicAudioUrl(task.audio_url ?? "");
+    if (transcriptionProvider(env) === "dashscope") return { type: "url", url: await resolveFinalAudioUrl(url, fetchFn) };
+    return { type: "url", url };
+  }
 
   const key = uploadObjectKeyFromAudioUrl(task.audio_url);
   if (!key) throw new SourceError("upload_expired", "uploaded audio reference is missing or malformed");

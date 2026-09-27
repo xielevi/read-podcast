@@ -9,6 +9,11 @@ export interface Env {
   // 转录服务：Cloudflare 唯一需要知道的外部计算能力（endpoint + Access 凭据）。
   // 换转录机器 = 部署新的 Transcription Service（通过 Tunnel 暴露），改这几项，停掉旧机器。
   TRANSCRIPTION_SERVICE_URL: string;
+  // 转录实现选择：self-hosted（默认，自托管 Transcription Service）| dashscope（百炼 Paraformer，
+  // Worker 内适配器，见 src/transcription/dashscope.ts）。部署时由 scripts/deploy.mjs 注入。
+  TRANSCRIPTION_PROVIDER?: string;
+  // TRANSCRIPTION_PROVIDER=dashscope 时的百炼 API Key（Wrangler secret；音频 URL 会发给阿里云）。
+  DASHSCOPE_API_KEY?: string;
   // 随请求下发的转录选项（引擎不支持时忽略）。model 不在这里：本机 MLX 模型由服务端内建默认决定。
   TRANSCRIPTION_LANGUAGE?: string;
   // 自定义上传音频的受控访问：针对确切 object key 签发临时 presigned GET URL，

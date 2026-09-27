@@ -6,9 +6,40 @@ import {
   type TranscriptionRequestBody,
   type TranscriptionSnapshot,
 } from "./contract";
+import {
+  cancelDashscopeTranscription,
+  fetchDashscopeTranscriptionResult,
+  pollDashscopeTranscription,
+  submitDashscopeTranscription,
+} from "./dashscope";
 import { MAX_RAW_BYTES } from "../limits";
 import { readBoundedText } from "../net/bounded";
 import type { Env } from "../types";
+
+/**
+ * Transcription 的 Cloudflare 侧客户端入口：按部署变量 `TRANSCRIPTION_PROVIDER` 分发。
+ *
+ *   - self-hosted（默认）：经 Cloudflare Access 调用自托管 Transcription Service（本文件其余部分）；
+ *   - dashscope：把同一组函数语义翻译为百炼 Paraformer 异步任务 API（见 dashscope.ts）。
+ *
+ * 两个实现共享同一组函数签名与快照契约，Workflow 与设置探针对此无感知；遵守「不提前加抽象」，
+ * 只做这两个实现，没有服务商注册表。
+ */
+
+export type TranscriptionProvider = "self-hosted" | "dashscope";
+
+/** 读取部署变量；未设置 / self-hosted 以外的合法值只有 dashscope，其余显式报错（不静默回落）。 */
+export function transcriptionProvider(env: Env): TranscriptionProvider {
+  const raw = (env.TRANSCRIPTION_PROVIDER ?? "").trim().toLowerCase();
+  if (!raw || raw === "self-hosted") return "self-hosted";
+  if (raw === "dashscope") return "dashscope";
+  throw new TranscriptionServiceError(
+    "unconfigured",
+    "transcription_provider_unknown",
+    `TRANSCRIPTION_PROVIDER must be self-hosted or dashscope (got ${raw})`,
+    false,
+  );
+}
 
 /**
  * Transcription Service 的 HTTP 客户端（Cloudflare → 转录服务）。
@@ -145,6 +176,9 @@ export function parseSnapshot(text: string, expected: { requestId: string; provi
 
 /** 提交（以 request_id 幂等）。同一请求重复提交返回同一个 provider_request_id。 */
 export async function submitTranscription(env: Env, body: TranscriptionRequestBody, fetchFn: typeof fetch = fetch): Promise<TranscriptionSnapshot> {
+  if (transcriptionProvider(env) === "dashscope") {
+    return submitDashscopeTranscription(env, body.request_id, body.source, body.options, fetchFn);
+  }
   const base = serviceBase(env);
   const response = await request(fetchFn, `${base}${TRANSCRIPTIONS_PATH}`, {
     method: "POST",
@@ -172,6 +206,9 @@ export async function pollTranscription(
   waitSeconds: number,
   fetchFn: typeof fetch = fetch,
 ): Promise<TranscriptionSnapshot | null> {
+  if (transcriptionProvider(env) === "dashscope") {
+    return pollDashscopeTranscription(env, ref, waitSeconds, fetchFn);
+  }
   const base = serviceBase(env);
   const wait = Math.max(0, Math.min(50, Math.trunc(waitSeconds)));
   const response = await request(fetchFn, `${base}${TRANSCRIPTIONS_PATH}/${encodeURIComponent(ref.providerRequestId)}?wait=${wait}`, {
@@ -202,6 +239,9 @@ export async function fetchTranscriptionResult(
   ref: { requestId: string; providerRequestId: string },
   fetchFn: typeof fetch = fetch,
 ): Promise<string | null> {
+  if (transcriptionProvider(env) === "dashscope") {
+    return fetchDashscopeTranscriptionResult(env, ref, fetchFn);
+  }
   const base = serviceBase(env);
   const response = await request(fetchFn, `${base}${TRANSCRIPTIONS_PATH}/${encodeURIComponent(ref.providerRequestId)}${TRANSCRIPTION_RESULT_SUFFIX}`, {
     method: "GET",
@@ -222,6 +262,7 @@ export async function fetchTranscriptionResult(
 /** 尽力取消 / 释放。任何失败都吞掉：responder 是否及时响应不影响 Cloudflare 任务的最终状态。 */
 export async function cancelTranscription(env: Env, providerRequestId: string, fetchFn: typeof fetch = fetch): Promise<boolean> {
   try {
+    if (transcriptionProvider(env) === "dashscope") return await cancelDashscopeTranscription();
     const base = serviceBase(env);
     const response = await fetchFn(`${base}${TRANSCRIPTIONS_PATH}/${encodeURIComponent(providerRequestId)}`, {
       method: "DELETE",
@@ -252,6 +293,19 @@ export interface ServiceHealth {
  * （探针不创建任何真实 transcription request。）
  */
 export async function checkServiceHealth(env: Env, fetchFn: typeof fetch = fetch): Promise<ServiceHealth> {
+  let provider: TranscriptionProvider;
+  try {
+    provider = transcriptionProvider(env);
+  } catch (error) {
+    return { ok: false, detail: (error as Error).message };
+  }
+  if (provider === "dashscope") {
+    // 配置型探针：不实际调用服务商（避免计费副作用），只验证密钥已注入。
+    if ((env.DASHSCOPE_API_KEY ?? "").trim()) {
+      return { ok: true, detail: "百炼云端转录已配置（探针不实际调用服务商）", engine: "dashscope-paraformer" };
+    }
+    return { ok: false, detail: "未配置 DASHSCOPE_API_KEY，请运行 npx wrangler secret put DASHSCOPE_API_KEY" };
+  }
   let base: string;
   try {
     base = serviceBase(env);

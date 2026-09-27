@@ -70,6 +70,27 @@ describe("scripts/deploy.mjs", () => {
     expect(args).toContain("GITHUB_REPO:from-env");
     expect(args).toContain("GITHUB_OWNER:fixture-owner");
   });
+
+  it("READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope：转录地址可省略，provider 注入为 var", () => {
+    const result = run({ ...VALID, READ_PODCAST_TRANSCRIPTION_URL: "", READ_PODCAST_TRANSCRIPTION_PROVIDER: "dashscope" });
+    expect(result.status).toBe(0);
+    const args = JSON.parse(result.stdout) as string[];
+    expect(args).toContain("--var");
+    expect(args).toContain("TRANSCRIPTION_PROVIDER:dashscope");
+    expect(args.join(" ")).not.toContain("TRANSCRIPTION_SERVICE_URL");
+  });
+
+  it("dashscope 下显式给出的转录地址仍然注入", () => {
+    const result = run({ ...VALID, READ_PODCAST_TRANSCRIPTION_PROVIDER: "dashscope" });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toContain("TRANSCRIPTION_SERVICE_URL:https://transcribe.mydomain.net");
+  });
+
+  it("无效的 provider 值被拒绝", () => {
+    const result = run({ ...VALID, READ_PODCAST_TRANSCRIPTION_PROVIDER: "openai" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("READ_PODCAST_TRANSCRIPTION_PROVIDER must be self-hosted or dashscope");
+  });
 });
 
 describe("仓库不含部署者自己的值", () => {

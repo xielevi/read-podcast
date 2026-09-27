@@ -27,8 +27,11 @@ const OPTIONAL = {
   READ_PODCAST_GITHUB_BRANCH: "GITHUB_BRANCH",
   READ_PODCAST_GITHUB_PATH: "GITHUB_PODCAST_PATH",
   READ_PODCAST_TRANSCRIPTION_LANGUAGE: "TRANSCRIPTION_LANGUAGE",
+  READ_PODCAST_TRANSCRIPTION_PROVIDER: "TRANSCRIPTION_PROVIDER",
   READ_PODCAST_TIME_ZONE: "MANUSCRIPT_TIME_ZONE",
 };
+
+const TRANSCRIPTION_PROVIDERS = new Set(["self-hosted", "dashscope"]);
 
 /** 极简 dotenv：KEY=VALUE，# 注释，值可用单 / 双引号包裹。 */
 export function parseDeployEnv(text) {
@@ -56,8 +59,11 @@ function isPlaceholder(value) {
 export function buildDeployArgs(input, passthrough = []) {
   const errors = [];
   const value = key => (input[key] ?? "").trim();
+  const provider = (value("READ_PODCAST_TRANSCRIPTION_PROVIDER") || "self-hosted").toLowerCase();
 
   for (const key of Object.keys(REQUIRED)) {
+    // 转录地址只在自托管路径下必需：dashscope 由 Worker 直连百炼，没有转录主机。
+    if (key === "READ_PODCAST_TRANSCRIPTION_URL" && provider === "dashscope") continue;
     if (!value(key)) errors.push(`${key} is required`);
     else if (isPlaceholder(value(key).replace(/^https?:\/\//, "").replace(/\/.*$/, ""))) errors.push(`${key} is still a documentation placeholder (${value(key)})`);
   }
@@ -69,6 +75,9 @@ export function buildDeployArgs(input, passthrough = []) {
   const transcription = value("READ_PODCAST_TRANSCRIPTION_URL");
   if (transcription && !/^https:\/\/[^\s/]+/i.test(transcription)) {
     errors.push(`READ_PODCAST_TRANSCRIPTION_URL must be an https:// URL (got ${transcription})`);
+  }
+  if (value("READ_PODCAST_TRANSCRIPTION_PROVIDER") && !TRANSCRIPTION_PROVIDERS.has(provider)) {
+    errors.push(`READ_PODCAST_TRANSCRIPTION_PROVIDER must be self-hosted or dashscope (got ${value("READ_PODCAST_TRANSCRIPTION_PROVIDER")})`);
   }
   if (errors.length) throw new Error(`Deployment values are incomplete:\n  - ${errors.join("\n  - ")}\nSee docs/DEPLOYMENT.md (Deployment values).`);
 

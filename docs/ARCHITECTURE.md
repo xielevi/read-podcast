@@ -238,6 +238,53 @@ timeouts, concurrency, result TTL), platform data/log directories, no user-maint
 configuration file and **no application credential** — request-scoped options (language) travel
 with each request, and remote authentication is Cloudflare Access.
 
+## Cloud transcription adapter
+
+The neutral HTTP contract above stays the external protocol for self-hosted transcription
+compute. A cloud provider is integrated **inside the Worker** as a protocol translation
+adapter: `src/transcription/dashscope.ts` maps the same submit / poll / fetch / release
+semantics onto Alibaba Cloud Model Studio's Paraformer recorded-speech API, and
+`src/transcription/client.ts` dispatches on the `TRANSCRIPTION_PROVIDER` deploy variable
+(`self-hosted` | `dashscope`, default `self-hosted` — existing deployments are unaffected).
+There are exactly these two implementations and no provider registry, per the
+no-abstraction-before-a-second-implementation rule. The Workflow's step structure
+(`resolve-source → submit → poll → persist → release`) is identical for both providers;
+only the client layer differs.
+
+Selection between them is currently an assumption, not a measured conclusion: the provider
+evaluation issue (#31) had no verified comparison results when this adapter was built, so
+DashScope Paraformer was implemented as the first cloud provider per issue #32's default.
+`TRANSCRIPTION_PROVIDER` stays a deployment choice; if #31 later favors another provider,
+it becomes the second cloud adapter — the trigger to generalize, not before.
+
+Facts that differ from the self-hosted path and are accepted by design:
+
+- **Audio is fetched by the provider.** The Worker hands the provider a URL and never
+  carries audio bytes: for RSS episodes it follows redirects hop by hop first (each hop
+  re-checked against public-URL rules, every response body canceled immediately) so that
+  statistic-redirect and hotlink-protected links resolve to the final audio URL; for custom
+  uploads it reuses the presigned R2 GET URL, whose 2-hour validity covers provider-side
+  queueing plus download.
+- **Submission idempotency has one honest gap.** DashScope has no idempotency key, so the
+  submit step reuses the provider handle already written to D1 whenever it re-executes
+  without a checkpoint (isolate crash between the D1 write and the step checkpoint) — a
+  replay never creates a second task. The only remaining gap is a submission that the
+  provider accepted but whose response was lost: the durable retry then creates a second
+  task and the first becomes an orphan. It pollutes no business state (results expire after
+  24 hours) and consumes one paid transcription; `MAX_SUBMISSIONS` bounds the blast radius.
+- **Progress and cancellation are degraded.** The provider reports no percent and no
+  phases, and offers no cancel API: running tasks map to an indeterminate transcribing
+  progress, the client paces polling itself (the provider has no long-poll), and the
+  release step is a no-op. Raw-transcript plausibility, stale-result rejection and the
+  D1/R2 persistence guards are provider-independent and unchanged.
+- **Error mapping is provider-side.** Provider fetch failures (hotlink protection, dead
+  link, unsupported format) map to `provider_fetch_failed` → task error
+  `provider_audio_fetch_failed`, whose user-facing message suggests switching to the
+  self-hosted service; quota exhaustion maps to `provider_quota_exhausted`. Both are
+  deterministic (no retry). Everything else stays retryable and flows through the normal
+  submission loop. The Settings probe for `dashscope` verifies key configuration only and
+  never calls the provider (no billed side effects).
+
 ## Storage
 
 | Data | Where | Lifetime |
