@@ -121,18 +121,29 @@ jobs:
         run: |
           set -euo pipefail
           base="https://${READ_PODCAST_DOMAIN}"
+          # curl 静默运行、丢弃 stderr（其错误信息会带目标主机名），失败时只输出路径与退出码。
           probe() {
-            local out
-            if ! out=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code} %{redirect_url}' "$base$1"); then
-              echo "FAIL: $base$1 unreachable" >&2; return 1
+            local out rc=0
+            out=$(curl -s --max-time 20 -o /dev/null -w '%{http_code} %{redirect_url}' "$base$1" 2>/dev/null) || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "FAIL: $1 unreachable (curl exit $rc)" >&2; return 1
             fi
             echo "$out"
+          }
+
+          # 跳转地址含 Zero Trust 团队域名等部署信息，公开日志里只输出分类，不输出地址本身。
+          redirect_kind() {
+            case "$1" in
+              "") echo "none";;
+              *cloudflareaccess.com*) echo "Cloudflare Access";;
+              *) echo "other";;
+            esac
           }
 
           # Public Browse Mode is intentionally anonymous. Redirecting to Access is a regression.
           for path in / /api/public/health /api/public/articles?limit=1 /api/public/subscriptions /api/public/preferences; do
             out=$(probe "$path"); code=${out%% *}; loc=${out#* }
-            echo "GET $path -> $code ${loc:+(redirect: $loc)}"
+            echo "GET $path -> $code (redirect: $(redirect_kind "$loc"))"
             if [ "$code" != "200" ]; then
               echo "FAIL: public surface must be anonymously reachable with HTTP 200"; exit 1
             fi
@@ -141,13 +152,13 @@ jobs:
           # Owner Workspace / control APIs must never answer anonymously.
           for path in /manage /api/control/tasks /api/control/settings; do
             out=$(probe "$path"); code=${out%% *}; loc=${out#* }
-            echo "GET $path -> $code ${loc:+(redirect: $loc)}"
+            echo "GET $path -> $code (redirect: $(redirect_kind "$loc"))"
             case "$code" in
               401|403) echo "PASS: control plane denied";;
               301|302|303)
-                case "$loc" in
-                  *cloudflareaccess.com*) echo "PASS: control plane gated by Access";;
-                  *) echo "FAIL: unexpected redirect -> $loc"; exit 1;;
+                case "$(redirect_kind "$loc")" in
+                  "Cloudflare Access") echo "PASS: control plane gated by Access";;
+                  *) echo "FAIL: unexpected redirect target (not Cloudflare Access)"; exit 1;;
                 esac;;
               200) echo "FAIL: control plane answered an anonymous request — Access does not cover $path"; exit 1;;
               *) echo "FAIL: unexpected status $code"; exit 1;;
