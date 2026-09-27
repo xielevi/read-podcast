@@ -1,83 +1,17 @@
-# Read Podcast local/runtime ignores
-
-# Secrets and local configuration
-.env
-.env.*
-!.env.example
-config.yaml
-config.local.yaml
-secrets/
-
-# Docker deployment runtime configuration and generated output
-# config/ 保存用户自己的配置与机密，一律不进版本库；只有说明文档例外。
-config/**
-!config/
-!config/**/
-!config/**/.gitkeep
-!config/README.md
-output/**
-!output/
-!output/**/
-!output/**/.gitkeep
-
-# Runtime workspace: downloads, transcripts, markdown output, logs, DB, cache
-workspace/**
-!workspace/
-!workspace/**/
-!workspace/**/.gitkeep
-/models/
-
-# Generated logs and local agent notes
-*.log
-test-log.md
-changelog.md
-
-# Media and generated transcription artifacts
-*.mp3
-*.m4a
-*.wav
-*.flac
-*.ogg
-*.aac
-*.opus
-*.wma
-*.audio
-*_raw.txt
-*.精修稿.md
-
-# Python runtime and build artifacts
-__pycache__/
-*.py[cod]
-*$py.class
-.python-version
-.venv/
-venv/
-env/
-.pytest_cache/
-.ruff_cache/
-.mypy_cache/
-.coverage
-htmlcov/
+node_modules/
+.wrangler/
+.dev.vars
+.deploy.env
 dist/
-build/
-*.egg-info/
-
-# Local databases and caches
-*.sqlite
-*.sqlite3
-*.db
-*.db-journal
-
-# Local one-off automation helpers that may contain machine paths or secrets
-*.local.py
-*.plist
-
-# Local tool scratch dirs
-.playwright-cli/
-
-# IDE and OS files
+coverage/
+*.log
 .DS_Store
-.idea/
-.vscode/
-*.swp
-*.swo
+transcription_service/.venv/
+transcription_service/__pycache__/
+transcription_service/.pytest_cache/
+transcription_service/data/
+transcription_service/.env
+
+# Python caches anywhere
+__pycache__/
+*.pyc

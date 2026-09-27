@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:itunes="http://www.itunes.com/dtds/podcast-1.0.dtd" xmlns:content="http://purl.org/rss/1.0/modules/content/">
+  <channel>
+    <title>忽左忽右</title>
+    <itunes:image href="https://cdn.example.com/cover.jpg"/>
+    <item>
+      <title>474 孙立天谈康熙废储</title>
+      <link>https://example.com/episodes/474</link>
+      <guid isPermaLink="false">episode-guid-474</guid>
+      <pubDate>Tue, 19 May 2026 08:00:00 +0000</pubDate>
+      <itunes:duration>01:02:03</itunes:duration>
+      <description>短简介，会被更长的 content:encoded 覆盖。</description>
+      <content:encoded><![CDATA[<p>这是<strong>完整</strong>的 show notes。</p><br/>第二段带时间线。]]></content:encoded>
+      <enclosure url="https://cdn.example.com/audio/474.mp3" type="audio/mpeg" length="50331648"/>
+    </item>
+    <item>
+      <title>473 漫谈卢梭</title>
+      <link>https://example.com/episodes/473</link>
+      <pubDate>Fri, 15 May 2026 08:00:00 +0000</pubDate>
+      <itunes:duration>58:30</itunes:duration>
+      <summary>只有 summary 字段。</summary>
+      <enclosure url="https://cdn.example.com/audio/473.m4a" type="audio/mp4" length="40000000"/>
+    </item>
+    <item>
+      <title>短单集</title>
+      <link>https://example.com/episodes/short</link>
+      <pubDate>Mon, 11 May 2026 08:00:00 +0000</pubDate>
+      <itunes:duration>90</itunes:duration>
+      <description>时长以秒计。</description>
+      <enclosure url="https://cdn.example.com/audio/short.mp3" type="audio/mpeg" length="1500000"/>
+    </item>
+    <item>
+      <title>无音频，应被跳过</title>
+      <link>https://example.com/episodes/noaudio</link>
+      <pubDate>Sun, 10 May 2026 08:00:00 +0000</pubDate>
+      <itunes:duration>10:00</itunes:duration>
+      <description>没有 enclosure。</description>
+    </item>
+  </channel>
+</rss>

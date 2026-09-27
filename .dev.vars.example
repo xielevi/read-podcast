@@ -1,0 +1,21 @@
+# Cloudflare Access service token：Cloudflare 调用转录服务（经 Tunnel 入口）时携带。
+# 生产路径必填；本地开发把 TRANSCRIPTION_SERVICE_URL 指向 http://127.0.0.1:28100 时可不配置。
+CF_ACCESS_CLIENT_ID=
+CF_ACCESS_CLIENT_SECRET=
+# 签发自定义上传音频的临时 presigned GET URL 所需的最小权限 R2 凭据。
+# 建议用只读、只限目标 bucket 的 R2 API token（R2 tokens 不能限制到 key prefix：
+# 实际边界 = 仅 read 目标 bucket，签发的 URL 本身只对单个 object key 有效且会过期）。
+# 这些值不进仓库；生产用 npx wrangler secret put <NAME> 注入。
+R2_ACCOUNT_ID=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+# 本地开发的部署值（生产由 scripts/deploy.mjs 注入）。转录服务指向本机时不需要 Access 凭据。
+TRANSCRIPTION_SERVICE_URL=http://127.0.0.1:28100
+GITHUB_OWNER=your-github-username
+GITHUB_REPO=your-manuscript-repository
+GITHUB_TOKEN=github-fine-grained-token-with-contents-write
+REFINER_API_KEY=replace-with-refiner-api-key
+# 可选：随每次请求下发的转录选项（本机 MLX 引擎用它指定语言；不设则自动判定）。
+# TRANSCRIPTION_LANGUAGE=zh
+# 可选：稿件 frontmatter 中 processed_at 使用的 IANA 时区（默认 Asia/Shanghai）。
+# MANUSCRIPT_TIME_ZONE=Asia/Shanghai
