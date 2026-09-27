@@ -12,6 +12,8 @@ transcription_service/.pytest_cache/
 transcription_service/data/
 transcription_service/.env
 
-# Python caches anywhere
+# Local runtime data and environment
+data/
+.env
 __pycache__/
 *.pyc

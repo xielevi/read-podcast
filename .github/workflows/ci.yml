@@ -38,14 +38,34 @@ jobs:
       - run: uv sync --directory transcription_service --dev --locked
       - run: uv run --directory transcription_service pytest -q
 
-  # 生产发布（CD）。仅当 push 到 main、且 edge / transcription-service 两个 CI job 全部成功后执行；
+  docker:
+    name: Docker build & healthcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - name: Build Docker image
+        run: docker build -t read-podcast:test .
+      - name: Start container and verify health
+        run: |
+          docker run -d --name test-app -p 3000:3000 -e PORT=3000 -e HOST=0.0.0.0 read-podcast:test
+          for i in $(seq 1 30); do
+            if curl -s -f http://127.0.0.1:3000/api/public/health; then
+              echo "App is healthy!"
+              break
+            fi
+            sleep 1
+          done
+          curl -s -f http://127.0.0.1:3000/api/public/health | grep '"status":"ok"'
+          docker stop test-app
+
+  # 生产发布（CD）。仅当 push 到 main、且 edge / transcription-service / docker 三个 CI job 全部成功后执行；
   # PR 事件下本 job 直接跳过（PR 只跑检查，永不部署）。
   # 部署值来自 GitHub Actions 仓库变量（Settings → Secrets and variables → Actions → Variables），
   # 仓库里不写任何部署者自己的域名 / 仓库名。没有设置 READ_PODCAST_DOMAIN 的仓库（例如 fork）
   # 整个 job 跳过。变量含义见 docs/DEPLOYMENT.md（Continuous deployment）。
   deploy-production:
     name: Deploy production
-    needs: [edge, transcription-service]
+    needs: [edge, transcription-service, docker]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.READ_PODCAST_DOMAIN != ''
     runs-on: ubuntu-latest
     environment: production

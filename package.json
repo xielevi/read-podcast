@@ -11,7 +11,9 @@
     "deploy": "node scripts/deploy.mjs",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "setup": "node scripts/setup.mjs"
+    "setup": "node scripts/setup.mjs",
+    "build:server": "node scripts/build_server.mjs",
+    "start": "node dist/server.js"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260918.1",

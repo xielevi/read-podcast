@@ -79,6 +79,27 @@ via `Env` (`env.db`, `env.storage`, `env.workflows`), with zero imports of `clou
 around Cloudflare runtime bindings with unchanged behavior. An architecture test enforces that
 no business files bypass the adapter or reference Cloudflare binding types.
 
+## Local Runtime (Docker / Node.js)
+
+To support self-hosted operation without dependency on Cloudflare services (#27), the application
+provides a first-class local runtime running on Node.js 22+. The exact same TypeScript business
+logic is executed by pairing the platform interfaces with local implementations:
+
+| Interface | Cloudflare Implementation | Local / Docker Implementation |
+|---|---|---|
+| `Database` | Cloudflare D1 | SQLite (`node:sqlite` DatabaseSync), WAL mode, foreign keys enabled, running `migrations/*.sql` |
+| `ObjectStore` | Cloudflare R2 | Local directory volume (`uploads/`, `raw/`, `refined/`), temporary HMAC-signed download URLs (`/storage/download`), automated lifecycle retention (1d uploads, 7d raw/refined) |
+| `TaskWorkflowEngine` | Cloudflare Workflows | In-process step runner with SQLite checkpoint tables (`_workflow_instances`, `_workflow_checkpoints`), matching replay, retry, backoff, and non-retryable semantics; recovers running workflows across process restarts |
+| `ScheduledHandler` | Cloudflare Cron Trigger (every 5 min) | In-process timer (every 5 min) invoking `runMaintenance` (recovery and liveness reconciliation) and object store retention sweep |
+| Static Assets | Cloudflare Assets | Node HTTP server serving `public/` files with MIME mapping and SPA fallback |
+| Access Control | Cloudflare Access | Optional HTTP Basic Auth on `/manage*` and `/api/control/*`; Public Browse Mode (`/` and `/api/public/*`) remains open and side-effect free; defaults to listening on `127.0.0.1` |
+| Secrets / Vars | Wrangler secrets / vars | Environment variables and `.env` |
+
+In Docker Compose, the Web application container runs alongside the containerized Transcription
+Service (`transcription_service/docker-compose.yml`), communicating over the internal container network.
+Manuscript persistence uses the Canonical Manuscript Store (GitHub repository) as in the Cloudflare deployment;
+local directory persistence is planned for #28.
+
 
 ## Public Browse Mode and Authenticated Control Mode
 
