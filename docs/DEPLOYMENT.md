@@ -55,31 +55,22 @@ your domain. The subsections below document the same steps without the script.
 
 ### Evaluation: Why not a "Deploy to Cloudflare" one-click button?
 
-Community users frequently ask whether Read Podcast could offer a "Deploy to Cloudflare" one-click
-button in the repository README. We evaluated Cloudflare's web-based deployment buttons and determined
-they cannot fulfill Read Podcast's zero-to-one setup:
+A [Deploy to Cloudflare button](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
+can provision the D1 database and R2 bucket, run `wrangler d1 migrations apply DB --remote` as part
+of the `deploy` script, and prompt for secrets listed in `.dev.vars.example`. It still cannot finish
+a working Read Podcast deployment, so the button is not offered:
 
-1. **Database migrations**: While a deploy button can bind a D1 database name, it cannot run
-   `wrangler d1 migrations apply DB --remote` to execute schema migrations (`migrations/0001` through
-   `0021`). Without migrations, tables (`articles`, `tasks`, etc.) do not exist and the application
-   fails on initial boot.
-2. **Storage lifecycle management**: Deploy buttons can create R2 buckets, but cannot configure custom
-   object lifecycle rules (`raw-7d`, `refined-7d`, `uploads-1d`). On the Workers Free plan, failing to
-   expire temporary audio uploads (1 day) or raw transcripts (7 days) quickly exceeds the 10 GB Free
-   storage tier.
-3. **Interactive secrets**: The deployment requires credentials for external services (`GITHUB_TOKEN`,
-   `REFINER_API_KEY`, R2 presign S3 keys, and Cloudflare Access tokens). Web deploy flows either require
-   exposing secrets in source control or leave the Worker in an unconfigured, failing state until manual
-   intervention.
-4. **Zero Trust separation**: Cloudflare Zero Trust (Access applications, policies, service tokens, and
-   Cloudflare Tunnels) is managed in a separate dashboard and control plane (`one.dash.cloudflare.com`)
-   that is completely isolated from the Workers Deploy button flow.
-5. **Dynamic environment validation**: Read Podcast enforces strict variable validation via
-   `scripts/deploy.mjs` to block deployment if documentation placeholders are used.
+1. **R2 lifecycle rules**: the button creates the bucket but not its lifecycle rules (`raw-7d`,
+   `refined-7d`, `uploads-1d`). Without them temporary uploads and transcripts are never expired.
+2. **Cloudflare Access and Tunnel**: the Access application for `/manage*` and `/api/control/*`, the
+   service token and the Tunnel live in the Zero Trust dashboard, outside any Worker deploy flow.
+   A Worker deployed without the Access application exposes the control plane.
+3. **Deployment values**: the custom domain, transcription URL and manuscript repository are
+   injected by `scripts/deploy.mjs` (`npm run deploy`), which refuses documentation placeholders;
+   `wrangler.jsonc` deliberately stays deployment-neutral.
 
-Therefore, **`npm run setup` is the official, unified deployment setup tool**. It automates every
-API-controllable resource idempotently, checks prerequisites, safely sets secrets, and outputs a concise
-manual checklist for Zero Trust.
+`npm run setup` is therefore the supported setup path: it automates every step that the Cloudflare
+API allows, idempotently, and prints a checklist for the Zero Trust steps.
 
 ### D1
 
@@ -308,13 +299,13 @@ sequenceDiagram
     participant Tunnel as Cloudflare Tunnel (cloudflared)
     participant Service as Local Host (127.0.0.1:28100)
 
-    Worker->>Edge: POST https://transcribe.your-domain.example/submit<br/>CF-Access-Client-Id & CF-Access-Client-Secret
+    Worker->>Edge: POST https://transcribe.your-domain.example/v1/transcriptions<br/>CF-Access-Client-Id & CF-Access-Client-Secret
     Note over Edge: Access verifies Service Auth policy<br/>validates Service Token
     Edge->>Tunnel: Forward encrypted request over Tunnel
-    Tunnel->>Service: Forward to http://127.0.0.1:28100/submit
-    Service-->>Tunnel: 200 OK (Task handle)
+    Tunnel->>Service: Forward to http://127.0.0.1:28100/v1/transcriptions
+    Service-->>Tunnel: 202 Accepted (request snapshot)
     Tunnel-->>Edge: Return response
-    Edge-->>Worker: 200 OK
+    Edge-->>Worker: 202 Accepted
 ```
 
 The host requires zero port-forwarding and holds no Cloudflare credentials; `cloudflared` securely
@@ -413,7 +404,7 @@ curl -fsS -H "CF-Access-Client-Id: your-client-id" \
           https://transcribe.your-domain.example/health
 ```
 
-A healthy service returns `{"status":"ok"}`. The deployed Worker uses these same headers to communicate with the service during transcription jobs.
+A healthy service returns JSON with `"status": "ok"`. The deployed Worker uses these same headers to communicate with the service during transcription jobs.
 
 ### OpenAI-compatible upload proxy engine (`openai-proxy`)
 
@@ -570,15 +561,15 @@ resource instead of reusing the production data.
 
 ### Workers Free Plan Quotas and Operational Boundaries
 
-The entire Cloudflare stack operates within the **Workers Free tier ($0/month)**. Free tier
-quotas relevant to Read Podcast:
+The Cloudflare application is designed to fit the **Workers Free tier**; the production boundary
+checks below are still pending real deployment evidence. Free tier quotas relevant to Read Podcast:
 
 | Resource | Free Tier Quota | Application Usage Pattern |
 |---|---|---|
 | **Worker CPU Time** | 10 ms per invocation | Lightweight routing & API parsing (I/O wait excluded) |
 | **External Subrequests** | 50 per invocation | Fetching RSS, calling GitHub API, polling transcription |
 | **Cloudflare Subrequests** | 1,000 per invocation | D1 database queries and R2 object operations |
-| **Workflow Step Quotas** | 3,000 steps / day | Multi-step execution per episode (`download` → `transcribe` → `refine` → `save`) |
+| **Workflow Step Quotas** | 3,000 steps / day | Multi-step execution per episode (`resolve-source` → `submit-transcription` → `poll-transcription-*` → `persist-raw` → `claim-refinement` → `refine` → `publish`; long episodes add poll steps) |
 | **Cron Triggers** | 5 triggers / account | Exactly 1 trigger used (5-minute background recovery) |
 | **R2 Storage** | 10 GB storage free | Managed by 1-day (`uploads/`) and 7-day (`raw/`, `refined/`) lifecycle rules |
 
@@ -586,11 +577,13 @@ quotas relevant to Read Podcast:
 
 Local tests and `wrangler deploy --dry-run` validate code logic and syntax, but cannot measure
 production edge CPU or enforce the Free-plan subrequest budget. Maintainers and community users
-should monitor the following four operational scenarios against Workers Observability logs:
+should monitor the following four operational scenarios against Workers Observability logs. These
+checks remain pending until real deployment evidence is available; record feed size, transcript
+size and task count with each result.
 
 1. **Large RSS Feeds (Several Hundred Episodes)**:
    - *Boundary*: Parsing very large XML feeds with 200–500+ items within the 10 ms CPU budget.
-   - *Design guard*: The feed parser uses streaming XML parsing and server-side pagination, fetching episodes on demand rather than buffering the entire catalog in Worker memory.
+   - *Design note*: The feed is parsed in full with `fast-xml-parser` when it is refreshed; episodes are stored in D1 and the episode list is paginated from D1, so browsing never re-parses the feed.
    - *Verification*: Subscribe to an extensive feed (e.g. 500+ episodes), open its episode list, and inspect CPU execution duration in Workers Logs.
 2. **Long Podcast Episodes (2–3 Hours)**:
    - *Boundary*: Audio download and transcription polling across extended audio files; chunked LLM refinement.
@@ -602,7 +595,7 @@ should monitor the following four operational scenarios against Workers Observab
    - *Verification*: Inspect the publish step log; verify that the commit appears under `podcasts/transcripts/` in your repository.
 4. **Multi-Task Cron Recovery**:
    - *Boundary*: A scheduled cron trigger firing when multiple queued tasks or dead workflows need reconciliation simultaneously.
-   - *Design guard*: Cron recovery processes stalled tasks in batches to avoid exceeding subrequest budgets.
+   - *Design guard*: Each cron run recovers at most 10 queued tasks and checks at most 20 workflows for liveness.
    - *Verification*: Queue several episodes while the transcription service is temporarily paused, restart the service, and verify the cron smoothly reconciles pending tasks.
 
 ### Monitoring Logs and Investigating Errors
