@@ -121,10 +121,12 @@ jobs:
         run: |
           set -euo pipefail
           base="https://${READ_PODCAST_DOMAIN}"
+          # curl 静默运行、丢弃 stderr（其错误信息会带目标主机名），失败时只输出路径与退出码。
           probe() {
-            local out
-            if ! out=$(curl -sS --max-time 20 -o /dev/null -w '%{http_code} %{redirect_url}' "$base$1"); then
-              echo "FAIL: $base$1 unreachable" >&2; return 1
+            local out rc=0
+            out=$(curl -s --max-time 20 -o /dev/null -w '%{http_code} %{redirect_url}' "$base$1" 2>/dev/null) || rc=$?
+            if [ "$rc" -ne 0 ]; then
+              echo "FAIL: $1 unreachable (curl exit $rc)" >&2; return 1
             fi
             echo "$out"
           }

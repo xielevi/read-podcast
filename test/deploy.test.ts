@@ -130,6 +130,18 @@ describe("仓库不含部署者自己的值", () => {
     expect(withoutClassified).not.toMatch(/echo [^\n]*\$\{loc/);
   });
 
+  it("冒烟测试的失败路径不输出目标地址，curl 错误信息不进日志", () => {
+    const ci = read(".github/workflows/ci.yml");
+    // 除了拼出 base 的那一行，echo 不得带 $base 或部署域名变量。
+    expect(ci).not.toMatch(/echo [^\n]*\$base/);
+    expect(ci).not.toMatch(/echo [^\n]*READ_PODCAST_DOMAIN/);
+    // curl 不用 -S（show-error），且 stderr 被丢弃。
+    const curlLine = ci.split("\n").find(line => line.includes("curl ") && line.includes("$base$1"));
+    expect(curlLine).toBeDefined();
+    expect(curlLine).not.toMatch(/curl -\w*S/);
+    expect(curlLine).toContain("2>/dev/null");
+  });
+
   it("npm run deploy 走 scripts/deploy.mjs", () => {
     const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
     expect(pkg.scripts.deploy).toBe("node scripts/deploy.mjs");
