@@ -57,9 +57,10 @@ Docker (ready for Obsidian or any editor). Read Podcast is the reading
 interface in front of it: the database only indexes manuscripts, and the store holds the one durable
 copy of each.
 
-> **Language.** Read Podcast currently targets Chinese-language podcasts: the interface, the
-> built-in refinement prompts and concept verification (Chinese Wikipedia) are all Chinese.
-> Transcription itself auto-detects the language.
+> **Language & Bilingual Support.** Read Podcast supports both Chinese and English:
+> - **Bilingual UI**: Switch seamlessly between Chinese and English with the `中 / EN` toggle in the top-right masthead and Reader header toolbar, or in Settings. Preferences are saved automatically (to D1 in manage mode, to localStorage in public browse mode). Initial visit respects browser language (`zh-*` -> Chinese, others -> English).
+> - **Automatic Editorial Prompts**: Podcast episodes automatically select the appropriate refinement prompt based on spoken content language (Chinese prompt for Chinese podcasts, English magazine-style prompt for English podcasts). Custom prompts always take precedence.
+> - **Localized Wikipedia Concepts**: Key concept extraction and Wikipedia verification follow the current UI locale (`zh` -> Chinese Wikipedia `zh.wikipedia.org`, `en` -> English Wikipedia `en.wikipedia.org`), cached separately per language.
 
 ## Why it is built this way
 

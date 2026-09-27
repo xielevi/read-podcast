@@ -192,11 +192,11 @@ export async function publicArticleDownload(taskId: string, url: URL, env: Env):
  * GET /api/public/articles/:id/concepts —— 只返回已缓存的关键概念。
  * 缓存未命中时返回空列表，绝不触发抽取（抽取会调用精修模型并写 D1，属于控制面）。
  */
-export async function publicArticleConcepts(taskId: string, env: Env): Promise<Response> {
+export async function publicArticleConcepts(taskId: string, env: Env, lang: "zh" | "en" = "zh"): Promise<Response> {
   const article = await publishedContent(taskId, env);
   if (!article) return error(404, "article_not_found", "Article not found");
-  const cached = await env.db.prepare("SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ?")
-    .bind(article.content_path, article.commit_sha)
+  const cached = await env.db.prepare("SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ? AND lang = ?")
+    .bind(article.content_path, article.commit_sha, lang)
     .first<{ concepts_json: string }>();
   if (cached?.concepts_json) {
     try {

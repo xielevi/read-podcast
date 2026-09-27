@@ -11,7 +11,14 @@
  *
  * 重试不再使用进程内 sleep 循环，交由 Workflow step 的 native retries 承载。
  */
-import { DEFAULT_REFINE_PROMPT, FALLBACK_REFINE_PROMPT, REFINER_SYSTEM_PROMPT } from "./defaults";
+import {
+  DEFAULT_REFINE_PROMPT,
+  DEFAULT_REFINE_PROMPT_EN,
+  FALLBACK_REFINE_PROMPT,
+  FALLBACK_REFINE_PROMPT_EN,
+  REFINER_SYSTEM_PROMPT,
+  REFINER_SYSTEM_PROMPT_EN,
+} from "./defaults";
 
 export type RefinerErrorCode = "refine_provider_auth" | "refine_provider_bad_request" | "refine_api_failed";
 
@@ -104,19 +111,20 @@ export function buildChatRequest(options: ChatRequestOptions): { headers: Record
 
 /** 组合精修 Prompt：任务级 custom_prompt 优先，否则使用默认杂志级 Prompt。 */
 export function buildRefinePrompt(summary: string, customPrompt?: string | null, template = DEFAULT_REFINE_PROMPT): string {
-  const effectiveSummary = summary || "无官方简介";
+  const isEn = template === DEFAULT_REFINE_PROMPT_EN;
+  const effectiveSummary = summary || (isEn ? "No official show notes" : "无官方简介");
   const custom = (customPrompt ?? "").trim();
   if (custom) {
     return custom.includes("{summary}") ? custom.replaceAll("{summary}", effectiveSummary) : custom;
   }
-  const base = (template ?? "").trim() || FALLBACK_REFINE_PROMPT;
+  const base = (template ?? "").trim() || (isEn ? FALLBACK_REFINE_PROMPT_EN : FALLBACK_REFINE_PROMPT);
   return base.replaceAll("{summary}", effectiveSummary);
 }
 
 /** 精修消息体：system 固定角色 + user = `${prompt}\n\n${raw}`。 */
-export function buildRefineMessages(prompt: string, rawText: string): ChatMessage[] {
+export function buildRefineMessages(prompt: string, rawText: string, systemPrompt = REFINER_SYSTEM_PROMPT): ChatMessage[] {
   return [
-    { role: "system", content: REFINER_SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt },
     { role: "user", content: `${prompt}\n\n${rawText}` },
   ];
 }

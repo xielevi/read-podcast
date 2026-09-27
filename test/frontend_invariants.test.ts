@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
+import { JSDOM, VirtualConsole } from "jsdom";
 
 const ROOT = resolve(__dirname, "..");
 const HTML = readFileSync(resolve(ROOT, "public/index.html"), "utf-8");
 const CSS = readFileSync(resolve(ROOT, "public/app.css"), "utf-8");
+const JS_I18N = readFileSync(resolve(ROOT, "public/js/08-i18n.js"), "utf-8");
 const JS_EPISODES = readFileSync(resolve(ROOT, "public/js/30-episodes.js"), "utf-8");
 const JS_SUBSCRIPTIONS = readFileSync(resolve(ROOT, "public/js/20-subscriptions.js"), "utf-8");
 const JS_TASKS = readFileSync(resolve(ROOT, "public/js/40-tasks.js"), "utf-8");
@@ -103,8 +105,10 @@ describe("Frontend Invariants & Correctness Blockers", () => {
 
     it("implements attention count and label in 40-tasks.js", () => {
       expect(JS_TASKS).toContain("attentionCount");
-      expect(JS_TASKS).toContain("个任务需要处理");
-      expect(JS_TASKS).toContain("处理中 ");
+      expect(JS_TASKS).toContain("t('tasks.attention_count', attentionCount)");
+      expect(JS_TASKS).toContain("t('tasks.processing_count', runningCount)");
+      expect(BUNDLE).toContain("个任务需要处理");
+      expect(BUNDLE).toContain("处理中 {0}");
     });
   });
 
@@ -193,9 +197,9 @@ describe("Frontend Invariants & Correctness Blockers", () => {
     });
 
     it("uses neutral '任务' panel title instead of fixed '处理中'", () => {
-      expect(HTML).toContain('id="task-panel-title">任务</h2>');
+      expect(HTML).toMatch(/id="task-panel-title"[^>]*>任务<\/h2>/);
       expect(HTML).toContain('aria-label="关闭任务面板"');
-      expect(HTML).toContain('<div class="task-queue-head"><strong>任务</strong>');
+      expect(HTML).toMatch(/class="task-queue-head"><strong[^>]*>任务<\/strong>/);
     });
 
     it("ensures src/settings.ts does not export dead helpers or retain drifted configured badge docstrings", () => {
@@ -224,7 +228,7 @@ describe("Frontend Invariants & Correctness Blockers", () => {
     it("keeps manuscript download as a direct visible action", () => {
       expect(JS_TASKS).not.toContain("library-more");
       expect(JS_TASKS).toContain("actions.append(read, download)");
-      expect(JS_TASKS).toContain("document.createTextNode('下载')");
+      expect(JS_TASKS).toContain("document.createTextNode(t('library.download'))");
     });
   });
 
@@ -535,6 +539,346 @@ title: 袁长庚×胡安焉
       await expect(readApiResponse(new Response("upstream down", { status: 502 }))).rejects.toMatchObject({ message: "HTTP 502", status: 502 });
       await expect(readApiResponse(new Response(null, { status: 204 }))).resolves.toBeNull();
       await expect(readApiResponse(Response.json({ task_id: "t" }))).resolves.toEqual({ task_id: "t" });
+    });
+  });
+
+  describe("Bilingual UI & i18n Invariants", () => {
+    it("guarantees identical key sets between TRANSLATIONS.zh and TRANSLATIONS.en", () => {
+      const zhMatch = JS_I18N.match(/zh:\s*\{([\s\S]*?)\n\s*\},/);
+      const enMatch = JS_I18N.match(/en:\s*\{([\s\S]*?)\n\s*\}\n\s*\};/);
+      expect(zhMatch).not.toBeNull();
+      expect(enMatch).not.toBeNull();
+
+      const zhKeys = new Set([...zhMatch![1].matchAll(/'([a-zA-Z0-9_.]+)':/g)].map(m => m[1]));
+      const enKeys = new Set([...enMatch![1].matchAll(/'([a-zA-Z0-9_.]+)':/g)].map(m => m[1]));
+
+      expect(zhKeys.size).toBeGreaterThan(250);
+      expect(enKeys.size).toBe(zhKeys.size);
+
+      const missingInEn = [...zhKeys].filter(k => !enKeys.has(k));
+      const missingInZh = [...enKeys].filter(k => !zhKeys.has(k));
+      expect(missingInEn).toEqual([]);
+      expect(missingInZh).toEqual([]);
+    });
+
+    it("verifies all data-i18n* attributes in public/index.html exist in TRANSLATIONS", () => {
+      const zhMatch = JS_I18N.match(/zh:\s*\{([\s\S]*?)\n\s*\},/);
+      const zhKeys = new Set([...zhMatch![1].matchAll(/'([a-zA-Z0-9_.]+)':/g)].map(m => m[1]));
+
+      const htmlI18nKeys = [...HTML.matchAll(/data-i18n(?:-[a-z\-]+)?="([^"]+)"/g)].map(m => m[1]);
+      expect(htmlI18nKeys.length).toBeGreaterThan(50);
+
+      const unmappedKeys = htmlI18nKeys.filter(k => !zhKeys.has(k));
+      expect(unmappedKeys).toEqual([]);
+    });
+
+    it("verifies index.html has no static Chinese text or attributes without data-i18n mapping", () => {
+      const lines = HTML.split("\n");
+      const unmapped: string[] = [];
+
+      for (let idx = 0; idx < lines.length; idx++) {
+        const line = lines[idx];
+        const stripped = line.replace(/<!--.*?-->/g, "");
+        if (stripped.includes("中 / EN") || stripped.includes("// <base>/ 是公开浏览")) continue;
+        if (/[\u4e00-\u9fa5]/.test(stripped) && !stripped.includes("data-i18n")) {
+          unmapped.push(`Line ${idx + 1}: ${line.trim()}`);
+        }
+      }
+      expect(unmapped).toEqual([]);
+    });
+
+    it("evaluates English mode invariant: applyLocale('en') leaves no Chinese characters in static DOM", () => {
+      const virtualConsole = new VirtualConsole();
+      const dom = new JSDOM(HTML, {
+        url: "https://example.com/manage",
+        runScripts: "dangerously",
+        pretendToBeVisual: true,
+        virtualConsole,
+        beforeParse(window) {
+          Object.defineProperty(window.navigator, "language", { value: "en-US", configurable: true });
+          (window as unknown as { fetch: typeof fetch }).fetch = (() => Promise.resolve({ ok: true, json: () => Promise.resolve([]) })) as unknown as typeof fetch;
+        }
+      });
+
+      const script = dom.window.document.createElement("script");
+      script.textContent = BUNDLE;
+      dom.window.document.body.appendChild(script);
+
+      const win = dom.window as unknown as { applyLocale: (locale: string) => void };
+      win.applyLocale("en");
+
+      expect(dom.window.document.documentElement.lang).toBe("en");
+      expect(dom.window.document.documentElement.dataset.locale).toBe("en");
+
+      const issues: Array<{ type: string; value: string; context?: string }> = [];
+      function scanNode(node: Node) {
+        if (node.nodeType === 3) {
+          const text = (node.textContent || "").trim();
+          if (text === "中 / EN") return;
+          if (/[\u4e00-\u9fa5]/.test(text)) {
+            issues.push({ type: "text", value: text, context: (node.parentElement as HTMLElement)?.outerHTML?.slice(0, 100) });
+          }
+        } else if (node.nodeType === 1) {
+          const el = node as HTMLElement;
+          if (el.tagName === "SCRIPT" || el.tagName === "STYLE") return;
+          for (const attr of ["aria-label", "title", "placeholder"]) {
+            const val = el.getAttribute(attr);
+            if (val && /[\u4e00-\u9fa5]/.test(val)) {
+              issues.push({ type: "attr", value: `${attr}="${val}"`, context: el.outerHTML.slice(0, 100) });
+            }
+          }
+          for (const child of Array.from(node.childNodes)) {
+            scanNode(child);
+          }
+        }
+      }
+
+      scanNode(dom.window.document.body);
+      expect(issues).toEqual([]);
+    });
+
+    it("verifies dynamic task queue localization and Chinese error suppression in English mode", () => {
+      const virtualConsole = new VirtualConsole();
+      const dom = new JSDOM(HTML, {
+        url: "https://example.com/manage",
+        runScripts: "dangerously",
+        pretendToBeVisual: true,
+        virtualConsole,
+        beforeParse(window) {
+          Object.defineProperty(window.navigator, "language", { value: "en-US", configurable: true });
+          (window as unknown as { fetch: typeof fetch }).fetch = (() => Promise.resolve({ ok: true, json: () => Promise.resolve([]) })) as unknown as typeof fetch;
+        }
+      });
+
+      const script = dom.window.document.createElement("script");
+      script.textContent = BUNDLE;
+      dom.window.document.body.appendChild(script);
+
+      const win = dom.window as unknown as {
+        applyLocale: (loc: string) => void;
+        getLocale: () => string;
+        setTaskStatus: (stage: string, progress: number, taskId?: string, title?: string, message?: string) => void;
+        t: (key: string, ...args: unknown[]) => string;
+      };
+
+      win.applyLocale("en");
+      expect(win.getLocale()).toBe("en");
+
+      // Verify translation helper returns English strings
+      expect(win.t("stage.queued")).toBe("Queued");
+      expect(win.t("stage.downloading")).toBe("Downloading audio");
+      expect(win.t("stage.transcribing")).toBe("Transcribing");
+      expect(win.t("stage.refining")).toBe("Refining");
+      expect(win.t("stage.finalizing")).toBe("Saving");
+      expect(win.t("tasks.title")).toBe("Tasks");
+      expect(win.t("tasks.processing_count", 2)).toBe("Processing 2");
+      expect(win.t("tasks.attention_count", 3)).toBe("3 task(s) require attention");
+
+      // Simulate a running task
+      win.setTaskStatus("downloading", 20, "task-1", "Test Episode");
+      const triggerLabel = dom.window.document.getElementById("task-trigger-label");
+      expect(triggerLabel?.textContent).toBe("Processing 1");
+
+      const taskItem = dom.window.document.querySelector("#task-list .task-queue-item");
+      expect(taskItem).not.toBeNull();
+      // Ensure no Chinese leaked into the running task item
+      expect(/[\u4e00-\u9fa5]/.test(taskItem?.textContent || "")).toBe(false);
+
+      // Simulate a failed task with a backend Chinese message in English mode
+      win.setTaskStatus("downloading", 0, "task-2", "Another Episode", "音频下载失败 (404)");
+      const failedCard = (dom.window as unknown as { _taskCards: Record<string, { status: string; message: string; stage: string }> })._taskCards["task-2"];
+      if (failedCard) failedCard.status = "failed";
+      (dom.window as unknown as { renderTaskQueue: () => void }).renderTaskQueue();
+
+      const items = dom.window.document.querySelectorAll("#task-list .task-queue-item");
+      expect(items.length).toBe(2);
+      // Verify Chinese error message did not leak into English UI
+      expect(/[\u4e00-\u9fa5]/.test(items[0]?.textContent || "")).toBe(false);
+      expect(/[\u4e00-\u9fa5]/.test(items[1]?.textContent || "")).toBe(false);
+    });
+
+    it("renders Settings in English mode with real backend payload without leaking Chinese", () => {
+      const settingsPayload = {
+        writable: true,
+        groups: [
+          {
+            key: "refiner",
+            title: "文字整理",
+            fields: [
+              {
+                key: "refiner.model",
+                label: "模型",
+                type: "text",
+                placeholder: "服务商提供的模型 ID",
+                value: "gpt-4o",
+              },
+              {
+                key: "refiner.api_base",
+                label: "服务地址",
+                type: "text",
+                placeholder: "https://api.example.com/v1",
+                value: "https://api.openai.com/v1",
+              },
+              {
+                key: "refiner.temperature",
+                label: "创作温度",
+                type: "text",
+                placeholder: "0.3",
+                value: "0.3",
+              },
+              {
+                key: "refiner.max_tokens",
+                label: "最大输出",
+                type: "text",
+                placeholder: "65536",
+                value: "65536",
+              },
+            ],
+          },
+          {
+            key: "quality",
+            title: "完整度保护",
+            description: "成稿明显过短时不会发布。",
+            fields: [
+              {
+                key: "refiner.min_output_ratio",
+                label: "完整度保护",
+                type: "text",
+                placeholder: "0.7",
+                value: "0.7",
+                hint: "这是发布硬下限；默认 Prompt 的编辑目标约为原始转录的 80%。",
+              },
+            ],
+          },
+        ],
+      };
+
+      const dom = new JSDOM(HTML, {
+        runScripts: "dangerously",
+        url: "http://localhost:8787/manage",
+      });
+      const script = dom.window.document.createElement("script");
+      script.textContent = BUNDLE;
+      dom.window.document.body.appendChild(script);
+
+      const win = dom.window as unknown as {
+        applyLocale: (loc: string) => void;
+        renderSettings: (data: unknown) => void;
+      };
+
+      win.applyLocale("en");
+      win.renderSettings(settingsPayload);
+
+      const settingsBody = dom.window.document.getElementById("settings-body");
+      expect(settingsBody).not.toBeNull();
+
+      // Check all field labels, placeholders, hints and group headings in refiner & quality sections
+      const labels = Array.from(settingsBody!.querySelectorAll(".settings-field .form-label")).map(el => el.textContent);
+      const placeholders = Array.from(settingsBody!.querySelectorAll<HTMLInputElement>(".settings-field input")).map(el => el.placeholder);
+      const hints = Array.from(settingsBody!.querySelectorAll(".settings-field-hint, .settings-group-desc")).map(el => el.textContent);
+
+      // Verify no Chinese characters leak in refiner & quality settings
+      for (const text of [...labels, ...placeholders, ...hints]) {
+        expect(/[\u4e00-\u9fa5]/.test(text || "")).toBe(false);
+      }
+
+      // Check specific English labels
+      expect(labels).toContain("Model");
+      expect(labels).toContain("Endpoint URL");
+      expect(labels).toContain("Temperature");
+      expect(labels).toContain("Max Tokens");
+      expect(labels).toContain("Length Quality Gate");
+    });
+
+    it("renders prompt templates with localized names and does not force Chinese prompt by default", () => {
+      const templatesPayload = [
+        { id: "magazine", name: "默认杂志精修", description: "杂志级访谈文稿...", content: "杂志级模板内容..." },
+        { id: "clean_verbatim", name: "清洁逐字稿", description: "高保真逐字稿...", content: "清洁逐字稿内容..." },
+        { id: "structured_interview", name: "结构化访谈", description: "重点突出问答结构...", content: "结构化访谈内容..." },
+      ];
+
+      const dom = new JSDOM(HTML, {
+        runScripts: "dangerously",
+        url: "http://localhost:8787/manage",
+      });
+      const script = dom.window.document.createElement("script");
+      script.textContent = BUNDLE;
+      dom.window.document.body.appendChild(script);
+
+      const win = dom.window as unknown as {
+        applyLocale: (loc: string) => void;
+        _promptTemplates: unknown[];
+        renderPromptTemplateOptions: () => void;
+      };
+
+      win.applyLocale("en");
+      win._promptTemplates = templatesPayload;
+      win.renderPromptTemplateOptions();
+
+      const select = dom.window.document.getElementById("prompt-template-select") as unknown as HTMLSelectElement;
+      expect(select).not.toBeNull();
+      expect(select.options.length).toBe(4); // 1 default standard + 3 templates
+      expect(select.options[0].textContent).toBe("Standard Refinement");
+      expect(select.options[0].value).toBe("");
+      expect(select.options[1].textContent).toBe("Magazine Refinement");
+      expect(select.options[2].textContent).toBe("Clean Verbatim");
+      expect(select.options[3].textContent).toBe("Structured Interview");
+
+      // Verify no Chinese in template option names in English mode
+      for (let i = 0; i < select.options.length; i++) {
+        expect(/[\u4e00-\u9fa5]/.test(select.options[i].textContent || "")).toBe(false);
+      }
+
+      // Default selection must stay standard edit (index 0, empty value), not template 1
+      expect(select.selectedIndex).toBe(0);
+      const customPromptArea = dom.window.document.getElementById("custom-prompt") as unknown as HTMLTextAreaElement;
+      expect(customPromptArea.value).toBe("");
+    });
+
+    it("calculates reader stats based on manuscript content language rather than UI locale", () => {
+      const dom = new JSDOM(HTML, {
+        runScripts: "dangerously",
+        url: "http://localhost:8787/manage",
+      });
+      const script = dom.window.document.createElement("script");
+      script.textContent = BUNDLE;
+      dom.window.document.body.appendChild(script);
+
+      const win = dom.window as unknown as {
+        applyLocale: (loc: string) => void;
+        updateReaderStats: (text: string) => void;
+      };
+
+      const chineseManuscript = `---
+title: 测试中文单集
+---
+这是一篇中文播客的长篇精修访谈文稿。今天我们探讨分布式计算、边缘架构以及大规模语言模型在语音处理领域的最新进展。`.repeat(50); // ~4000 CJK chars
+
+      const englishManuscript = `---
+title: Test English Episode
+---
+This is an English podcast transcript discussing distributed systems, edge computing, and large language models for audio processing and refinement.`.repeat(50); // ~1000 English words
+
+      const statsEl = dom.window.document.getElementById("reader-meta-stats");
+
+      // Case A: English UI + Chinese manuscript
+      win.applyLocale("en");
+      win.updateReaderStats(chineseManuscript);
+      expect(statsEl?.textContent).toBeTruthy();
+      // Should calculate character count (~3600), not ~15 words!
+      expect(statsEl?.textContent).toContain("characters");
+      expect(statsEl?.textContent).not.toContain("words");
+
+      // Case B: English UI + English manuscript
+      win.updateReaderStats(englishManuscript);
+      expect(statsEl?.textContent).toContain("words");
+      expect(statsEl?.textContent).not.toContain("characters");
+
+      // Case C: Chinese UI + Chinese manuscript
+      win.applyLocale("zh");
+      win.updateReaderStats(chineseManuscript);
+      expect(statsEl?.textContent).toContain("字 · 约");
+      expect(statsEl?.textContent).toContain("分钟");
     });
   });
 });

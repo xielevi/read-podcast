@@ -9,11 +9,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_REFINER_SETTINGS,
   DEFAULT_REFINE_PROMPT,
+  DEFAULT_REFINE_PROMPT_EN,
   FALLBACK_REFINE_PROMPT,
+  FALLBACK_REFINE_PROMPT_EN,
   REFINE_ERROR_RETENTION,
   REFINE_RETRY_LIMIT,
   REFINE_SUCCESS_RETENTION,
   REFINER_SYSTEM_PROMPT,
+  REFINER_SYSTEM_PROMPT_EN,
 } from "../src/refinement/defaults";
 import {
   RefinerError,
@@ -75,6 +78,19 @@ describe("defaults: 默认杂志级精修 Prompt（Edge 唯一维护者）", () 
 
   it("system prompt 与迁移前完全一致", () => {
     expect(REFINER_SYSTEM_PROMPT).toBe("你是一位专业的播客文字整理者。严格按照用户指令处理文本。");
+    expect(REFINER_SYSTEM_PROMPT_EN).toBe("You are a professional podcast transcript editor. Follow user instructions strictly.");
+  });
+
+  it("英文默认 Prompt 保留同一产品契约", () => {
+    for (const invariant of ["approximately 80%", "75%–85%", "Strictly No Summarization", "Speaker Names", "Episode Outline", "Preserve Substantive Thought"]) {
+      expect(DEFAULT_REFINE_PROMPT_EN).toContain(invariant);
+    }
+    expect(DEFAULT_REFINE_PROMPT_EN).toContain("{summary}");
+    expect(DEFAULT_REFINE_PROMPT_EN.trim()).not.toBe(FALLBACK_REFINE_PROMPT_EN);
+    for (const section of ["## Role & Mission", "## Editorial Workflow", "## Permitted Revisions", "## Prohibited Revisions", "## Length Target", "## Output Format"]) {
+      expect(DEFAULT_REFINE_PROMPT_EN).toContain(section);
+    }
+    expect(new TextEncoder().encode(DEFAULT_REFINE_PROMPT_EN).byteLength).toBeGreaterThan(2000);
   });
 
   it("生产配置默认值：OpenCode Go + deepseek-v4.1-flash", () => {
@@ -543,6 +559,48 @@ describe("concepts: 候选解析（Mac 行为迁移）", () => {
     expect(candidates).toEqual(["马克斯·韦伯", "新教伦理"]);
     expect(calls).toHaveLength(1);
     expect((calls[0].options as { temperature: number }).temperature).toBe(0.2);
+  });
+
+  it("Chinese transcript -> en concepts: instructs LLM to canonicalize to English Wikipedia terms", async () => {
+    const calls: Array<{ messages: Array<{ role: string; content: string }>; options: unknown }> = [];
+    const client = {
+      async chat(messages: Array<{ role: string; content: string }>, options: unknown) {
+        calls.push({ messages, options });
+        return { content: '{"concepts": ["Max Weber", "The Protestant Ethic and the Spirit of Capitalism"]}', finishReason: "stop" };
+      },
+    };
+    const candidates = await proposeConceptCandidates(
+      { title: "韦伯与现代化", podcast: "忽左忽右", content: "今天我们聊一聊马克斯·韦伯的社会学理论与新教伦理。", lang: "en" },
+      client as never,
+    );
+    expect(candidates).toEqual(["Max Weber", "The Protestant Ethic and the Spirit of Capitalism"]);
+    expect(calls).toHaveLength(1);
+    const systemContent = calls[0].messages[0].content;
+    const userContent = calls[0].messages[1].content;
+    expect(systemContent).toContain("English Wikipedia (en.wikipedia.org)");
+    expect(systemContent).toContain("Target language canonicalization");
+    expect(userContent).toContain("Output all canonical concept terms in English even if the transcript is in another language");
+  });
+
+  it("English transcript -> zh concepts: instructs LLM to canonicalize to Chinese Wikipedia terms", async () => {
+    const calls: Array<{ messages: Array<{ role: string; content: string }>; options: unknown }> = [];
+    const client = {
+      async chat(messages: Array<{ role: string; content: string }>, options: unknown) {
+        calls.push({ messages, options });
+        return { content: '{"concepts": ["马克斯·韦伯", "新教伦理与资本主义精神"]}', finishReason: "stop" };
+      },
+    };
+    const candidates = await proposeConceptCandidates(
+      { title: "Weber and Capitalism", podcast: "Philosophy Now", content: "Today we discuss Max Weber and the Protestant ethic.", lang: "zh" },
+      client as never,
+    );
+    expect(candidates).toEqual(["马克斯·韦伯", "新教伦理与资本主义精神"]);
+    expect(calls).toHaveLength(1);
+    const systemContent = calls[0].messages[0].content;
+    const userContent = calls[0].messages[1].content;
+    expect(systemContent).toContain("中文维基百科（zh.wikipedia.org）");
+    expect(systemContent).toContain("目标语言规范");
+    expect(userContent).toContain("无论文字稿原文为何种语言，请将候选词条输出为适合在中文维基百科检索的中文标准规范名称");
   });
 
   it("空内容不调用模型", async () => {

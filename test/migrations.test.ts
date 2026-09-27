@@ -448,8 +448,8 @@ describe("0020_read_state_stable_ids", () => {
 describe("0021_drop_unused_columns", () => {
   const columns = (db: DatabaseSync, table: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(column => column.name);
 
-  it("是最新一条迁移；删掉无人读写的列与索引，数据保留", () => {
-    expect(migrationFiles().at(-1)).toBe("0021_drop_unused_columns.sql");
+  it("删掉无人读写的列与索引，数据保留", () => {
+    expect(migrationFiles()).toContain("0021_drop_unused_columns.sql");
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON;");
     migrate(db, { upTo: "0020_read_state_stable_ids.sql" });
@@ -466,6 +466,51 @@ describe("0021_drop_unused_columns", () => {
     expect(db.prepare("SELECT name FROM sqlite_master WHERE name = 'idx_episodes_published'").get()).toBeUndefined();
     expect(db.prepare("SELECT id, published_date FROM episodes").get()).toEqual({ id: "1:a", published_date: "20260101" });
     expect(db.prepare("SELECT id, status FROM tasks").get()).toEqual({ id: "t1", status: "success" });
+  });
+});
+
+describe("0022_i18n_support", () => {
+  const columns = (db: DatabaseSync, table: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(column => column.name);
+
+  it("是最新一条迁移；增加 locale、content_language 与多语言 concepts 缓存支持", () => {
+    expect(migrationFiles().at(-1)).toBe("0022_i18n_support.sql");
+    const db = new DatabaseSync(":memory:");
+    db.exec("PRAGMA foreign_keys = ON;");
+    migrate(db, { upTo: "0021_drop_unused_columns.sql" });
+
+    // 历史已存在的数据
+    db.exec(`
+      INSERT INTO tasks (id, episode_id, source_type, podcast_name, episode_title, status)
+      VALUES ('t1', NULL, 'upload', 'P', 'A', 'success');
+      INSERT INTO article_concepts (content_path, commit_sha, concepts_json)
+      VALUES ('path/a.md', 'sha1', '{"concepts":[{"term":"测试"}]}');
+    `);
+
+    migrate(db, { from: "0022_i18n_support.sql", upTo: "0022_i18n_support.sql" });
+
+    // 1. ui_preferences 包含 locale 默认 NULL（未显式指定时不覆盖访客自适应）
+    const prefs = db.prepare("SELECT * FROM ui_preferences WHERE id = 1").get() as Record<string, unknown>;
+    expect(prefs.locale).toBeNull();
+    expect(() => db.prepare("UPDATE ui_preferences SET locale = 'fr' WHERE id = 1").run()).toThrow();
+    db.prepare("UPDATE ui_preferences SET locale = 'en' WHERE id = 1").run();
+    expect((db.prepare("SELECT locale FROM ui_preferences WHERE id = 1").get() as { locale: string }).locale).toBe("en");
+    db.prepare("UPDATE ui_preferences SET locale = NULL WHERE id = 1").run();
+    expect((db.prepare("SELECT locale FROM ui_preferences WHERE id = 1").get() as { locale: unknown }).locale).toBeNull();
+
+    // 2. tasks 包含 content_language 列
+    expect(columns(db, "tasks")).toContain("content_language");
+    expect(() => db.prepare("UPDATE tasks SET content_language = 'fr' WHERE id = 't1'").run()).toThrow();
+    db.prepare("UPDATE tasks SET content_language = 'en' WHERE id = 't1'").run();
+    expect((db.prepare("SELECT content_language FROM tasks WHERE id = 't1'").get() as { content_language: string }).content_language).toBe("en");
+
+    // 3. article_concepts 支持同一 (content_path, commit_sha) 独立缓存 zh 与 en
+    const migratedConcept = db.prepare("SELECT * FROM article_concepts WHERE content_path = 'path/a.md'").get() as Record<string, unknown>;
+    expect(migratedConcept.lang).toBe("zh");
+
+    // 插入同 path + commit_sha 的 en 概念，主键不冲突
+    db.prepare("INSERT INTO article_concepts (content_path, commit_sha, lang, concepts_json) VALUES ('path/a.md', 'sha1', 'en', '{\"concepts\":[]}')").run();
+    const rows = db.prepare("SELECT lang, concepts_json FROM article_concepts WHERE content_path = 'path/a.md' ORDER BY lang").all();
+    expect(rows).toHaveLength(2);
   });
 
   it("TaskRow 与 tasks 表 schema 一一对应", () => {

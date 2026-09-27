@@ -19,6 +19,7 @@ describe("UI Preferences API (云端偏好，本地零配置)", () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as UiPreferencesDto;
 
+    expect(data.locale).toBeNull();
     expect(data.app_theme).toBe("auto");
     expect(data.reader_theme).toBe("follow");
     expect(data.font_preset).toBe("classical");
@@ -40,6 +41,7 @@ describe("UI Preferences API (云端偏好，本地零配置)", () => {
   it("控制面 PUT /preferences 校验并持久化更新到 D1", async () => {
     const c = cloud();
     const patch = {
+      locale: "en",
       app_theme: "dark",
       reader_theme: "warm",
       font_preset: "modern",
@@ -58,6 +60,7 @@ describe("UI Preferences API (云端偏好，本地零配置)", () => {
     expect(res.status).toBe(200);
     const data = (await res.json()) as UiPreferencesDto;
 
+    expect(data.locale).toBe("en");
     expect(data.app_theme).toBe("dark");
     expect(data.reader_theme).toBe("warm");
     expect(data.font_preset).toBe("modern");
@@ -68,6 +71,7 @@ describe("UI Preferences API (云端偏好，本地零配置)", () => {
 
     // 再次从 D1 读取，确保持久化
     const persisted = await loadUiPreferences(c.env);
+    expect(persisted.locale).toBe("en");
     expect(persisted.appTheme).toBe("dark");
     expect(persisted.readerTheme).toBe("warm");
     expect(persisted.fontSize).toBe(21);
@@ -89,10 +93,46 @@ describe("UI Preferences API (云端偏好，本地零配置)", () => {
     expect(data.reader_theme).toBe("green");
     expect(data.app_theme).toBe("auto");
     expect(data.font_preset).toBe("classical");
+    expect(data.locale).toBeNull();
+  });
+
+  it("支持重置或设置 locale 为 null", async () => {
+    const c = cloud();
+    await putControlPreferences(
+      new Request("https://edge/api/control/preferences", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ locale: "en" }),
+      }),
+      c.env,
+    );
+    expect((await loadUiPreferences(c.env)).locale).toBe("en");
+
+    await putControlPreferences(
+      new Request("https://edge/api/control/preferences", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ locale: null }),
+      }),
+      c.env,
+    );
+    expect((await loadUiPreferences(c.env)).locale).toBeNull();
   });
 
   it("非法参数返回 400，拒绝写入半成品", async () => {
     const c = cloud();
+
+    // 非法 locale
+    await expect(
+      putControlPreferences(
+        new Request("https://edge/api/control/preferences", {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ locale: "fr" }),
+        }),
+        c.env,
+      ),
+    ).rejects.toThrow();
 
     // 非法 app_theme
     await expect(

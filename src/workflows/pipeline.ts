@@ -26,7 +26,12 @@ import {
   REFINE_STEP_TIMEOUT,
   PUBLISH_STEP_TIMEOUT,
   MIN_REAL_TRANSCRIPT_CHARS,
+  DEFAULT_REFINE_PROMPT,
+  DEFAULT_REFINE_PROMPT_EN,
+  REFINER_SYSTEM_PROMPT,
+  REFINER_SYSTEM_PROMPT_EN,
 } from "../refinement/defaults";
+import { resolveContentLanguage } from "../language";
 import {
   RefinerError,
   buildRefineMessages,
@@ -216,9 +221,25 @@ export async function refineStep(
     );
   }
 
+  let contentLang = task.content_language;
+  if (!contentLang) {
+    contentLang = resolveContentLanguage(null, env.TRANSCRIPTION_LANGUAGE, rawText);
+    await env.db.prepare(`UPDATE tasks SET content_language = ?, updated_at = ${NOW} WHERE id = ?`)
+      .bind(contentLang, task.id)
+      .run();
+  }
+
   const context = await loadEpisodeContext(env, task);
-  const prompt = buildRefinePrompt(context.summary, task.custom_prompt);
-  const messages = buildRefineMessages(prompt, rawText);
+  const prompt = buildRefinePrompt(
+    context.summary,
+    task.custom_prompt,
+    contentLang === "en" ? DEFAULT_REFINE_PROMPT_EN : DEFAULT_REFINE_PROMPT,
+  );
+  const messages = buildRefineMessages(
+    prompt,
+    rawText,
+    contentLang === "en" ? REFINER_SYSTEM_PROMPT_EN : REFINER_SYSTEM_PROMPT,
+  );
 
   let markdown: string;
   try {

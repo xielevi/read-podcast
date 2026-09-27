@@ -192,7 +192,7 @@ describe("taskConcepts endpoint", () => {
       workerCandidates = ["马克斯·韦伯", "新教伦理与资本主义精神"],
     } = overrides;
 
-    let savedCache: { path: string; sha: string; json: string } | null = null;
+    let savedCaches: Array<{ path: string; sha: string; lang: string; json: string }> = [];
 
     const mockDB = {
       prepare: (sql: string) => {
@@ -203,12 +203,18 @@ describe("taskConcepts endpoint", () => {
           first: async () => {
             if (sql.includes("FROM tasks")) return task;
             if (sql.includes("FROM article_concepts")) {
-              const [path, sha] = args as [string, string];
-              if (cachedConcepts && path === FINAL_PATH && sha === COMMIT_SHA) {
+              const path = args[0] as string;
+              const sha = args[1] as string;
+              const lang = (args[2] as string | undefined) ?? "zh";
+              if (cachedConcepts && path === FINAL_PATH && sha === COMMIT_SHA && lang === "zh") {
                 return { concepts_json: cachedConcepts };
               }
-              if (savedCache && savedCache.path === path && savedCache.sha === sha) {
-                return { concepts_json: savedCache.json };
+              const matched = savedCaches.find(c => c.path === path && c.sha === sha && c.lang === lang);
+              if (matched) return { concepts_json: matched.json };
+              // Fallback if query didn't bind lang
+              if (args.length === 2) {
+                const fallback = savedCaches.find(c => c.path === path && c.sha === sha);
+                if (fallback) return { concepts_json: fallback.json };
               }
               return null;
             }
@@ -216,8 +222,15 @@ describe("taskConcepts endpoint", () => {
           },
           run: async () => {
             if (sql.includes("INSERT OR REPLACE INTO article_concepts")) {
-              const [path, sha, jsonVal] = args as [string, string, string];
-              savedCache = { path, sha, json: jsonVal };
+              if (args.length >= 4) {
+                const [path, sha, lang, jsonVal] = args as [string, string, string, string];
+                savedCaches = savedCaches.filter(c => !(c.path === path && c.sha === sha && c.lang === lang));
+                savedCaches.push({ path, sha, lang, json: jsonVal });
+              } else {
+                const [path, sha, jsonVal] = args as [string, string, string];
+                savedCaches = savedCaches.filter(c => !(c.path === path && c.sha === sha && c.lang === "zh"));
+                savedCaches.push({ path, sha, lang: "zh", json: jsonVal });
+              }
               return { meta: { changes: 1 } };
             }
             return { meta: { changes: 0 } };
@@ -264,6 +277,17 @@ describe("taskConcepts endpoint", () => {
               title: "新教伦理与资本主义精神",
               extract: "韦伯的社会学经典著作。",
               content_urls: { desktop: { page: "https://zh.wikipedia.org/wiki/新教伦理与资本主义精神" } },
+            }),
+            { status: 200 },
+          );
+        }
+        if (decoded.includes("Max Weber") || decoded.includes("Max_Weber")) {
+          return new Response(
+            JSON.stringify({
+              type: "standard",
+              title: "Max Weber",
+              extract: "German sociologist, historian and political economist.",
+              content_urls: { desktop: { page: "https://en.wikipedia.org/wiki/Max_Weber" } },
             }),
             { status: 200 },
           );
@@ -478,5 +502,124 @@ describe("taskConcepts endpoint", () => {
     });
     const assistantRes = await worker.fetch(assistantReq, env, ctx);
     expect(assistantRes.status).toBe(404);
+  });
+
+  it("supports lang=en and maintains bilingual cache separation", async () => {
+    const env = createMockEnv({
+      workerCandidates: ["Max Weber"],
+    });
+
+    // 1. zh 抽取
+    const zhRes = await taskConcepts(TASK_ID, env, "zh");
+    expect(zhRes.status).toBe(200);
+
+    // 2. en 抽取：使用 en.wikipedia.org
+    const enRes = await taskConcepts(TASK_ID, env, "en");
+    expect(enRes.status).toBe(200);
+    const enBody = (await enRes.json()) as { concepts: Array<{ term: string; wikipedia_title: string; url: string }> };
+    expect(enBody.concepts).toHaveLength(1);
+    expect(enBody.concepts[0].wikipedia_title).toBe("Max Weber");
+    expect(enBody.concepts[0].url).toContain("en.wikipedia.org");
+
+    // 3. 验证 D1 中两者独立缓存存在
+    const zhCached = await env.db.prepare(
+      "SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ? AND lang = ?"
+    ).bind(FINAL_PATH, COMMIT_SHA, "zh").first<{ concepts_json: string }>();
+    expect(zhCached).not.toBeNull();
+
+    const enCached = await env.db.prepare(
+      "SELECT concepts_json FROM article_concepts WHERE content_path = ? AND commit_sha = ? AND lang = ?"
+    ).bind(FINAL_PATH, COMMIT_SHA, "en").first<{ concepts_json: string }>();
+    expect(enCached).not.toBeNull();
+    expect(JSON.parse(enCached!.concepts_json).concepts[0].wikipedia_title).toBe("Max Weber");
+  });
+
+  it("Chinese transcript -> en concepts: extracts English Wikipedia entries from Chinese source text", async () => {
+    const env = createMockEnv({
+      githubMarkdown: "# 忽左忽右\n\n今天讨论社会学先驱马克斯·韦伯。",
+      workerCandidates: ["Max Weber"],
+    });
+
+    const res = await taskConcepts(TASK_ID, env, "en");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { concepts: Array<{ term: string; wikipedia_title: string; url: string }> };
+    expect(body.concepts).toHaveLength(1);
+    expect(body.concepts[0].wikipedia_title).toBe("Max Weber");
+    expect(body.concepts[0].url).toContain("en.wikipedia.org");
+  });
+
+  it("English transcript -> zh concepts: extracts Chinese Wikipedia entries from English source text", async () => {
+    const env = createMockEnv({
+      githubMarkdown: "# Sociology Weekly\n\nToday we examine the sociological contributions of Max Weber.",
+      workerCandidates: ["马克斯·韦伯"],
+    });
+
+    const res = await taskConcepts(TASK_ID, env, "zh");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { concepts: Array<{ term: string; wikipedia_title: string; url: string }> };
+    expect(body.concepts).toHaveLength(1);
+    expect(body.concepts[0].wikipedia_title).toBe("马克斯·韦伯");
+    expect(body.concepts[0].url).toContain("zh.wikipedia.org");
+  });
+
+  it("route dispatch supports ?lang=en for both control and public endpoints", async () => {
+    const env = createMockEnv({
+      cachedConcepts: JSON.stringify({ concepts: [{ term: "韦伯", wikipedia_title: "马克斯·韦伯" }] }),
+    });
+    const ctx = { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext;
+
+    // 预置 en 缓存
+    await env.db.prepare(
+      "INSERT OR REPLACE INTO article_concepts (content_path, commit_sha, lang, concepts_json) VALUES (?, ?, ?, ?)"
+    ).bind(FINAL_PATH, COMMIT_SHA, "en", JSON.stringify({ concepts: [{ term: "Max Weber", wikipedia_title: "Max Weber" }] })).run();
+
+    // 1. Control POST with ?lang=en
+    const controlReq = new Request(`https://example.com/api/control/tasks/${TASK_ID}/concepts?lang=en`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const controlRes = await worker.fetch(controlReq, env, ctx);
+    expect(controlRes.status).toBe(200);
+    const controlData = (await controlRes.json()) as { concepts: Array<{ term: string }> };
+    expect(controlData.concepts[0].term).toBe("Max Weber");
+
+    // 2. Public GET with ?lang=en
+    // mock published content for public endpoint
+    const mockTask = {
+      id: TASK_ID,
+      status: "success",
+      podcast_name: "忽左忽右",
+      episode_title: "社会学经典导读",
+      final_content_path: FINAL_PATH,
+      content_commit_sha: COMMIT_SHA,
+    };
+    const origPrepare = env.db.prepare.bind(env.db);
+    (env.db as any).prepare = (sql: string) => {
+      const orig = origPrepare(sql);
+      return {
+        ...orig,
+        bind: (...args: unknown[]) => {
+          const bound = orig.bind(...args);
+          return {
+            ...bound,
+            first: async () => {
+              if (sql.includes("FROM articles")) {
+                return { title: "社会学经典导读", content_path: FINAL_PATH, commit_sha: COMMIT_SHA };
+              }
+              return bound.first();
+            },
+          };
+        },
+      };
+    };
+
+    const publicReq = new Request(`https://example.com/api/public/articles/${TASK_ID}/concepts?lang=en`, {
+      method: "GET",
+    });
+    const publicRes = await worker.fetch(publicReq, env, ctx);
+    expect(publicRes.status).toBe(200);
+    const publicData = (await publicRes.json()) as { concepts: Array<{ term: string }> };
+    expect(publicData.concepts[0].term).toBe("Max Weber");
   });
 });

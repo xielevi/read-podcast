@@ -43,6 +43,7 @@ import {
 } from "../transcription/contract";
 import { cancelTranscription, fetchTranscriptionResult, pollTranscription, submitTranscription } from "../transcription/client";
 import { SourceError, resolveTranscriptionSource, uploadIdFromAudioUrl } from "../transcription/source";
+import { resolveContentLanguage } from "../language";
 import { deleteUploadObjects } from "../uploads";
 import type { Env, TranscriptionPhase } from "../types";
 import type { TranscriptionSource } from "../transcription/contract";
@@ -401,12 +402,14 @@ export async function persistRawStep(
   const key = rawObjectKey(params.taskId, params.attemptId);
   await env.storage.put(key, text, { httpMetadata: { contentType: "text/plain; charset=utf-8" } });
 
+  const contentLang = resolveContentLanguage(snapshot.result?.language, env.TRANSCRIPTION_LANGUAGE, text);
+
   // D1 CAS：只有仍处于本 attempt 转录阶段的 raw 才能成为交付凭证。同一 key 重复写入幂等通过。
   const stored = await env.db.prepare(`UPDATE tasks
-    SET raw_object_key = ?, transcription_phase = NULL, progress = MAX(progress, 64),
+    SET raw_object_key = ?, content_language = ?, transcription_phase = NULL, progress = MAX(progress, 64),
         message = '原始转录已保存，进入精修…', updated_at = ${NOW}
     WHERE ${OWNED_TRANSCRIBING} AND (raw_object_key IS NULL OR raw_object_key = ?)`)
-    .bind(key, params.taskId, params.attemptId, key)
+    .bind(key, contentLang, params.taskId, params.attemptId, key)
     .run();
   if (!stored.meta.changes) {
     const current = await loadTaskRow(env, params.taskId);

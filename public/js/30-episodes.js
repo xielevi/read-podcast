@@ -15,7 +15,7 @@
     }
 
     function cleanEpisodeSummary(summary) {
-      return String(summary || '这期节目暂时没有介绍。')
+      return String(summary || t('inspector.no_desc'))
         .replace(/\s+-\s+/g, '\n\n')
         .replace(/[ \t]+/g, ' ')
         .replace(/\n{3,}/g, '\n\n')
@@ -46,18 +46,18 @@
       var activeTask = activeTaskForEpisode(episode);
       var meta = [];
       if (!selectedPodcast && episode.podcast_name) meta.push(String(episode.podcast_name));
-      if (episode.published) meta.push(new Date(episode.published).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }));
+      if (episode.published) meta.push(new Date(episode.published).toLocaleDateString(getLocale() === 'en' ? 'en-US' : 'zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }));
       var duration = formatDuration(episode.duration_seconds);
       if (duration) meta.push(duration);
       meta.push(episodeStatusLabel(episode, task, activeTask, failedTaskForEpisode(episode)));
-      byId('inspector-title').textContent = String(episode.title || '未命名单集');
+      byId('inspector-title').textContent = String(episode.title || t('episode.untitled'));
       byId('inspector-meta').textContent = meta.join(' · ');
-      byId('episode-summary-title').textContent = String(episode.title || '未命名单集');
+      byId('episode-summary-title').textContent = String(episode.title || t('episode.untitled'));
       byId('episode-summary-meta').textContent = meta.join(' · ');
-      showEpisodeSummary('正在加载介绍…');
+      showEpisodeSummary(t('inspector.loading_desc'));
       loadEpisodeSummary(episode.id)
         .then(function (summary) { if (selectedEpisode === episode) showEpisodeSummary(cleanEpisodeSummary(summary)); })
-        .catch(function () { if (selectedEpisode === episode) showEpisodeSummary('介绍暂时加载不出来，请稍后再试。'); });
+        .catch(function () { if (selectedEpisode === episode) showEpisodeSummary(t('inspector.load_failed')); });
       renderInspectorAction(episode, task, activeTask);
       document.querySelectorAll('.episode-item').forEach(function (item) {
         item.classList.toggle('is-selected', item.dataset.episodeKey === String(episode.id));
@@ -67,8 +67,8 @@
 
     // 公开浏览只区分「可阅读 / 未生成」：任务进度、失败与已读都属于控制模式的状态。
     function episodeStatusLabel(episode, task, activeTask, failedTask) {
-      if (!IS_MANAGE) return task ? '可阅读' : '未生成';
-      return activeTask ? '生成中 · ' + activeTask.progress + '%' : failedTask ? '失败' : isEpisodeRead(episode) ? '已读' : task ? '待读' : '未生成';
+      if (!IS_MANAGE) return task ? t('episode.status_readable') : t('episode.status_unread');
+      return activeTask ? (t('episode.status_generating') + activeTask.progress + '%') : failedTask ? t('episode.status_failed') : isEpisodeRead(episode) ? t('episode.status_read') : task ? t('filter.readable') : t('episode.status_unread');
     }
 
     function activeTaskForEpisode(episode) {
@@ -105,7 +105,7 @@
       link.href = articleUrl(taskId, '/download');
       link.download = '';
       link.innerHTML = uiIcon('download');
-      link.appendChild(document.createTextNode(label || '下载'));
+      link.appendChild(document.createTextNode(label || t('library.download')));
       link.addEventListener('click', function (event) { event.stopPropagation(); });
       return link;
     }
@@ -114,8 +114,8 @@
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'episode-action rerun owner-state-only';
-      button.textContent = '重新生成';
-      button.setAttribute('aria-label', '重新生成「' + String(episode.title || '这期节目') + '」');
+      button.textContent = t('episode.regenerate');
+      button.setAttribute('aria-label', t('episode.regenerate_aria', String(episode.title || t('episode.this_episode'))));
       button.addEventListener('click', function (event) {
         event.stopPropagation();
         renderEpisodeInspector(episode);
@@ -133,14 +133,16 @@
         setHidden(progress, !active && !failed);
         if (active) {
           var stageIndex = Object.prototype.hasOwnProperty.call(STAGE_STEP_INDEX, active.stage) ? STAGE_STEP_INDEX[active.stage] : 0;
-          progress.innerHTML = '<div class="inspector-progress-head"><span>正在生成稿件</span><span>' + active.progress + '%</span></div><div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + active.progress + '"><div class="progress-inner" style="width:' + active.progress + '%"></div></div><div class="progress-stage-row">' + ['获取音频','转写','整理','保存'].map(function (label, index) { return '<span class="' + (index < stageIndex ? 'done' : index === stageIndex ? 'active' : '') + '">' + (index < stageIndex ? '✓ ' : index === stageIndex ? '● ' : '○ ') + label + '</span>'; }).join('') + '</div><div class="progress-message">' + escapeHtml(active.message || ('正在' + (STAGE_LABELS[active.stage] || '处理'))) + '</div>';
+          var stageLabels = [t('stage.step_audio'), t('stage.step_transcribe'), t('stage.step_refine'), t('stage.step_save')];
+          var activeMsg = (active.stage && t('stage.' + active.stage)) || active.message || t('custom.processing');
+          progress.innerHTML = '<div class="inspector-progress-head"><span>' + escapeHtml(t('inspector.generating_head')) + '</span><span>' + active.progress + '%</span></div><div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + active.progress + '"><div class="progress-inner" style="width:' + active.progress + '%"></div></div><div class="progress-stage-row">' + stageLabels.map(function (label, index) { return '<span class="' + (index < stageIndex ? 'done' : index === stageIndex ? 'active' : '') + '">' + (index < stageIndex ? '✓ ' : index === stageIndex ? '● ' : '○ ') + label + '</span>'; }).join('') + '</div><div class="progress-message">' + escapeHtml(activeMsg) + '</div>';
         } else if (failed) {
-          progress.innerHTML = '<div class="inspector-progress-head text-danger"><span>生成未成功</span></div><div class="progress-message text-danger">' + escapeHtml(resolveTaskFailureMessage(failed)) + '</div>';
+          progress.innerHTML = '<div class="inspector-progress-head text-danger"><span>' + escapeHtml(t('inspector.failed_head')) + '</span></div><div class="progress-message text-danger">' + escapeHtml(resolveTaskFailureMessage(failed)) + '</div>';
         }
         var primary = document.createElement('button');
         primary.type = 'button';
         primary.className = completed ? 'episode-action' : 'solid-btn';
-        primary.textContent = active ? '生成中 ' + active.progress + '%' : completed ? '阅读' : failed ? '重试' : '生成稿件';
+        primary.textContent = active ? (t('episode.status_generating') + active.progress + '%') : completed ? t('library.read') : failed ? t('tasks.retry') : t('episode.generate');
         primary.disabled = Boolean(active);
         primary.addEventListener('click', function (event) {
           if (completed) openManuscript(completed.id, episode);
@@ -149,7 +151,7 @@
         });
         actions.appendChild(primary);
         if (completed) {
-          actions.appendChild(createEpisodeDownloadAction(completed.id, '下载 Markdown'));
+          actions.appendChild(createEpisodeDownloadAction(completed.id, t('episode.download_md')));
           if (IS_MANAGE) actions.appendChild(createEpisodeRerunAction(episode));
         }
       });
@@ -192,7 +194,7 @@
       resetEpisodeInspector();
       document.querySelectorAll('.podcast-item').forEach(function (item) { item.classList.toggle('active', item.dataset.name === name); });
       byId('center-title').textContent = name;
-      byId('center-sub').textContent = '正在打开节目…';
+      byId('center-sub').textContent = t('episode.opening');
       byId('episode-search').disabled = false;
       loadEpisodes(name, false);
     }
@@ -251,7 +253,7 @@
           }
           updateTimelineHeading();
           renderEpisodeList();
-          if (force && page && page.cache_state === 'stale') addLog('部分节目暂时没有刷新成功，先显示已有单集。', 'warning');
+          if (force && page && page.cache_state === 'stale') addLog(t('content.stale_warning'), 'warning');
           return pageEpisodes;
         })
         .catch(function (error) {
@@ -259,7 +261,7 @@
           pageEpisodes = [];
           _episodeTotal = 0;
           renderEpisodeList();
-          addLog('加载单集失败：' + errorMessage(error), 'error');
+          addLog(t('content.load_failed', errorMessage(error)), 'error');
           return pageEpisodes;
         });
     }
@@ -328,7 +330,7 @@
       var primaryButton = document.createElement('button');
       primaryButton.type = 'button';
       primaryButton.className = 'episode-action' + (task ? '' : ' primary');
-      primaryButton.textContent = activeTask ? '生成中 · ' + activeTask.progress + '%' : task ? '阅读' : failedTask ? '重试' : '生成稿件';
+      primaryButton.textContent = activeTask ? (t('episode.status_generating') + activeTask.progress + '%') : task ? t('library.read') : failedTask ? t('tasks.retry') : t('episode.generate');
       primaryButton.disabled = Boolean(activeTask);
       primaryButton.addEventListener('click', function (event) {
         event.stopPropagation();
@@ -340,7 +342,7 @@
       });
       actions.appendChild(primaryButton);
       if (task) {
-        actions.appendChild(createEpisodeDownloadAction(task.id, '下载'));
+        actions.appendChild(createEpisodeDownloadAction(task.id, t('library.download')));
         if (IS_MANAGE) actions.appendChild(createEpisodeRerunAction(episode));
       }
       return actions;
@@ -356,7 +358,11 @@
         var empty = document.createElement('div'); empty.className = 'empty-state';
         var emptyIcon = document.createElement('span'); emptyIcon.className = 'empty-state-icon'; emptyIcon.innerHTML = uiIcon(_subscriptions.length ? 'search' : 'rss');
         empty.appendChild(emptyIcon);
-        var copy = document.createElement('span'); copy.innerHTML = _subscriptions.length ? '<strong>没有找到匹配内容</strong><br>试试更短的关键词。' : '<strong>还没有订阅</strong><br>添加一档播客，最新单集会自动出现在这里。'; empty.appendChild(copy);
+        var copy = document.createElement('span');
+        copy.innerHTML = _subscriptions.length
+          ? ('<strong>' + escapeHtml(t('drawer.no_matches')) + '</strong><br>' + escapeHtml(t('drawer.no_matches_hint')))
+          : ('<strong>' + escapeHtml(t('empty.no_subscriptions')) + '</strong><br>' + escapeHtml(t('empty.no_subscriptions_desc')));
+        empty.appendChild(copy);
         container.appendChild(empty);
         setHidden(pagination, true);
         return;
@@ -371,7 +377,7 @@
         row.tabIndex = 0;
         row.dataset.episodeTitle = String(episode.title || '');
         row.dataset.episodeKey = String(episode.id);
-        row.setAttribute('aria-label', '查看「' + String(episode.title || '未命名单集') + '」的介绍');
+        row.setAttribute('aria-label', t('episode.view_desc_aria', String(episode.title || t('episode.untitled'))));
         row.style.setProperty('--item-index', index);
         if (selectedEpisode && String(selectedEpisode.id) === String(episode.id)) row.classList.add('is-selected');
         var copy = document.createElement('div'); copy.className = 'ep-copy';
@@ -379,8 +385,8 @@
         var source = document.createElement('button');
         source.type = 'button';
         source.className = 'episode-source';
-        source.textContent = String(episode.podcast_name || '订阅节目');
-        source.setAttribute('aria-label', '只看「' + source.textContent + '」的节目');
+        source.textContent = String(episode.podcast_name || t('episode.subscription_show'));
+        source.setAttribute('aria-label', t('episode.filter_by_show_aria', source.textContent));
         source.addEventListener('click', function (event) {
           event.stopPropagation();
           selectPodcast(String(episode.podcast_name || ''));
@@ -390,11 +396,11 @@
         var status = document.createElement('span'); status.className = 'status-tag' + (read ? ' read' : task ? ' complete' : failedTask ? ' failed' : ''); status.textContent = episodeStatusLabel(episode, task, activeTask, failedTask);
         if (failedTask) status.title = resolveTaskFailureMessage(failedTask);
         var date = document.createElement('span');
-        date.textContent = episode.published ? new Date(episode.published).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '--';
+        date.textContent = episode.published ? new Date(episode.published).toLocaleDateString(getLocale() === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit' }) : '--';
         meta.append(source, status, date);
         var duration = formatDuration(episode.duration_seconds);
         if (duration) { var durationNode = document.createElement('span'); durationNode.textContent = duration; meta.appendChild(durationNode); }
-        var title = document.createElement('div'); title.className = 'ep-title'; title.textContent = String(episode.title || '未命名单集');
+        var title = document.createElement('div'); title.className = 'ep-title'; title.textContent = String(episode.title || t('episode.untitled'));
         copy.append(meta, title);
         if (activeTask) { var inlineProgress = document.createElement('div'); inlineProgress.className = 'progress-bar episode-progress'; inlineProgress.innerHTML = '<div class="progress-inner" style="width:' + activeTask.progress + '%"></div>'; copy.appendChild(inlineProgress); }
         var actions = makeEpisodeActions(task, episode);
@@ -406,7 +412,7 @@
         fragment.append(row);
       });
       container.appendChild(fragment);
-      byId('page-label').textContent = '第 ' + currentPage + ' / ' + totalPages + ' 页';
+      byId('page-label').textContent = t('pagination.page', currentPage, totalPages);
       byId('page-prev').disabled = currentPage <= 1;
       byId('page-next').disabled = currentPage >= totalPages;
       setHidden(pagination, totalPages <= 1);

@@ -322,7 +322,9 @@ describe("分片上传：complete 的权威复核", () => {
 });
 
 describe("前端：立即拒绝超限文件，不进入上传流程", () => {
-  // 从 public/js/20-subscriptions.js 抽出 doUploadAudio，放进带桩的沙箱执行（真实文件，不是复制的逻辑）。
+  const i18nSource = readFileSync(new URL("../public/js/08-i18n.js", import.meta.url), "utf-8");
+  const loadI18n = new Function("document", `${i18nSource}; return { t: t, applyLocale: applyLocale };`);
+  const { t: realT } = loadI18n({ documentElement: { dataset: {} } });
   const source = readFileSync(new URL("../public/js/20-subscriptions.js", import.meta.url), "utf-8");
   const start = source.indexOf("function doUploadAudio(file) {");
   let depth = 0;
@@ -351,9 +353,8 @@ describe("前端：立即拒绝超限文件，不进入上传流程", () => {
       fetched.push(url);
       return new Promise(() => undefined); // 永不返回：只关心是否发起
     };
-    // 这里验证的是控制模式里的体积校验，requireControl 恒为 true；匿名拦截见 browse_mode.test.ts。
-    const run = new Function("byId", "addLog", "setHidden", "appUrl", "fetch", "setTimeout", "requireControl", "readApiResponse", `var _uploadedAudioPath, _uploadedAudioTitle; ${functionSource}; return doUploadAudio;`);
-    const doUploadAudio = run(byId, (message: string, level: string) => logs.push([message, level]), (element: { hidden?: boolean }, hidden: boolean) => void (element.hidden = hidden), (path: string) => path, fetchStub, setTimeout, () => true, (response: Response) => response.json());
+    const run = new Function("byId", "addLog", "setHidden", "appUrl", "fetch", "setTimeout", "requireControl", "readApiResponse", "t", `var _uploadedAudioPath, _uploadedAudioTitle; ${functionSource}; return doUploadAudio;`);
+    const doUploadAudio = run(byId, (message: string, level: string) => logs.push([message, level]), (element: { hidden?: boolean }, hidden: boolean) => void (element.hidden = hidden), (path: string) => path, fetchStub, setTimeout, () => true, (response: Response) => response.json(), realT);
     return { doUploadAudio, byId, logs, fetched };
   }
 

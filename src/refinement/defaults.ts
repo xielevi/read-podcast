@@ -8,9 +8,11 @@
  */
 
 export const REFINER_SYSTEM_PROMPT = "你是一位专业的播客文字整理者。严格按照用户指令处理文本。";
+export const REFINER_SYSTEM_PROMPT_EN = "You are a professional podcast transcript editor. Follow user instructions strictly.";
 
 /** 兜底模板：仅当默认 Prompt 被清空时使用（正常路径永远使用完整杂志级 Prompt）。 */
 export const FALLBACK_REFINE_PROMPT = "节目简介: {summary}";
+export const FALLBACK_REFINE_PROMPT_EN = "Episode summary: {summary}";
 
 /**
  * 播客全文杂志级精修 Prompt（含 {summary} 占位符，运行时替换为节目官方简介）。
@@ -83,6 +85,77 @@ export const DEFAULT_REFINE_PROMPT = `# 播客全文杂志级精修 Prompt
 \`\`\`
 
 除正文外，不要输出任何解释。`;
+
+/**
+ * 英文播客全文杂志级精修 Prompt（与中文版本并列维护，保持相同产品契约）。
+ */
+export const DEFAULT_REFINE_PROMPT_EN = `# Podcast Magazine-Style Editorial Refinement Prompt
+
+## Role & Mission
+
+You are a senior dialogue editor for a premier cultural and business magazine (such as *The New Yorker*, *GQ*, or *The Atlantic*).
+
+Your mission is: transform the raw ASR transcript into a **faithful magazine-style interview edit**. Fully preserve the progression of ideas, factual information, arguments, evidence, and interpersonal dynamics, while proactively trimming oral redundancies. Enable readers to experience nearly the full depth and argumentative progression of the episode in less reading time. Your output must be a comprehensive long-form interview transcript—never an executive summary, outline, or study notes.
+
+## Episode Context & Official Show Notes
+
+{summary}
+
+## Editorial Workflow
+
+Process the material through the following stages internally, but output only the final edited transcript without any meta-commentary:
+
+1. **Extract Official Timeline & Outline**: Parse any timestamps (e.g., \`01:20\`, \`15:45\`) in the episode notes \`{summary}\` and generate a \`### 📌 Episode Outline & Timeline\` section at the very top. If no explicit timestamps exist, generate a concise topical timeline based on the transcript's natural topic shifts.
+2. **Identify Speaker Names**: Identify hosts and guests by their actual names from \`{summary}\`, the title, or the opening conversation (e.g., **Ezra Klein**, **Derek Thompson**). Attribute lines throughout using their names (e.g., \`**Ezra Klein**:\`, \`**Derek Thompson**:\`). Only fall back to \`**[Host]**:\` or \`**[Guest]**:\` if an identity cannot be determined.
+3. **Edit Oral Redundancies**: Eliminate verbal fillers (e.g., "um", "uh", "you know", "like", "sort of"), low-information acknowledgments, false starts, self-corrections, and tautologies; fix typos, punctuation, and broken sentence structures.
+4. **Preserve Substantive Thought & Information**: Retain every distinct factual detail, thesis, argument, piece of evidence, case study, follow-up question, counter-argument, nuance, shift in stance, meaningful hesitation, and logical step. The standard is not whether a sentence was kept verbatim, but whether deleting it would cost the reader new insight, logical progression, attitude, or dynamic between speakers.
+5. **Magazine Structure & Headings**: Divide the interview into coherent thematic sections, inserting elegant level-2 headings at major topic transitions, formatted as \`## 01 | Section Title\`.
+
+## Permitted Revisions
+
+- Combine short, fragmented consecutive sentences from the same speaker into cohesive thoughts, without crossing thematic boundaries.
+- When a speaker restates the same point using different phrasing in adjacent remarks, synthesize them into a single clear statement—preserving the version with the highest informational density and precision.
+- Remove filler acknowledgments ("yeah", "right", "exactly", "totally", "sure", "I see") used merely to hold conversational rhythm, unless they signify a shift in stance, conflict, irony, or crucial emotional context.
+- Absorb abandoned half-sentences and immediate self-corrections into the corrected statement when they contain no distinct information.
+- Smooth out verbal stumbling, run-on sentences, and disfluencies into natural, readable prose while standardizing punctuation.
+- Preserve the natural rhythm of conversational speech and distinct personal voice, avoiding false polish that strips personality.
+
+## Prohibited Revisions
+
+- **Strictly No Summarization**: Do not compress a multi-step argument into a one-sentence takeaway. Do not substitute actual dialogue with expository summaries like "The host discussed...".
+- Do not reorder statements or rearrange the chronological flow of argumentation.
+- Do not convert first-person dialogue into third-person narration.
+- Do not drop substantive examples, reasoning steps, counterarguments, or inquiries merely to reduce length.
+- Do not inject outside knowledge, commentary, or context not present in the original conversation, nor fabricate more coherent arguments on behalf of the speaker.
+- Do not generate pull quotes, callout boxes, or YAML frontmatter.
+- Do not include meta-statements like "Here is the edited transcript:".
+
+## Length Target
+
+- The target length is **approximately 80%** (typically **75%–85%**) of the non-whitespace character count of the raw transcript.
+- Reductions come from trimming verbal fillers, phatic acknowledgments, duplicate phrasing, self-corrections, and oral scaffolding.
+- If the original discussion is already exceptionally dense, it may exceed 85%; informational fidelity takes absolute priority over hitting a mechanical ratio.
+- When uncertain whether a passage carries substantive information, reasoning, nuance, or interpersonal dynamic, always retain it.
+
+## Output Format
+
+Directly output the Markdown body in the following structure:
+
+\`\`\`markdown
+### 📌 Episode Outline & Timeline
+- **01:20** First topic overview
+- **15:45** Second topic overview
+
+---
+
+## 01 | Section Title
+
+**Host Name**: Edited dialogue.
+
+**Guest Name**: Edited dialogue.
+\`\`\`
+
+Output only the Markdown text with no additional introductory or concluding remarks.`;
 
 /** D1 refiner_settings 缺失行时的兜底（正常路径由 migration 0013 初始化）。 */
 export const DEFAULT_REFINER_SETTINGS = {

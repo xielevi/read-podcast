@@ -13,12 +13,22 @@ export const MAX_TERM_LENGTH = 60;
 export const MAX_CONTEXT_CHARS = 24000;
 
 export const CONCEPTS_SYSTEM_PROMPT =
-  "你是知识编辑，负责从播客精修文字稿中挑出最值得读者在维基百科延伸查阅的关键专有名词。\n" +
+  "你是知识编辑，负责从播客精修文字稿中挑出最值得读者在中文维基百科（zh.wikipedia.org）延伸查阅的关键专有名词。\n" +
   "【挑选原则】\n" +
-  "1. 优先提取：人物、机构/组织、历史事件、学科理论、专业术语、重要作品、重要地名。\n" +
-  "2. 严格排除：日常泛用词（如「沟通」「时代」「逻辑」「方法」「问题」）、文字稿所属播客名或本集标题本身、常识词汇。\n" +
-  "3. 独立词条：只选维基百科上极可能拥有独立条目的专有名词，不带修饰短语（如选「马克斯·韦伯」而非「韦伯的学术思想」）。\n" +
-  "4. 数量与格式：按重要性从高到低排序，只返回合法的 JSON 对象，形如 {\"concepts\": [\"概念1\", \"概念2\"]}，严禁输出任何额外解释或散文。";
+  "1. 目标语言规范：无论文字稿原文为何种语言（即使原文为英文播客），所有候选词必须输出为适合在中文维基百科检索的标准中文词条名（例如提到 Max Weber 应输出「马克斯·韦伯」，提到 Quantum mechanics 应输出「量子力学」；仅当外来术语在中文维基百科中即以英文原名作为词条名时方可保留外文）。\n" +
+  "2. 优先提取：人物、机构/组织、历史事件、学科理论、专业术语、重要作品、重要地名。\n" +
+  "3. 严格排除：日常泛用词（如「沟通」「时代」「逻辑」「方法」「问题」）、文字稿所属播客名或本集标题本身、常识词汇。\n" +
+  "4. 独立词条：只选维基百科上极可能拥有独立条目的专有名词，不带修饰短语（如选「马克斯·韦伯」而非「韦伯的学术思想」）。\n" +
+  "5. 数量与格式：按重要性从高到低排序，只返回合法的 JSON 对象，形如 {\"concepts\": [\"概念1\", \"概念2\"]}，严禁输出任何额外解释或散文。";
+
+export const CONCEPTS_SYSTEM_PROMPT_EN =
+  "You are a knowledge editor responsible for selecting key proper nouns and concepts from podcast transcripts that are most worth readers looking up on English Wikipedia (en.wikipedia.org).\n" +
+  "[Selection Principles]\n" +
+  "1. Target language canonicalization: Regardless of the original language of the transcript (even if the transcript is in Chinese), all returned concept terms MUST be output in English as canonical terms suitable for searching English Wikipedia (e.g., for Chinese mention of '马克斯·韦伯', output 'Max Weber'; for '量子力学', output 'Quantum mechanics').\n" +
+  "2. Prioritize: People, organizations/institutions, historical events, academic theories, technical/domain terms, notable works, significant locations.\n" +
+  "3. Strictly exclude: Everyday generic words (e.g., 'communication', 'era', 'logic', 'method', 'problem'), the podcast show name or episode title itself, and common knowledge words.\n" +
+  "4. Standalone entries: Only select proper nouns highly likely to have standalone Wikipedia articles, without modifying phrases (e.g., select 'Max Weber' rather than 'Weber's academic thought').\n" +
+  "5. Quantity and format: Rank from most important to least important, return only a valid JSON object of the form {\"concepts\": [\"Concept 1\", \"Concept 2\"]}. Never output any additional explanation or prose.";
 
 export function stripCodeFence(text: string): string {
   let value = String(text ?? "").trim();
@@ -162,6 +172,7 @@ export interface ConceptCandidateInput {
   podcast: string;
   content: string;
   limit?: number;
+  lang?: "zh" | "en";
 }
 
 /** 调用 LLM 提名候选概念（数量略多要 2-3 个备选以抵消维基核验损耗）。 */
@@ -169,16 +180,23 @@ export async function proposeConceptCandidates(input: ConceptCandidateInput, cli
   const body = String(input.content ?? "").trim();
   if (!body) return [];
 
+  const lang = input.lang === "en" ? "en" : "zh";
   const targetCount = Math.max(1, Math.min(Math.trunc(input.limit ?? DEFAULT_CANDIDATES), MAX_CANDIDATES));
   const requestCount = Math.min(MAX_CANDIDATES, targetCount + 3);
 
   const sampledText = sampleContent(body, MAX_CONTEXT_CHARS);
-  const header = `《${input.title}》` + (input.podcast ? `（播客：${input.podcast}）` : "");
-  const userPrompt = `播客单集：${header}\n请从以下文字稿中挑选 ${requestCount} 个最值得在维基百科查阅的关键概念：\n\n"""\n${sampledText}\n"""`;
+  const header = lang === "en"
+    ? `"${input.title}"` + (input.podcast ? ` (Podcast: ${input.podcast})` : "")
+    : `《${input.title}》` + (input.podcast ? `（播客：${input.podcast}）` : "");
+  const userPrompt = lang === "en"
+    ? `Podcast episode: ${header}\nPlease select ${requestCount} key concepts most worth looking up on English Wikipedia from the following transcript. Output all canonical concept terms in English even if the transcript is in another language:\n\n"""\n${sampledText}\n"""`
+    : `播客单集：${header}\n请从以下文字稿中挑选 ${requestCount} 个最值得在中文维基百科查阅的关键概念。无论文字稿原文为何种语言，请将候选词条输出为适合在中文维基百科检索的中文标准规范名称：\n\n"""\n${sampledText}\n"""`;
+
+  const systemPrompt = lang === "en" ? CONCEPTS_SYSTEM_PROMPT_EN : CONCEPTS_SYSTEM_PROMPT;
 
   const result = await client.chat(
     [
-      { role: "system", content: CONCEPTS_SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     { maxTokens: 800, temperature: 0.2 },

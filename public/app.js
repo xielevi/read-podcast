@@ -38,6 +38,781 @@
       if (!body) return '';
       return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"' + (cls ? ' class="' + cls + '"' : '') + ' aria-hidden="true">' + body + '</svg>';
     }
+    // ── 国际化与双语界面（中文 / 英文）───────────────────────────
+    // 注意：分片中不得出现 'use strict'，由 scripts/build_frontend.py 统一写在 bundle 第一行。
+
+        var TRANSLATIONS = {
+      zh: {
+        'skip.link': '跳到单集列表',
+        'brand.kicker': '让播客，从声音变成阅读',
+        'lang.toggle': '中 / EN',
+        'lang.toggle_label': '切换语言',
+        'appearance.theme': '外观',
+        'appearance.auto': '自动',
+        'appearance.light': '浅色',
+        'appearance.dark': '深色',
+        'appearance.choose': '选择外观',
+        'appearance.group': '应用外观',
+        'appearance.desc': '选择界面外观；「自动」跟随系统深浅色。',
+        'masthead.manage': '登录管理',
+        'masthead.settings': '设置',
+        'masthead.settings_open': '打开设置',
+
+        'nav.aria_label': '主导航',
+        'nav.workspace': '工作区',
+        'nav.podcast': '订阅',
+        'nav.custom': '导入',
+        'nav.library': '稿件',
+        'nav.add_podcast': '添加订阅',
+
+        'cover.kicker': '播客电子杂志',
+        'cover.aria_label': '订阅封面合集',
+        'content.latest_episodes': '最新单集',
+        'content.all_subscriptions': '全部订阅',
+        'content.search_placeholder': '搜索单集标题',
+        'content.refresh': '刷新单集',
+        'filter.all': '全部',
+        'filter.readable': '待读',
+        'filter.unread': '未生成',
+        'filter.read': '已读',
+        'filter.label': '阅读状态过滤',
+        'pagination.aria_label': '单集分页',
+        'pagination.prev': '上一页',
+        'pagination.next': '下一页',
+        'pagination.page': '第 {0} / {1} 页',
+        'pagination.page_single': '第 {0} 页',
+        'pagination.initial_page': '第 1 页',
+        'empty.no_episodes': '暂无单集',
+        'empty.no_episodes_found': '没有找到匹配的单集。',
+        'empty.no_subscriptions': '还没有订阅',
+        'empty.no_subscriptions_desc': '添加一档播客，最新单集会自动出现在这里。',
+
+        'custom.title': '导入音频',
+        'custom.desc': '把录音、访谈或其他音频整理成可以阅读的稿件。',
+        'custom.audio_file': '音频文件',
+        'custom.audio_hint': '支持常见音频格式，单个文件最大 200 MiB',
+        'custom.drop_hint': '点击或拖拽上传音频',
+        'custom.choose_audio': '选择音频文件',
+        'custom.drop_or_drag': '也可以拖到这里',
+        'custom.formats': '支持 MP3, M4A, WAV, AAC, OGG 等格式',
+        'custom.podcast_name': '节目名称',
+        'custom.podcast_placeholder': '例如：忽左忽右',
+        'custom.episode_title': '单集标题',
+        'custom.episode_placeholder': '例如：漫谈欧洲历史',
+        'custom.prompt': '补充整理要求',
+        'custom.prompt_placeholder': '例如：保留问答结构，统一人名写法。',
+        'custom.prompt_template': '稿件风格',
+        'custom.template_standard': '标准整理',
+        'custom.advanced': '高级说明',
+        'custom.submit': '生成稿件',
+        'custom.generating': '生成中…',
+        'custom.uploading': '正在上传…',
+        'custom.upload_progress': '正在上传 {0}%',
+        'custom.upload_complete': '上传完成',
+        'custom.upload_merging': '合并分片中…',
+        'custom.upload_ready': '准备上传…',
+        'custom.processing': '处理中…',
+        'custom.local_audio': '本地音频',
+        'custom.custom_audio': '自定义音频',
+
+        'library.title': '稿件',
+        'library.search_placeholder': '搜索标题或节目',
+        'library.filter_all': '全部',
+        'library.filter_subscription': '待读',
+        'library.filter_read': '已读',
+        'library.read': '阅读',
+        'library.download': '下载',
+        'library.empty': '还没有可以阅读的稿件',
+        'library.empty_hint': '从订阅里选择一期，或导入一段音频。',
+        'library.empty_query': '没有找到匹配的稿件',
+        'library.empty_query_hint': '换个关键词试试。',
+        'library.view_subscriptions': '查看订阅',
+        'library.import_audio': '导入音频',
+
+        'inspector.select_title': '选择一期节目',
+        'inspector.select_meta': '点击单集卡片，在这里查看介绍。',
+        'inspector.select_summary': '选择一期单集，在这里查看介绍并生成稿件。',
+        'inspector.summary_title': '本期简介',
+        'inspector.close_summary': '关闭本期简介',
+        'inspector.loading_desc': '正在加载介绍…',
+        'inspector.load_failed': '介绍暂时加载不出来，请稍后再试。',
+        'inspector.no_desc': '这期节目暂时没有介绍。',
+
+        'tasks.title': '任务',
+        'tasks.close': '关闭任务面板',
+        'tasks.empty': '暂无任务',
+        'tasks.retry': '重试',
+        'tasks.retrying': '重试中…',
+        'tasks.cancel': '停止',
+        'tasks.cancelling': '取消中…',
+        'tasks.cancel_task': '取消任务',
+        'tasks.delete': '移除',
+        'tasks.deleting': '移除中…',
+        'tasks.processing_count': '处理中 {0}',
+        'tasks.processing_default': '处理中 0',
+        'tasks.list_label': '任务列表',
+        'tasks.attention_count': '{0} 个任务需要处理',
+        'tasks.default_title': '稿件生成',
+        'tasks.cancel_aria': '停止「{0}」',
+        'tasks.dismissed': '记录已移除。',
+        'tasks.restarted': '已重新开始生成。',
+        'tasks.cancelling_msg': '已发送取消请求，正在停止任务…',
+        'tasks.cancelled_msg': '任务已取消',
+        'tasks.success_msg': '稿件已经准备好了。',
+
+        'stage.queued': '排队中',
+        'stage.downloading': '下载音频中',
+        'stage.resolving': '解析中',
+        'stage.transcribing': '转写中',
+        'stage.refining': '整理中',
+        'stage.finalizing': '保存中',
+        'stage.done': '已完成',
+        'stage.success': '已完成',
+        'stage.failed': '失败',
+        'stage.cancelled': '已取消',
+        'stage.step_audio': '获取音频',
+        'stage.step_transcribe': '转写',
+        'stage.step_refine': '整理',
+        'stage.step_save': '保存',
+
+        'fail.audio': '无法获取音频，请稍后重试。',
+        'fail.transcribe': '这次没有完成转写，请重试。',
+        'fail.refine': '文字整理暂时没有完成，请重试。',
+        'fail.finalize': '稿件保存失败，请重试。',
+        'fail.default': '这次没有生成成功，请稍后再试。',
+        'fail.cancelled': '任务已停止，可以稍后重试。',
+
+        'episode.generate': '生成稿件',
+        'episode.generating': '生成中…',
+        'episode.regenerate': '重新生成',
+        'episode.read': '阅读稿件',
+        'episode.download_md': '下载 Markdown',
+        'episode.download_audio': '下载音频',
+        'episode.no_audio': '无音频',
+        'episode.duration_min': '{0} 分钟',
+        'episode.duration_hour_min': '{0} 小时 {1} 分钟',
+        'episode.no_desc': '无节目说明',
+        'episode.untitled': '未命名单集',
+        'episode.status_readable': '可阅读',
+        'episode.status_unread': '未生成',
+        'episode.status_generating': '生成中 · ',
+        'episode.status_failed': '失败',
+        'episode.status_read': '已读',
+        'episode.mark_read': '标记为已读',
+        'episode.mark_unread': '改为未读',
+
+        'reader.title': '阅读',
+        'reader.appearance': '排版与主题',
+        'reader.preset': '版式预设',
+        'reader.preset_classical': '文雅经典',
+        'reader.preset_modern': '现代清晰',
+        'reader.font': '字体',
+        'reader.font_size': '字号',
+        'reader.font_dec': '减小字号',
+        'reader.font_inc': '增大字号',
+        'reader.line_height': '行距',
+        'reader.leading_compact': '紧凑',
+        'reader.leading_normal': '舒适',
+        'reader.leading_relaxed': '宽松',
+        'reader.theme': '主题',
+        'reader.theme_follow': '跟随应用',
+        'reader.theme_paper': '杏仁纸张',
+        'reader.theme_warm': '暖阳羊皮',
+        'reader.theme_green': '护眼绿',
+        'reader.theme_dark': '极夜黑',
+        'reader.download_md': '下载 Markdown',
+        'reader.mark_read': '标记为已读',
+        'reader.mark_unread': '标记为未读',
+        'reader.close': '关闭阅读',
+        'reader.toc': '大纲',
+        'reader.toc_label': '大纲目录',
+        'reader.progress': '阅读进度',
+        'reader.progress_val': '进度 {0}%',
+        'reader.jump_start': '返回顶部',
+        'reader.jump_end': '翻至文末',
+        'reader.initial_state': '选择一份已完成稿件开始阅读。',
+        'reader.words_wan': '{0} 万字',
+        'reader.words': '{0} 字',
+        'reader.characters_large': '{0} 万字',
+        'reader.characters': '{0} 字',
+        'reader.word_count_large': '{0}k 词',
+        'reader.word_count': '{0} 词',
+        'reader.est_time': '约 {0} 分钟',
+        'reader.bar_appearance': '排版',
+        'reader.toolbar_label': '阅读工具栏',
+        'reader.progress_initial': '进度 0%',
+        'reader.theme_picker_label': '阅读主题',
+        'reader.font_preset_label': '字体预设',
+        'reader.sheet_label': '阅读进度调整',
+        'reader.sheet_progress_label': '移动端阅读进度',
+        'reader.close_progress': '关闭进度面板',
+        'reader.loading': '正在展开稿纸',
+        'reader.empty_content': '稿件内容为空。',
+        'reader.close_toc': '关闭目录',
+
+        'concepts.title': '关键概念',
+        'concepts.extracting': '正在抽取关键概念…',
+        'concepts.reading': '正在读取关键概念…',
+        'concepts.empty': '没有找到可链接到维基百科的概念。',
+        'concepts.failed': '抽取失败：',
+        'concepts.retry': '重试',
+        'concepts.wiki_title': '维基百科',
+
+        'settings.title': '设置',
+        'settings.desc': '调整外观和文字整理方式。',
+        'settings.close': '关闭设置',
+        'settings.cancel': '取消',
+        'settings.save': '保存',
+        'settings.saving': '保存中…',
+        'settings.saved': '保存成功',
+        'settings.save_failed': '保存失败：',
+        'settings.testing': '测试中…',
+        'settings.test_success': '连接正常。',
+        'settings.test_failed': '测试失败：',
+        'settings.lang': '语言',
+        'settings.lang_desc': '选择界面与概念核验语言。',
+        'settings.lang_zh': '中文',
+        'settings.lang_en': 'English',
+        'settings.loading': '正在读取配置…',
+
+        'drawer.title': '添加订阅',
+        'drawer.desc': '搜索节目名称或粘贴 RSS 地址',
+        'drawer.search_placeholder': '搜索节目名称或粘贴 RSS 地址',
+        'drawer.close': '关闭添加订阅',
+        'drawer.subscribe': '订阅',
+        'drawer.subscribed': '已订阅',
+        'drawer.subscribing': '正在订阅…',
+        'drawer.searching': '搜索中…',
+        'drawer.identifying': '正在识别订阅地址…',
+        'drawer.rss_feed': 'RSS 订阅地址',
+        'drawer.no_matches': '没有找到匹配内容',
+        'drawer.no_matches_hint': '试试更短的关键词。',
+        'drawer.episodes_count': ' 集',
+
+        'common.unknown_error': '未知错误',
+        'toast.close': '关闭提示',
+
+        'read_state.save_failed': '保存已读状态失败：',
+        'episode.mark_read_title': '标记这期已经读完',
+        'episode.mark_unread_title': '将这期改回未读',
+
+        'custom.untitled_template': '未命名模板',
+        'custom.templates_load_failed': '稿件风格加载失败',
+        'custom.file_size_exceeded': '文件体积超出 200 MiB 上限',
+        'custom.file_size_hint': '文件超出 200 MiB 限制（约 {0} MiB），请压缩或截取后重试',
+        'custom.upload_success': '文件上传成功：{0}',
+        'custom.upload_failed': '上传失败',
+        'custom.upload_failed_msg': '文件上传失败：{0}',
+        'subscription.unsubscribed': '已取消订阅节目「{0}」',
+        'subscription.timeline_desc': '按时间线展示所有订阅',
+        'subscription.delete_failed': '删除订阅失败：',
+        'subscription.untitled': '未命名节目',
+        'subscription.unsubscribe': '取消订阅',
+        'subscription.unsubscribe_aria': '取消订阅 {0}',
+        'subscription.confirm_delete': '确认删除',
+        'subscription.confirm_delete_aria': '再次点击确认取消订阅 {0}',
+        'subscription.timeline_browse': '按时间线浏览',
+        'subscription.empty_shows': '暂无订阅节目',
+        'cover.collection': '订阅合集',
+        'subscription.load_failed': '加载订阅失败：',
+        'subscription.timeline': '按时间线',
+        'subscription.episodes_count': '{0} 期',
+        'subscription.shows_episodes_count': '{0} 档节目 · {1} 期',
+        'subscription.loading': '正在读取订阅…',
+        'subscription.add_first_hint': '先添加一档节目，时间线会从这里开始',
+
+        'episode.this_episode': '这期节目',
+        'episode.regenerate_aria': '重新生成「{0}」',
+        'inspector.generating_head': '正在生成稿件',
+        'inspector.failed_head': '生成未成功',
+        'episode.opening': '正在打开节目…',
+        'content.stale_warning': '部分节目暂时没有刷新成功，先显示已有单集。',
+        'content.load_failed': '加载单集失败：{0}',
+        'episode.view_desc_aria': '查看「{0}」的介绍',
+        'episode.subscription_show': '订阅节目',
+        'episode.filter_by_show_aria': '只看「{0}」的节目',
+
+        'tasks.no_source': '错误：未找到节目来源',
+        'tasks.generating_progress': '这期稿件正在生成，已打开处理进度。',
+        'tasks.already_generated': '这期稿件已经生成，可从更多菜单重新生成。',
+        'tasks.completed_badge': '已完成',
+        'tasks.already_generated_log': '稿件已经生成',
+        'tasks.failed_retry_msg': '这次没有生成成功，请稍后再试。',
+        'tasks.failed_badge': '未成功',
+        'tasks.need_audio_file': '请先选择音频文件。',
+        'tasks.step_missing_badge': '还差一步',
+        'tasks.failed_prefix': '这次没有生成成功：',
+        'tasks.retry_hint': '请稍后再试',
+        'tasks.success_log': '任务全流程处理成功',
+        'tasks.failed_log': '任务处理失败',
+
+        'drawer.untitled_podcast': '未命名播客',
+        'drawer.invalid_rss': '请输入有效的 RSS 地址。',
+        'drawer.subscribed_log': '已订阅「{0}」',
+        'drawer.new_podcast': '新节目',
+        'drawer.add_failed': '添加失败：',
+
+        'reader.load_failed': '稿件读取失败：',
+
+        'settings.read_failed': '配置读取失败：',
+        'settings.configured': '已配置',
+        'settings.not_configured': '未配置',
+        'settings.not_editable': '此项不能在这里修改',
+        'settings.empty': '没有可编辑的配置项。',
+        'settings.refinement': '文字整理',
+        'settings.test': '测试',
+        'settings.advanced': '高级设置',
+        'settings.quality_hint': '成稿明显过短时不会发布。',
+        'setting.refiner.model.label': '模型',
+        'setting.refiner.model.placeholder': '服务商提供的模型 ID',
+        'setting.refiner.api_base.label': '服务地址',
+        'setting.refiner.api_base.placeholder': 'https://api.example.com/v1',
+        'setting.refiner.temperature.label': '创作温度',
+        'setting.refiner.temperature.placeholder': '0.3',
+        'setting.refiner.max_tokens.label': '最大输出',
+        'setting.refiner.max_tokens.placeholder': '65536',
+        'setting.refiner.min_output_ratio.label': '完整度保护',
+        'setting.refiner.min_output_ratio.placeholder': '0.7',
+        'setting.refiner.min_output_ratio.hint': '这是发布硬下限；默认 Prompt 的编辑目标约为原始转录的 80%。',
+        'template.magazine.name': '默认杂志精修',
+        'template.magazine.desc': '杂志级访谈文稿，保留全部实质对话与语气细节，按话题优雅分段，附大纲与时间线。',
+        'template.clean_verbatim.name': '清洁逐字稿',
+        'template.clean_verbatim.desc': '高保真逐字稿，仅剔除纯卡顿与错别字，严格保留全部原文说话顺序与完整表述。',
+        'template.structured_interview.name': '结构化访谈',
+        'template.structured_interview.desc': '重点突出问答结构与关键论据，按深度话题划分层次，完整呈现对话脉络。',
+        'appearance.summary_title': '外观：{0}',
+        'appearance.summary_aria': '选择外观，当前 {0}'
+      },
+      en: {
+        'skip.link': 'Skip to episode list',
+        'brand.kicker': 'Turn podcasts from sound into reading',
+        'lang.toggle': '中 / EN',
+        'lang.toggle_label': 'Switch language',
+        'appearance.theme': 'Theme',
+        'appearance.auto': 'Auto',
+        'appearance.light': 'Light',
+        'appearance.dark': 'Dark',
+        'appearance.choose': 'Choose appearance',
+        'appearance.group': 'App appearance',
+        'appearance.desc': 'Choose app appearance; "Auto" follows system settings.',
+        'masthead.manage': 'Manage',
+        'masthead.settings': 'Settings',
+        'masthead.settings_open': 'Open settings',
+
+        'nav.aria_label': 'Main navigation',
+        'nav.workspace': 'Workspace',
+        'nav.podcast': 'Subscriptions',
+        'nav.custom': 'Import',
+        'nav.library': 'Articles',
+        'nav.add_podcast': 'Add Subscription',
+
+        'cover.kicker': 'Podcast Magazine',
+        'cover.aria_label': 'Subscription cover collection',
+        'content.latest_episodes': 'Latest Episodes',
+        'content.all_subscriptions': 'All Subscriptions',
+        'content.search_placeholder': 'Search episode title…',
+        'content.refresh': 'Refresh episodes',
+        'filter.all': 'All',
+        'filter.readable': 'To Read',
+        'filter.unread': 'Not Generated',
+        'filter.read': 'Read',
+        'filter.label': 'Filter by reading status',
+        'pagination.aria_label': 'Episode pagination',
+        'pagination.prev': 'Previous',
+        'pagination.next': 'Next',
+        'pagination.page': 'Page {0} of {1}',
+        'pagination.page_single': 'Page {0}',
+        'pagination.initial_page': 'Page 1',
+        'empty.no_episodes': 'No episodes',
+        'empty.no_episodes_found': 'No matching episodes found.',
+        'empty.no_subscriptions': 'No subscriptions yet',
+        'empty.no_subscriptions_desc': 'Add a podcast, and the latest episodes will appear here.',
+
+        'custom.title': 'Import Audio',
+        'custom.desc': 'Turn recordings, interviews, or other audio into readable manuscripts.',
+        'custom.audio_file': 'Audio File',
+        'custom.audio_hint': 'Supports common audio formats, max 200 MiB per file',
+        'custom.drop_hint': 'Click or drag & drop to upload audio',
+        'custom.choose_audio': 'Choose audio file',
+        'custom.drop_or_drag': 'or drag & drop here',
+        'custom.formats': 'Supports MP3, M4A, WAV, AAC, OGG formats',
+        'custom.podcast_name': 'Show Name',
+        'custom.podcast_placeholder': 'e.g., Hardcore History',
+        'custom.episode_title': 'Episode Title',
+        'custom.episode_placeholder': 'e.g., Episode 1: The Beginning',
+        'custom.prompt': 'Additional Instructions',
+        'custom.prompt_placeholder': 'e.g., Preserve Q&A structure, standardize character names.',
+        'custom.prompt_template': 'Editorial Style',
+        'custom.template_standard': 'Standard Refinement',
+        'custom.advanced': 'Advanced Instructions',
+        'custom.submit': 'Generate Manuscript',
+        'custom.generating': 'Generating…',
+        'custom.uploading': 'Uploading…',
+        'custom.upload_progress': 'Uploading {0}%',
+        'custom.upload_complete': 'Upload complete',
+        'custom.upload_merging': 'Merging chunks…',
+        'custom.upload_ready': 'Preparing upload…',
+        'custom.processing': 'Processing…',
+        'custom.local_audio': 'Imported Audio',
+        'custom.custom_audio': 'Custom Audio',
+
+        'library.title': 'Articles',
+        'library.search_placeholder': 'Search title or podcast…',
+        'library.filter_all': 'All',
+        'library.filter_subscription': 'To Read',
+        'library.filter_read': 'Read',
+        'library.read': 'Read',
+        'library.download': 'Download',
+        'library.empty': 'No readable manuscripts yet',
+        'library.empty_hint': 'Select an episode from subscriptions, or import audio.',
+        'library.empty_query': 'No matching manuscripts found',
+        'library.empty_query_hint': 'Try different keywords.',
+        'library.view_subscriptions': 'View Subscriptions',
+        'library.import_audio': 'Import Audio',
+
+        'inspector.select_title': 'Select an episode',
+        'inspector.select_meta': 'Click an episode card to view details here.',
+        'inspector.select_summary': 'Select an episode to view introduction and generate manuscript.',
+        'inspector.summary_title': 'Episode Intro',
+        'inspector.close_summary': 'Close episode intro',
+        'inspector.loading_desc': 'Loading description…',
+        'inspector.load_failed': 'Could not load description. Please try again later.',
+        'inspector.no_desc': 'No description available for this episode.',
+
+        'tasks.title': 'Tasks',
+        'tasks.close': 'Close task panel',
+        'tasks.empty': 'No tasks',
+        'tasks.retry': 'Retry',
+        'tasks.retrying': 'Retrying…',
+        'tasks.cancel': 'Stop',
+        'tasks.cancelling': 'Cancelling…',
+        'tasks.cancel_task': 'Cancel Task',
+        'tasks.delete': 'Dismiss',
+        'tasks.deleting': 'Dismissing…',
+        'tasks.processing_count': 'Processing {0}',
+        'tasks.processing_default': 'Processing 0',
+        'tasks.list_label': 'Task List',
+        'tasks.attention_count': '{0} task(s) require attention',
+        'tasks.default_title': 'Manuscript Generation',
+        'tasks.cancel_aria': 'Stop "{0}"',
+        'tasks.dismissed': 'Record dismissed.',
+        'tasks.restarted': 'Generation restarted.',
+        'tasks.cancelling_msg': 'Cancellation requested, stopping task…',
+        'tasks.cancelled_msg': 'Task cancelled',
+        'tasks.success_msg': 'Manuscript is ready.',
+
+        'stage.queued': 'Queued',
+        'stage.downloading': 'Downloading audio',
+        'stage.resolving': 'Resolving',
+        'stage.transcribing': 'Transcribing',
+        'stage.refining': 'Refining',
+        'stage.finalizing': 'Saving',
+        'stage.done': 'Completed',
+        'stage.success': 'Completed',
+        'stage.failed': 'Failed',
+        'stage.cancelled': 'Cancelled',
+        'stage.step_audio': 'Fetch Audio',
+        'stage.step_transcribe': 'Transcribe',
+        'stage.step_refine': 'Refine',
+        'stage.step_save': 'Save',
+
+        'fail.audio': 'Failed to fetch audio. Please try again later.',
+        'fail.transcribe': 'Transcription failed. Please try again.',
+        'fail.refine': 'Refinement failed. Please try again.',
+        'fail.finalize': 'Failed to save manuscript. Please try again.',
+        'fail.default': 'Generation was not successful. Please try again later.',
+        'fail.cancelled': 'Task stopped. You can retry later.',
+
+        'episode.generate': 'Generate Manuscript',
+        'episode.generating': 'Generating…',
+        'episode.regenerate': 'Regenerate',
+        'episode.read': 'Read Manuscript',
+        'episode.download_md': 'Download Markdown',
+        'episode.download_audio': 'Download Audio',
+        'episode.no_audio': 'No audio',
+        'episode.duration_min': '{0} min',
+        'episode.duration_hour_min': '{0}h {1}m',
+        'episode.no_desc': 'No description available',
+        'episode.untitled': 'Untitled Episode',
+        'episode.status_readable': 'Readable',
+        'episode.status_unread': 'Not Generated',
+        'episode.status_generating': 'Generating · ',
+        'episode.status_failed': 'Failed',
+        'episode.status_read': 'Read',
+        'episode.mark_read': 'Mark as Read',
+        'episode.mark_unread': 'Mark as Unread',
+
+        'reader.title': 'Reading',
+        'reader.appearance': 'Typography & Theme',
+        'reader.preset': 'Layout Preset',
+        'reader.preset_classical': 'Classical',
+        'reader.preset_modern': 'Modern',
+        'reader.font': 'Font',
+        'reader.font_size': 'Font Size',
+        'reader.font_dec': 'Decrease font size',
+        'reader.font_inc': 'Increase font size',
+        'reader.line_height': 'Line Spacing',
+        'reader.leading_compact': 'Compact',
+        'reader.leading_normal': 'Comfortable',
+        'reader.leading_relaxed': 'Relaxed',
+        'reader.theme': 'Theme',
+        'reader.theme_follow': 'Follow App',
+        'reader.theme_paper': 'Paper',
+        'reader.theme_warm': 'Warm',
+        'reader.theme_green': 'Green',
+        'reader.theme_dark': 'Dark',
+        'reader.download_md': 'Download Markdown',
+        'reader.mark_read': 'Mark as Read',
+        'reader.mark_unread': 'Mark as Unread',
+        'reader.close': 'Close Reader',
+        'reader.toc': 'Outline',
+        'reader.toc_label': 'Table of Contents',
+        'reader.progress': 'Reading Progress',
+        'reader.progress_val': 'Progress {0}%',
+        'reader.jump_start': 'Jump to Top',
+        'reader.jump_end': 'Jump to Bottom',
+        'reader.initial_state': 'Select a completed manuscript to start reading.',
+        'reader.words_wan': '{0}k words',
+        'reader.words': '{0} words',
+        'reader.characters_large': '{0}k characters',
+        'reader.characters': '{0} characters',
+        'reader.word_count_large': '{0}k words',
+        'reader.word_count': '{0} words',
+        'reader.est_time': '~{0} min',
+        'reader.bar_appearance': 'Typography',
+        'reader.toolbar_label': 'Reading toolbar',
+        'reader.progress_initial': 'Progress 0%',
+        'reader.theme_picker_label': 'Reader theme',
+        'reader.font_preset_label': 'Font preset',
+        'reader.sheet_label': 'Reading progress adjustment',
+        'reader.sheet_progress_label': 'Mobile reading progress',
+        'reader.close_progress': 'Close progress panel',
+        'reader.loading': 'Opening manuscript…',
+        'reader.empty_content': 'Manuscript content is empty.',
+        'reader.close_toc': 'Close Outline',
+
+        'concepts.title': 'Key Concepts',
+        'concepts.extracting': 'Extracting key concepts…',
+        'concepts.reading': 'Loading key concepts…',
+        'concepts.empty': 'No Wikipedia concepts found.',
+        'concepts.failed': 'Failed to extract: ',
+        'concepts.retry': 'Retry',
+        'concepts.wiki_title': 'Wikipedia',
+
+        'settings.title': 'Settings',
+        'settings.desc': 'Adjust appearance and text refinement.',
+        'settings.close': 'Close settings',
+        'settings.cancel': 'Cancel',
+        'settings.save': 'Save',
+        'settings.saving': 'Saving…',
+        'settings.saved': 'Saved successfully',
+        'settings.save_failed': 'Failed to save: ',
+        'settings.testing': 'Testing…',
+        'settings.test_success': 'Connection OK.',
+        'settings.test_failed': 'Test failed: ',
+        'settings.lang': 'Language',
+        'settings.lang_desc': 'Choose interface and concept verification language.',
+        'settings.lang_zh': '中文',
+        'settings.lang_en': 'English',
+        'settings.loading': 'Loading settings…',
+
+        'drawer.title': 'Add Subscription',
+        'drawer.desc': 'Search podcast or enter RSS feed URL',
+        'drawer.search_placeholder': 'Search podcast or enter RSS feed URL',
+        'drawer.close': 'Close Add Subscription',
+        'drawer.subscribe': 'Subscribe',
+        'drawer.subscribed': 'Subscribed',
+        'drawer.subscribing': 'Subscribing…',
+        'drawer.searching': 'Searching…',
+        'drawer.identifying': 'Identifying RSS feed…',
+        'drawer.rss_feed': 'RSS Feed URL',
+        'drawer.no_matches': 'No matching podcasts found',
+        'drawer.no_matches_hint': 'Try shorter keywords.',
+        'drawer.episodes_count': ' episodes',
+
+        'common.unknown_error': 'Unknown error',
+        'toast.close': 'Close notification',
+
+        'read_state.save_failed': 'Failed to save read state: ',
+        'episode.mark_read_title': 'Mark this episode as read',
+        'episode.mark_unread_title': 'Mark this episode as unread',
+
+        'custom.untitled_template': 'Untitled template',
+        'custom.templates_load_failed': 'Failed to load templates',
+        'custom.file_size_exceeded': 'File size exceeds 200 MiB limit',
+        'custom.file_size_hint': 'File exceeds 200 MiB limit (~{0} MiB). Please compress or trim and try again.',
+        'custom.upload_success': 'File uploaded successfully: {0}',
+        'custom.upload_failed': 'Upload failed',
+        'custom.upload_failed_msg': 'File upload failed: {0}',
+        'subscription.unsubscribed': 'Unsubscribed from "{0}"',
+        'subscription.timeline_desc': 'Showing all subscriptions chronologically',
+        'subscription.delete_failed': 'Failed to unsubscribe: ',
+        'subscription.untitled': 'Untitled podcast',
+        'subscription.unsubscribe': 'Unsubscribe',
+        'subscription.unsubscribe_aria': 'Unsubscribe from {0}',
+        'subscription.confirm_delete': 'Confirm delete',
+        'subscription.confirm_delete_aria': 'Click again to confirm unsubscribe from {0}',
+        'subscription.timeline_browse': 'Browse chronologically',
+        'subscription.empty_shows': 'No subscriptions yet',
+        'cover.collection': 'Subscription Collection',
+        'subscription.load_failed': 'Failed to load subscriptions: ',
+        'subscription.timeline': 'Chronological',
+        'subscription.episodes_count': '{0} episodes',
+        'subscription.shows_episodes_count': '{0} shows · {1} episodes',
+        'subscription.loading': 'Loading subscriptions…',
+        'subscription.add_first_hint': 'Add a podcast first; your timeline will start here.',
+
+        'episode.this_episode': 'this episode',
+        'episode.regenerate_aria': 'Regenerate "{0}"',
+        'inspector.generating_head': 'Generating manuscript',
+        'inspector.failed_head': 'Generation failed',
+        'episode.opening': 'Opening episode…',
+        'content.stale_warning': 'Some podcasts could not be refreshed. Showing existing episodes.',
+        'content.load_failed': 'Failed to load episodes: {0}',
+        'episode.view_desc_aria': 'View description for "{0}"',
+        'episode.subscription_show': 'Subscription podcast',
+        'episode.filter_by_show_aria': 'Show only episodes from "{0}"',
+
+        'tasks.no_source': 'Error: podcast source not found',
+        'tasks.generating_progress': 'Manuscript generation in progress; opened task tracker.',
+        'tasks.already_generated': 'Manuscript already generated. You can regenerate from the menu.',
+        'tasks.completed_badge': 'Completed',
+        'tasks.already_generated_log': 'Manuscript already generated',
+        'tasks.failed_retry_msg': 'Generation failed. Please try again later.',
+        'tasks.failed_badge': 'Failed',
+        'tasks.need_audio_file': 'Please choose an audio file first.',
+        'tasks.step_missing_badge': 'Action required',
+        'tasks.failed_prefix': 'Generation failed: ',
+        'tasks.retry_hint': 'please try again later',
+        'tasks.success_log': 'Task completed successfully',
+        'tasks.failed_log': 'Task processing failed',
+
+        'drawer.untitled_podcast': 'Untitled podcast',
+        'drawer.invalid_rss': 'Please enter a valid RSS feed URL.',
+        'drawer.subscribed_log': 'Subscribed to "{0}"',
+        'drawer.new_podcast': 'New podcast',
+        'drawer.add_failed': 'Failed to add: ',
+
+        'reader.load_failed': 'Failed to load manuscript: ',
+
+        'settings.read_failed': 'Failed to read configuration: ',
+        'settings.configured': 'Configured',
+        'settings.not_configured': 'Not configured',
+        'settings.not_editable': 'This item cannot be edited here',
+        'settings.empty': 'No editable configuration items.',
+        'settings.refinement': 'Editorial Refinement',
+        'settings.test': 'Test',
+        'settings.advanced': 'Advanced',
+        'settings.quality_hint': 'Manuscripts that are significantly too short will not be published.',
+        'setting.refiner.model.label': 'Model',
+        'setting.refiner.model.placeholder': 'Model ID provided by service provider',
+        'setting.refiner.api_base.label': 'Endpoint URL',
+        'setting.refiner.api_base.placeholder': 'https://api.example.com/v1',
+        'setting.refiner.temperature.label': 'Temperature',
+        'setting.refiner.temperature.placeholder': '0.3',
+        'setting.refiner.max_tokens.label': 'Max Tokens',
+        'setting.refiner.max_tokens.placeholder': '65536',
+        'setting.refiner.min_output_ratio.label': 'Length Quality Gate',
+        'setting.refiner.min_output_ratio.placeholder': '0.7',
+        'setting.refiner.min_output_ratio.hint': 'Hard lower bound for publishing. Default prompt targets ~75–85% of transcript length.',
+        'template.magazine.name': 'Magazine Refinement',
+        'template.magazine.desc': 'Magazine-style interview transcript preserving all substantive dialogue and nuances, sectioned by topic with outline and timeline.',
+        'template.clean_verbatim.name': 'Clean Verbatim',
+        'template.clean_verbatim.desc': 'High-fidelity verbatim transcript, removing filler words while strictly preserving speech order and complete statements.',
+        'template.structured_interview.name': 'Structured Interview',
+        'template.structured_interview.desc': 'Emphasizes Q&A structure and key arguments, organized by in-depth topics.',
+        'appearance.summary_title': 'Appearance: {0}',
+        'appearance.summary_aria': 'Select appearance, current {0}'
+      }
+    };
+
+    var _currentLocale = 'zh';
+
+    function initLocale() {
+      var loc = 'zh';
+      try {
+        var savedLoc = localStorage.getItem('app_locale');
+        if (savedLoc === 'zh' || savedLoc === 'en') {
+          loc = savedLoc;
+        } else {
+          var navLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+          loc = navLang.startsWith('zh') ? 'zh' : 'en';
+        }
+      } catch (e) {}
+      _currentLocale = loc;
+      return loc;
+    }
+
+    _currentLocale = initLocale();
+
+    function getLocale() {
+      return _currentLocale;
+    }
+
+    function t(key, arg0, arg1) {
+      var dict = TRANSLATIONS[_currentLocale] || TRANSLATIONS.zh;
+      var str = dict[key] || TRANSLATIONS.zh[key] || key;
+      if (arg0 !== undefined) str = str.replace('{0}', String(arg0));
+      if (arg1 !== undefined) str = str.replace('{1}', String(arg1));
+      return str;
+    }
+
+    function applyLocale(locale) {
+      _currentLocale = locale === 'en' ? 'en' : 'zh';
+      document.documentElement.lang = _currentLocale === 'en' ? 'en' : 'zh-CN';
+      document.documentElement.dataset.locale = _currentLocale;
+
+      document.querySelectorAll('[data-i18n]').forEach(function (el) {
+        var key = el.getAttribute('data-i18n');
+        if (key) el.textContent = t(key);
+      });
+      document.querySelectorAll('[data-i18n-placeholder]').forEach(function (el) {
+        var key = el.getAttribute('data-i18n-placeholder');
+        if (key) el.placeholder = t(key);
+      });
+      document.querySelectorAll('[data-i18n-title]').forEach(function (el) {
+        var key = el.getAttribute('data-i18n-title');
+        if (key) el.title = t(key);
+      });
+      document.querySelectorAll('[data-i18n-aria-label]').forEach(function (el) {
+        var key = el.getAttribute('data-i18n-aria-label');
+        if (key) el.setAttribute('aria-label', t(key));
+      });
+
+      var toggleBtn = document.getElementById('lang-toggle-btn');
+      if (toggleBtn) {
+        toggleBtn.setAttribute('aria-label', t('lang.toggle_label'));
+        toggleBtn.title = t('lang.toggle_label');
+      }
+      var readerToggleBtn = document.getElementById('reader-lang-toggle-btn');
+      if (readerToggleBtn) {
+        readerToggleBtn.setAttribute('aria-label', t('lang.toggle_label'));
+        readerToggleBtn.title = t('lang.toggle_label');
+      }
+
+      if (typeof updatePublicThemeSummary === 'function') updatePublicThemeSummary();
+      if (typeof renderTaskQueue === 'function') renderTaskQueue();
+      if (typeof renderEpisodeList === 'function' && typeof pageEpisodes !== 'undefined' && pageEpisodes.length) renderEpisodeList();
+      if (typeof renderLibrary === 'function' && typeof _libraryArticles !== 'undefined') renderLibrary(_libraryArticles);
+      if (typeof selectedEpisode !== 'undefined' && selectedEpisode && typeof renderEpisodeInspector === 'function') renderEpisodeInspector(selectedEpisode);
+      if (typeof reloadReaderConcepts === 'function') reloadReaderConcepts();
+      if (typeof renderPromptTemplateOptions === 'function') renderPromptTemplateOptions();
+      if (typeof _lastSettingsData !== 'undefined' && _lastSettingsData && typeof renderSettings === 'function') renderSettings(_lastSettingsData);
+      if (typeof updateReaderStats === 'function') updateReaderStats();
+    }
+
+    function setLocale(locale, persist) {
+      if (locale !== 'zh' && locale !== 'en') return;
+      applyLocale(locale);
+      if (persist !== false && typeof savePreference === 'function') {
+        savePreference('locale', locale);
+      }
+    }
+
+    function toggleLocale() {
+      var next = _currentLocale === 'zh' ? 'en' : 'zh';
+      setLocale(next, true);
+    }
     // WebUI 既可部署在域名根路径，也可挂在 /podcast 一类子路径。
     // 同一套工作区两种能力：<base>/ 是公开浏览（Public Browse Mode，只读、不执行），
     // <base>/manage 是控制模式（Authenticated Control Mode，由 Cloudflare Access 保护）。应用本身不做任何认证。
@@ -139,6 +914,8 @@
         }
         var leading = localStorage.getItem('reader_line_height');
         if (leading) _cloudPrefs.line_height = leading;
+        var loc = localStorage.getItem('app_locale');
+        if (loc === 'zh' || loc === 'en') _cloudPrefs.locale = loc;
       } catch (ignore) {}
     }
     loadLocalPreferences();
@@ -173,7 +950,8 @@
             reader_theme: 'reader_theme',
             font_preset: 'reader_font_preset',
             font_size: 'reader_font_size',
-            line_height: 'reader_line_height'
+            line_height: 'reader_line_height',
+            locale: 'app_locale'
           };
           var localKey = map[key] || key;
           localStorage.setItem(localKey, String(value));
@@ -188,8 +966,12 @@
           if (!data) return null;
           if (IS_MANAGE) {
             Object.assign(_cloudPrefs, data);
+            if (data.locale && (data.locale === 'zh' || data.locale === 'en') && typeof setLocale === 'function') {
+              setLocale(data.locale, false);
+            }
           } else {
-            // 未登录态：若本地未自定义过，则继承站长云端默认值；若已设置过则保留本地偏好
+            // 未登录态：若本地未自定义过，则继承站长云端外观/排版默认值；
+            // 访客语言遵循浏览器首选语言自适应（由 08-i18n.js 初始化），不从 data.locale 覆盖！
             try {
               if (!localStorage.getItem('app_theme') && data.app_theme) _cloudPrefs.app_theme = data.app_theme;
               if (!localStorage.getItem('reader_theme') && data.reader_theme) _cloudPrefs.reader_theme = data.reader_theme;
@@ -227,7 +1009,7 @@
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
     }
-    function errorMessage(error) { return error && error.message ? error.message : String(error || '未知错误'); }
+    function errorMessage(error) { return error && error.message ? error.message : String(error || t('common.unknown_error')); }
     // 统一解析 API 响应：成功返回 JSON（空 body，如 204，返回 null）；失败抛出带 status 的 Error，
     // 文案取服务端错误协议 {error: {code, message}}（见 src/http.ts）。
     function readApiResponse(response) {
@@ -328,7 +1110,7 @@
           if (read) delete _readEpisodes[key];
           else _readEpisodes[key] = true;
           refreshReadViews();
-          addLog('保存已读状态失败：' + errorMessage(error), 'error');
+          addLog(t('read_state.save_failed') + errorMessage(error), 'error');
         });
     }
 
@@ -343,8 +1125,8 @@
       var hasEpisode = IS_MANAGE && Boolean(readKey(_currentReadingRef));
       var read = hasEpisode && isRead(_currentReadingRef);
       setHidden(button, !hasEpisode);
-      button.textContent = read ? '已读 · 改为未读' : '标记为已读';
-      button.title = read ? '将这期改回未读' : '标记这期已经读完';
+      button.textContent = read ? t('episode.mark_unread') : t('episode.mark_read');
+      button.title = read ? t('episode.mark_unread_title') : t('episode.mark_read_title');
       button.setAttribute('aria-pressed', String(read));
       button.classList.toggle('is-read', read);
     }
@@ -382,25 +1164,37 @@
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (templates) {
           _promptTemplates = Array.isArray(templates) ? templates : [];
-          var select = byId('prompt-template-select');
-          while (select.options.length > 1) select.remove(1);
-          _promptTemplates.forEach(function (template) {
-            var option = document.createElement('option');
-            option.value = String(template.content || '');
-            option.textContent = String(template.name || '未命名模板');
-            select.appendChild(option);
-          });
-          if (_promptTemplates.length > 0) {
-            select.selectedIndex = 1;
-            applyPromptTemplate(_promptTemplates[0].content);
-          }
+          renderPromptTemplateOptions();
         })
-        .catch(function () { addLog('稿件风格加载失败', 'warning'); });
+        .catch(function () { addLog(t('custom.templates_load_failed'), 'warning'); });
+    }
+
+    function renderPromptTemplateOptions() {
+      var select = byId('prompt-template-select');
+      if (!select) return;
+      var currentVal = select.value;
+      if (select.options.length > 0) {
+        select.options[0].textContent = t('custom.template_standard');
+      }
+      while (select.options.length > 1) select.remove(1);
+      _promptTemplates.forEach(function (template) {
+        var option = document.createElement('option');
+        option.value = String(template.content || '');
+        var labelKey = 'template.' + template.id + '.name';
+        var translated = t(labelKey);
+        option.textContent = translated !== labelKey ? translated : String(template.name || t('custom.untitled_template'));
+        var descKey = 'template.' + template.id + '.desc';
+        var localizedDesc = t(descKey);
+        option.title = localizedDesc !== descKey ? localizedDesc : String(template.description || '');
+        select.appendChild(option);
+      });
+      if (currentVal) {
+        select.value = currentVal;
+      }
     }
 
     function applyPromptTemplate(content) {
-      if (!content) return;
-      byId('custom-prompt').value = content;
+      byId('custom-prompt').value = content || '';
     }
 
     function handleAudioDrop(event) {
@@ -422,8 +1216,8 @@
       // 产品硬上限 200 MiB（= 209,715,200 字节）；Cloudflare 才是权威校验方，这里只是让用户立即得到反馈、不进入上传流程。
       var MAX_SIZE = 200 * 1024 * 1024;
       if (file.size > MAX_SIZE) {
-        addLog('文件体积超出 200 MiB 上限', 'error');
-        byId('upload-status').textContent = '文件超出 200 MiB 限制（约 ' + (Math.round(file.size / 1024 / 1024 * 10) / 10) + ' MiB），请压缩或截取后重试';
+        addLog(t('custom.file_size_exceeded'), 'error');
+        byId('upload-status').textContent = t('custom.file_size_hint', (Math.round(file.size / 1024 / 1024 * 10) / 10));
         setHidden(byId('upload-progress-wrap'), false);
         setHidden(byId('upload-success-info'), true);
         setHidden(byId('upload-hint'), false);
@@ -434,7 +1228,7 @@
       setHidden(byId('upload-progress-wrap'), false);
       setHidden(byId('upload-success-info'), true);
       setHidden(byId('upload-hint'), true);
-      byId('upload-status').textContent = '准备上传…';
+      byId('upload-status').textContent = t('custom.upload_ready');
       byId('upload-progress-inner').style.width = '0%';
 
       var CHUNK_SIZE = 10 * 1024 * 1024; // 10 MiB 分片（200 MiB 上限 → 至多 20 片）
@@ -460,7 +1254,7 @@
           function uploadChunk(partIndex) {
             if (partIndex >= totalParts) {
               // 3. 完成合并
-              byId('upload-status').textContent = '合并分片中…';
+              byId('upload-status').textContent = t('custom.upload_merging');
               return fetch(appUrl('/api/control/uploads/multipart/' + encodeURIComponent(uploadId) + '/complete'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -468,11 +1262,11 @@
               }).then(readApiResponse).then(function () {
                 _uploadedAudioPath = uploadId;
                 _uploadedAudioTitle = file.name.replace(/\.[^/.]+$/, "");
-                byId('upload-status').textContent = '上传完成';
+                byId('upload-status').textContent = t('custom.upload_complete');
                 byId('upload-progress-inner').style.width = '100%';
                 setHidden(byId('upload-success-info'), false);
                 byId('upload-success-info').textContent = '✓ ' + file.name + ' (' + Math.round(file.size / 1024 / 1024 * 10) / 10 + ' MiB)';
-                addLog('文件上传成功：' + file.name, 'success');
+                addLog(t('custom.upload_success', file.name), 'success');
               });
             }
 
@@ -501,13 +1295,13 @@
               });
             }
 
-            byId('upload-status').textContent = '正在上传 0%';
+            byId('upload-status').textContent = t('custom.upload_progress', 0);
             return doUploadPart(1).then(function (partResult) {
               uploadedParts.push({ partNumber: partNumber, etag: partResult.etag });
               uploadedBytes += chunkSize;
               var percent = Math.min(99, Math.round((uploadedBytes / file.size) * 100));
               byId('upload-progress-inner').style.width = percent + '%';
-              byId('upload-status').textContent = '正在上传 ' + percent + '%';
+              byId('upload-status').textContent = t('custom.upload_progress', percent);
               return uploadChunk(partIndex + 1);
             });
           }
@@ -515,10 +1309,10 @@
           return uploadChunk(0);
         })
         .catch(function (err) {
-          var message = (err && err.message) || '上传失败';
+          var message = (err && err.message) || t('custom.upload_failed');
           byId('upload-status').textContent = message;
           setHidden(byId('upload-hint'), false);
-          addLog('文件上传失败：' + message, 'error');
+          addLog(t('custom.upload_failed_msg', message), 'error');
           if (uploadId && r2UploadId && key) {
             fetch(appUrl('/api/control/uploads/multipart/' + encodeURIComponent(uploadId) + '/abort'), {
               method: 'POST',
@@ -534,14 +1328,14 @@
       fetch(appUrl('/api/control/subscriptions/' + encodeURIComponent(name)), { method: 'DELETE' })
         .then(readApiResponse)
         .then(function () {
-          addLog('已取消订阅节目「' + name + '」', 'info');
+          addLog(t('subscription.unsubscribed', name), 'info');
           if (selectedPodcast === name) {
             selectedPodcast = null;
             pageEpisodes = [];
             currentPage = 1;
             resetEpisodeInspector();
-            byId('center-title').textContent = '全部订阅';
-            byId('center-sub').textContent = '按时间线展示所有订阅';
+            byId('center-title').textContent = t('content.all_subscriptions');
+            byId('center-sub').textContent = t('subscription.timeline_desc');
             byId('episode-list').replaceChildren();
             setHidden(byId('episode-list'), true);
             setHidden(byId('episode-pagination'), true);
@@ -549,7 +1343,7 @@
           }
           loadSubscriptions();
         })
-        .catch(function (err) { addLog('删除订阅失败：' + errorMessage(err), 'error'); });
+        .catch(function (err) { addLog(t('subscription.delete_failed') + errorMessage(err), 'error'); });
     }
 
     function createPodcastItem(podcast, index) {
@@ -572,14 +1366,14 @@
       var name = document.createElement('span');
       name.className = 'pod-name';
       name.style.display = 'block';
-      name.textContent = String(podcast.name || '未命名节目');
+      name.textContent = String(podcast.name || t('subscription.untitled'));
       var meta = document.createElement('span');
       meta.className = 'pod-meta';
       meta.style.display = 'block';
       // 公开浏览只拿到脱敏后的 source_host；控制模式从完整 RSS 地址取域名。
       var host = String(podcast.source_host || '');
       if (!host && podcast.rss_url) { try { host = new URL(podcast.rss_url).hostname; } catch (error) { host = ''; } }
-      meta.textContent = host || 'RSS 订阅地址';
+      meta.textContent = host || t('drawer.rss_feed');
       copy.append(name, meta);
       selectBtn.append(dot, copy);
       selectBtn.addEventListener('click', function () { selectPodcast(String(podcast.name || '')); });
@@ -592,8 +1386,8 @@
       var deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
       deleteBtn.className = 'pod-delete-btn';
-      deleteBtn.title = '取消订阅';
-      deleteBtn.setAttribute('aria-label', '取消订阅 ' + (podcast.name || '未命名节目'));
+      deleteBtn.title = t('subscription.unsubscribe');
+      deleteBtn.setAttribute('aria-label', t('subscription.unsubscribe_aria', (podcast.name || t('subscription.untitled'))));
       deleteBtn.innerHTML = uiIcon('trash');
 
       var confirmTimer = null;
@@ -604,7 +1398,7 @@
         }
         deleteBtn.dataset.confirming = 'false';
         deleteBtn.innerHTML = uiIcon('trash');
-        deleteBtn.setAttribute('aria-label', '取消订阅 ' + (podcast.name || '未命名节目'));
+        deleteBtn.setAttribute('aria-label', t('subscription.unsubscribe_aria', (podcast.name || t('subscription.untitled'))));
       }
 
       deleteBtn.addEventListener('click', function (e) {
@@ -616,8 +1410,8 @@
           return;
         }
         deleteBtn.dataset.confirming = 'true';
-        deleteBtn.textContent = '确认删除';
-        deleteBtn.setAttribute('aria-label', '再次点击确认取消订阅 ' + (podcast.name || '未命名节目'));
+        deleteBtn.textContent = t('subscription.confirm_delete');
+        deleteBtn.setAttribute('aria-label', t('subscription.confirm_delete_aria', (podcast.name || t('subscription.untitled'))));
         confirmTimer = setTimeout(resetDeleteBtn, 3000);
       });
 
@@ -643,11 +1437,11 @@
       var name = document.createElement('span');
       name.className = 'pod-name';
       name.style.display = 'block';
-      name.textContent = '全部订阅';
+      name.textContent = t('content.all_subscriptions');
       var meta = document.createElement('span');
       meta.className = 'pod-meta';
       meta.style.display = 'block';
-      meta.textContent = '按时间线浏览';
+      meta.textContent = t('subscription.timeline_browse');
       copy.append(name, meta);
       selectBtn.append(dot, copy);
       selectBtn.addEventListener('click', selectAllPodcasts);
@@ -679,7 +1473,7 @@
         emptyIcon.className = 'empty-state-icon';
         emptyIcon.innerHTML = uiIcon('rss');
         empty.appendChild(emptyIcon);
-        empty.appendChild(document.createTextNode('暂无订阅节目'));
+        empty.appendChild(document.createTextNode(t('subscription.empty_shows')));
         list.appendChild(empty);
         return;
       }
@@ -709,7 +1503,7 @@
       wrap.className = className;
       var mono = document.createElement('span');
       mono.className = 'art-monogram';
-      mono.textContent = String(fallbackText || '播').trim().slice(0, 1) || '播';
+      mono.textContent = String(fallbackText || (getLocale() === 'en' ? 'P' : '播')).trim().slice(0, 1) || (getLocale() === 'en' ? 'P' : '播');
       wrap.appendChild(mono);
       if (src) {
         var img = document.createElement('img');
@@ -742,7 +1536,7 @@
       });
       var edition = byId('cover-edition');
       if (edition) {
-        edition.textContent = new Date().toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) + ' · 订阅合集';
+        edition.textContent = new Date().toLocaleDateString(getLocale() === 'en' ? 'en-US' : 'zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) + ' · ' + t('cover.collection');
       }
       section.hidden = false;
     }
@@ -760,7 +1554,7 @@
           loadTimelineEpisodes(getScopedSubscriptions(), false);
           return _subscriptions;
         })
-        .catch(function (error) { addLog('加载订阅失败：' + errorMessage(error), 'error'); });
+        .catch(function (error) { addLog(t('subscription.load_failed') + errorMessage(error), 'error'); });
     }
 
     function getScopedSubscriptions() {
@@ -771,12 +1565,19 @@
     function updateTimelineHeading() {
       var scopeCount = getScopedSubscriptions().length;
       var total = Number(_episodeCounts.all) || 0;
-      byId('center-title').textContent = selectedPodcast || '全部订阅';
+      byId('center-title').textContent = selectedPodcast || t('content.all_subscriptions');
       var pieces = [];
-      if (total) pieces.push('按时间线');
-      if (selectedPodcast) pieces.push(total + ' 期');
-      else if (scopeCount) pieces.push(scopeCount + ' 档节目 · ' + total + ' 期');
-      byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? '正在读取订阅…' : '先添加一档节目，时间线会从这里开始');
+      if (getLocale() === 'en') {
+        if (total) pieces.push('Chronological');
+        if (selectedPodcast) pieces.push(total + ' episode' + (total === 1 ? '' : 's'));
+        else if (scopeCount) pieces.push(scopeCount + ' show' + (scopeCount === 1 ? '' : 's') + ' · ' + total + ' episode' + (total === 1 ? '' : 's'));
+        byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? t('subscription.loading') : t('subscription.add_first_hint'));
+      } else {
+        if (total) pieces.push(t('subscription.timeline'));
+        if (selectedPodcast) pieces.push(t('subscription.episodes_count', total));
+        else if (scopeCount) pieces.push(t('subscription.shows_episodes_count', scopeCount, total));
+        byId('center-sub').textContent = pieces.join(' · ') || (scopeCount ? t('subscription.loading') : t('subscription.add_first_hint'));
+      }
     }
 
     // 切换节目范围（全部订阅 / 某一档）：重置搜索、筛选与页码，再向服务端取第一页。
@@ -821,7 +1622,7 @@
     }
 
     function cleanEpisodeSummary(summary) {
-      return String(summary || '这期节目暂时没有介绍。')
+      return String(summary || t('inspector.no_desc'))
         .replace(/\s+-\s+/g, '\n\n')
         .replace(/[ \t]+/g, ' ')
         .replace(/\n{3,}/g, '\n\n')
@@ -852,18 +1653,18 @@
       var activeTask = activeTaskForEpisode(episode);
       var meta = [];
       if (!selectedPodcast && episode.podcast_name) meta.push(String(episode.podcast_name));
-      if (episode.published) meta.push(new Date(episode.published).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }));
+      if (episode.published) meta.push(new Date(episode.published).toLocaleDateString(getLocale() === 'en' ? 'en-US' : 'zh-CN', { year: 'numeric', month: 'long', day: 'numeric' }));
       var duration = formatDuration(episode.duration_seconds);
       if (duration) meta.push(duration);
       meta.push(episodeStatusLabel(episode, task, activeTask, failedTaskForEpisode(episode)));
-      byId('inspector-title').textContent = String(episode.title || '未命名单集');
+      byId('inspector-title').textContent = String(episode.title || t('episode.untitled'));
       byId('inspector-meta').textContent = meta.join(' · ');
-      byId('episode-summary-title').textContent = String(episode.title || '未命名单集');
+      byId('episode-summary-title').textContent = String(episode.title || t('episode.untitled'));
       byId('episode-summary-meta').textContent = meta.join(' · ');
-      showEpisodeSummary('正在加载介绍…');
+      showEpisodeSummary(t('inspector.loading_desc'));
       loadEpisodeSummary(episode.id)
         .then(function (summary) { if (selectedEpisode === episode) showEpisodeSummary(cleanEpisodeSummary(summary)); })
-        .catch(function () { if (selectedEpisode === episode) showEpisodeSummary('介绍暂时加载不出来，请稍后再试。'); });
+        .catch(function () { if (selectedEpisode === episode) showEpisodeSummary(t('inspector.load_failed')); });
       renderInspectorAction(episode, task, activeTask);
       document.querySelectorAll('.episode-item').forEach(function (item) {
         item.classList.toggle('is-selected', item.dataset.episodeKey === String(episode.id));
@@ -873,8 +1674,8 @@
 
     // 公开浏览只区分「可阅读 / 未生成」：任务进度、失败与已读都属于控制模式的状态。
     function episodeStatusLabel(episode, task, activeTask, failedTask) {
-      if (!IS_MANAGE) return task ? '可阅读' : '未生成';
-      return activeTask ? '生成中 · ' + activeTask.progress + '%' : failedTask ? '失败' : isEpisodeRead(episode) ? '已读' : task ? '待读' : '未生成';
+      if (!IS_MANAGE) return task ? t('episode.status_readable') : t('episode.status_unread');
+      return activeTask ? (t('episode.status_generating') + activeTask.progress + '%') : failedTask ? t('episode.status_failed') : isEpisodeRead(episode) ? t('episode.status_read') : task ? t('filter.readable') : t('episode.status_unread');
     }
 
     function activeTaskForEpisode(episode) {
@@ -911,7 +1712,7 @@
       link.href = articleUrl(taskId, '/download');
       link.download = '';
       link.innerHTML = uiIcon('download');
-      link.appendChild(document.createTextNode(label || '下载'));
+      link.appendChild(document.createTextNode(label || t('library.download')));
       link.addEventListener('click', function (event) { event.stopPropagation(); });
       return link;
     }
@@ -920,8 +1721,8 @@
       var button = document.createElement('button');
       button.type = 'button';
       button.className = 'episode-action rerun owner-state-only';
-      button.textContent = '重新生成';
-      button.setAttribute('aria-label', '重新生成「' + String(episode.title || '这期节目') + '」');
+      button.textContent = t('episode.regenerate');
+      button.setAttribute('aria-label', t('episode.regenerate_aria', String(episode.title || t('episode.this_episode'))));
       button.addEventListener('click', function (event) {
         event.stopPropagation();
         renderEpisodeInspector(episode);
@@ -939,14 +1740,16 @@
         setHidden(progress, !active && !failed);
         if (active) {
           var stageIndex = Object.prototype.hasOwnProperty.call(STAGE_STEP_INDEX, active.stage) ? STAGE_STEP_INDEX[active.stage] : 0;
-          progress.innerHTML = '<div class="inspector-progress-head"><span>正在生成稿件</span><span>' + active.progress + '%</span></div><div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + active.progress + '"><div class="progress-inner" style="width:' + active.progress + '%"></div></div><div class="progress-stage-row">' + ['获取音频','转写','整理','保存'].map(function (label, index) { return '<span class="' + (index < stageIndex ? 'done' : index === stageIndex ? 'active' : '') + '">' + (index < stageIndex ? '✓ ' : index === stageIndex ? '● ' : '○ ') + label + '</span>'; }).join('') + '</div><div class="progress-message">' + escapeHtml(active.message || ('正在' + (STAGE_LABELS[active.stage] || '处理'))) + '</div>';
+          var stageLabels = [t('stage.step_audio'), t('stage.step_transcribe'), t('stage.step_refine'), t('stage.step_save')];
+          var activeMsg = (active.stage && t('stage.' + active.stage)) || active.message || t('custom.processing');
+          progress.innerHTML = '<div class="inspector-progress-head"><span>' + escapeHtml(t('inspector.generating_head')) + '</span><span>' + active.progress + '%</span></div><div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + active.progress + '"><div class="progress-inner" style="width:' + active.progress + '%"></div></div><div class="progress-stage-row">' + stageLabels.map(function (label, index) { return '<span class="' + (index < stageIndex ? 'done' : index === stageIndex ? 'active' : '') + '">' + (index < stageIndex ? '✓ ' : index === stageIndex ? '● ' : '○ ') + label + '</span>'; }).join('') + '</div><div class="progress-message">' + escapeHtml(activeMsg) + '</div>';
         } else if (failed) {
-          progress.innerHTML = '<div class="inspector-progress-head text-danger"><span>生成未成功</span></div><div class="progress-message text-danger">' + escapeHtml(resolveTaskFailureMessage(failed)) + '</div>';
+          progress.innerHTML = '<div class="inspector-progress-head text-danger"><span>' + escapeHtml(t('inspector.failed_head')) + '</span></div><div class="progress-message text-danger">' + escapeHtml(resolveTaskFailureMessage(failed)) + '</div>';
         }
         var primary = document.createElement('button');
         primary.type = 'button';
         primary.className = completed ? 'episode-action' : 'solid-btn';
-        primary.textContent = active ? '生成中 ' + active.progress + '%' : completed ? '阅读' : failed ? '重试' : '生成稿件';
+        primary.textContent = active ? (t('episode.status_generating') + active.progress + '%') : completed ? t('library.read') : failed ? t('tasks.retry') : t('episode.generate');
         primary.disabled = Boolean(active);
         primary.addEventListener('click', function (event) {
           if (completed) openManuscript(completed.id, episode);
@@ -955,7 +1758,7 @@
         });
         actions.appendChild(primary);
         if (completed) {
-          actions.appendChild(createEpisodeDownloadAction(completed.id, '下载 Markdown'));
+          actions.appendChild(createEpisodeDownloadAction(completed.id, t('episode.download_md')));
           if (IS_MANAGE) actions.appendChild(createEpisodeRerunAction(episode));
         }
       });
@@ -998,7 +1801,7 @@
       resetEpisodeInspector();
       document.querySelectorAll('.podcast-item').forEach(function (item) { item.classList.toggle('active', item.dataset.name === name); });
       byId('center-title').textContent = name;
-      byId('center-sub').textContent = '正在打开节目…';
+      byId('center-sub').textContent = t('episode.opening');
       byId('episode-search').disabled = false;
       loadEpisodes(name, false);
     }
@@ -1057,7 +1860,7 @@
           }
           updateTimelineHeading();
           renderEpisodeList();
-          if (force && page && page.cache_state === 'stale') addLog('部分节目暂时没有刷新成功，先显示已有单集。', 'warning');
+          if (force && page && page.cache_state === 'stale') addLog(t('content.stale_warning'), 'warning');
           return pageEpisodes;
         })
         .catch(function (error) {
@@ -1065,7 +1868,7 @@
           pageEpisodes = [];
           _episodeTotal = 0;
           renderEpisodeList();
-          addLog('加载单集失败：' + errorMessage(error), 'error');
+          addLog(t('content.load_failed', errorMessage(error)), 'error');
           return pageEpisodes;
         });
     }
@@ -1134,7 +1937,7 @@
       var primaryButton = document.createElement('button');
       primaryButton.type = 'button';
       primaryButton.className = 'episode-action' + (task ? '' : ' primary');
-      primaryButton.textContent = activeTask ? '生成中 · ' + activeTask.progress + '%' : task ? '阅读' : failedTask ? '重试' : '生成稿件';
+      primaryButton.textContent = activeTask ? (t('episode.status_generating') + activeTask.progress + '%') : task ? t('library.read') : failedTask ? t('tasks.retry') : t('episode.generate');
       primaryButton.disabled = Boolean(activeTask);
       primaryButton.addEventListener('click', function (event) {
         event.stopPropagation();
@@ -1146,7 +1949,7 @@
       });
       actions.appendChild(primaryButton);
       if (task) {
-        actions.appendChild(createEpisodeDownloadAction(task.id, '下载'));
+        actions.appendChild(createEpisodeDownloadAction(task.id, t('library.download')));
         if (IS_MANAGE) actions.appendChild(createEpisodeRerunAction(episode));
       }
       return actions;
@@ -1162,7 +1965,11 @@
         var empty = document.createElement('div'); empty.className = 'empty-state';
         var emptyIcon = document.createElement('span'); emptyIcon.className = 'empty-state-icon'; emptyIcon.innerHTML = uiIcon(_subscriptions.length ? 'search' : 'rss');
         empty.appendChild(emptyIcon);
-        var copy = document.createElement('span'); copy.innerHTML = _subscriptions.length ? '<strong>没有找到匹配内容</strong><br>试试更短的关键词。' : '<strong>还没有订阅</strong><br>添加一档播客，最新单集会自动出现在这里。'; empty.appendChild(copy);
+        var copy = document.createElement('span');
+        copy.innerHTML = _subscriptions.length
+          ? ('<strong>' + escapeHtml(t('drawer.no_matches')) + '</strong><br>' + escapeHtml(t('drawer.no_matches_hint')))
+          : ('<strong>' + escapeHtml(t('empty.no_subscriptions')) + '</strong><br>' + escapeHtml(t('empty.no_subscriptions_desc')));
+        empty.appendChild(copy);
         container.appendChild(empty);
         setHidden(pagination, true);
         return;
@@ -1177,7 +1984,7 @@
         row.tabIndex = 0;
         row.dataset.episodeTitle = String(episode.title || '');
         row.dataset.episodeKey = String(episode.id);
-        row.setAttribute('aria-label', '查看「' + String(episode.title || '未命名单集') + '」的介绍');
+        row.setAttribute('aria-label', t('episode.view_desc_aria', String(episode.title || t('episode.untitled'))));
         row.style.setProperty('--item-index', index);
         if (selectedEpisode && String(selectedEpisode.id) === String(episode.id)) row.classList.add('is-selected');
         var copy = document.createElement('div'); copy.className = 'ep-copy';
@@ -1185,8 +1992,8 @@
         var source = document.createElement('button');
         source.type = 'button';
         source.className = 'episode-source';
-        source.textContent = String(episode.podcast_name || '订阅节目');
-        source.setAttribute('aria-label', '只看「' + source.textContent + '」的节目');
+        source.textContent = String(episode.podcast_name || t('episode.subscription_show'));
+        source.setAttribute('aria-label', t('episode.filter_by_show_aria', source.textContent));
         source.addEventListener('click', function (event) {
           event.stopPropagation();
           selectPodcast(String(episode.podcast_name || ''));
@@ -1196,11 +2003,11 @@
         var status = document.createElement('span'); status.className = 'status-tag' + (read ? ' read' : task ? ' complete' : failedTask ? ' failed' : ''); status.textContent = episodeStatusLabel(episode, task, activeTask, failedTask);
         if (failedTask) status.title = resolveTaskFailureMessage(failedTask);
         var date = document.createElement('span');
-        date.textContent = episode.published ? new Date(episode.published).toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' }) : '--';
+        date.textContent = episode.published ? new Date(episode.published).toLocaleDateString(getLocale() === 'en' ? 'en-US' : 'zh-CN', { month: '2-digit', day: '2-digit' }) : '--';
         meta.append(source, status, date);
         var duration = formatDuration(episode.duration_seconds);
         if (duration) { var durationNode = document.createElement('span'); durationNode.textContent = duration; meta.appendChild(durationNode); }
-        var title = document.createElement('div'); title.className = 'ep-title'; title.textContent = String(episode.title || '未命名单集');
+        var title = document.createElement('div'); title.className = 'ep-title'; title.textContent = String(episode.title || t('episode.untitled'));
         copy.append(meta, title);
         if (activeTask) { var inlineProgress = document.createElement('div'); inlineProgress.className = 'progress-bar episode-progress'; inlineProgress.innerHTML = '<div class="progress-inner" style="width:' + activeTask.progress + '%"></div>'; copy.appendChild(inlineProgress); }
         var actions = makeEpisodeActions(task, episode);
@@ -1212,7 +2019,7 @@
         fragment.append(row);
       });
       container.appendChild(fragment);
-      byId('page-label').textContent = '第 ' + currentPage + ' / ' + totalPages + ' 页';
+      byId('page-label').textContent = t('pagination.page', currentPage, totalPages);
       byId('page-prev').disabled = currentPage <= 1;
       byId('page-next').disabled = currentPage >= totalPages;
       setHidden(pagination, totalPages <= 1);
@@ -1223,7 +2030,7 @@
       if (event) event.stopPropagation();
       var sourceName = String(episode.podcast_name || selectedPodcast || '').trim();
       var title = String(episode.title || '');
-      if (!sourceName) { addLog('错误：未找到节目来源', 'error'); return; }
+      if (!sourceName) { addLog(t('tasks.no_source'), 'error'); return; }
       if (!requireControl('generate', { podcast: sourceName })) return;
       var button = event && event.currentTarget && event.currentTarget.tagName === 'BUTTON' ? event.currentTarget : null;
       _currentTaskPodcastName = sourceName;
@@ -1233,7 +2040,7 @@
       _submittingEpisodes[episodeKey] = true;
       if (button) button.disabled = true;
       setHidden(byId('task-card'), false);
-      setTaskStatus('正在生成稿件', 0);
+      setTaskStatus(t('inspector.generating_head'), 0);
       var url = appUrl('/api/control/tasks');
       fetch(url, {
         method: 'POST',
@@ -1242,18 +2049,18 @@
       })
         .then(readApiResponse)
         .then(function (data) {
-          if (data.status === 'existing') addLog('这期稿件正在生成，已打开处理进度。', 'info');
+          if (data.status === 'existing') addLog(t('tasks.generating_progress'), 'info');
           watchTask(data.task_id, title, sourceName);
           ensureTaskCard(data.task_id).episodeId = episodeKey;
         })
         .catch(function (error) {
           if (error && error.status === 409) {
-            setTaskStatus(error.message || '这期稿件已经生成，可从更多菜单重新生成。', 0);
-            setTaskBadge('info', '已完成');
-            addLog(error.message || '稿件已经生成', 'info');
+            setTaskStatus(error.message || t('tasks.already_generated'), 0);
+            setTaskBadge('info', t('tasks.completed_badge'));
+            addLog(error.message || t('tasks.already_generated_log'), 'info');
           } else {
-            setTaskStatus('这次没有生成成功，请稍后再试。', 0);
-            setTaskBadge('error', '未成功');
+            setTaskStatus(t('tasks.failed_retry_msg'), 0);
+            setTaskBadge('error', t('tasks.failed_badge'));
           }
         })
         .finally(function () {
@@ -1266,26 +2073,27 @@
       if (!requireControl('import')) return;
       var uploadId = _uploadedAudioPath;
       var prompt = byId('custom-prompt').value.trim();
-      var title = _uploadedAudioTitle || '自定义音频';
-      if (!uploadId) { setHidden(byId('task-card'), false); setTaskStatus('请先选择音频文件。', 0); setTaskBadge('error', '还差一步'); return; }
-      if (!prompt) { setHidden(byId('task-card'), false); setTaskStatus('请选择一种文字样式。', 0); setTaskBadge('error', '还差一步'); return; }
+      var title = _uploadedAudioTitle || t('custom.custom_audio');
+      if (!uploadId) { setHidden(byId('task-card'), false); setTaskStatus(t('tasks.need_audio_file'), 0); setTaskBadge('error', t('tasks.step_missing_badge')); return; }
       var button = byId('custom-submit-btn');
-      button.disabled = true; button.textContent = '生成中…';
+      button.disabled = true; button.textContent = t('custom.generating');
       setHidden(byId('download-result-wrap'), true);
       setHidden(byId('task-card'), false);
-      setTaskStatus('正在生成稿件', 0);
+      setTaskStatus(t('inspector.generating_head'), 0);
+      var payload = { upload_id: uploadId, title: title };
+      if (prompt) payload.custom_prompt = prompt;
       fetch(appUrl('/api/control/tasks/custom'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upload_id: uploadId, title: title, custom_prompt: prompt })
+        body: JSON.stringify(payload)
       })
         .then(readApiResponse)
-        .then(function (data) { watchTask(data.task_id, title, '本地音频'); })
+        .then(function (data) { watchTask(data.task_id, title, t('custom.local_audio')); })
         .catch(function (err) {
-          setTaskStatus('这次没有生成成功：' + (err.message || '请稍后再试'), 0);
-          setTaskBadge('error', '未成功');
+          setTaskStatus(t('tasks.failed_prefix') + (err.message || t('tasks.retry_hint')), 0);
+          setTaskBadge('error', t('tasks.failed_badge'));
         })
-        .finally(function () { button.disabled = false; button.textContent = '生成稿件'; });
+        .finally(function () { button.disabled = false; button.textContent = t('custom.submit'); });
     }
 
     var STAGE_LABELS = { queued: '获取音频', resolving: '获取音频', downloading: '获取音频', transcribing: '转写', refining: '整理', finalizing: '保存', done: '保存', success: '保存', error: '失败', cancelled: '已取消' };
@@ -1396,25 +2204,47 @@
       return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
     }
     function resolveTaskFailureMessage(task) {
-      if (!task) return '这次没有生成成功，请稍后再试。';
+      if (!task) return t('fail.default');
+      var stage = String(task.stage || '');
+      if (getLocale() === 'en') {
+        if (stage === 'downloading' || stage === 'queued' || stage === 'resolving') {
+          return t('fail.audio');
+        }
+        if (stage === 'transcribing') {
+          return t('fail.transcribe');
+        }
+        if (stage === 'refining') {
+          return t('fail.refine');
+        }
+        if (stage === 'finalizing') {
+          return t('fail.finalize');
+        }
+        if (task.status === 'cancelled') {
+          return t('fail.cancelled');
+        }
+        return t('fail.default');
+      }
       var msg = String(task.message || '').trim();
-      if (msg && !/^([a-z0-9_]+|error|\[object.*\])$/i.test(msg) && msg !== 'AI 整理暂时没有完成。') {
+      var isChinese = /[\u4e00-\u9fa5]/.test(msg);
+      if (msg && !/^([a-z0-9_]+|error|\[object.*\])$/i.test(msg) && (getLocale() !== 'en' || !isChinese)) {
         return msg;
       }
-      var stage = String(task.stage || '');
       if (stage === 'downloading' || stage === 'queued' || stage === 'resolving') {
-        return '无法获取音频，请稍后重试。';
+        return t('fail.audio');
       }
       if (stage === 'transcribing') {
-        return '这次没有完成转写，请重试。';
+        return t('fail.transcribe');
       }
       if (stage === 'refining') {
-        return '文字整理暂时没有完成，请重试。';
+        return t('fail.refine');
       }
       if (stage === 'finalizing') {
-        return '稿件保存失败，请重试。';
+        return t('fail.finalize');
       }
-      return '这次没有生成成功，请稍后再试。';
+      if (task.status === 'cancelled') {
+        return t('fail.cancelled');
+      }
+      return t('fail.default');
     }
 
     function renderTaskQueue() {
@@ -1435,11 +2265,11 @@
 
       if (runningCount > 0) {
         setHidden(triggerBtn, false);
-        if (triggerLabel) triggerLabel.textContent = '处理中 ' + runningCount;
+        if (triggerLabel) triggerLabel.textContent = t('tasks.processing_count', runningCount);
         if (triggerDot) triggerDot.style.display = '';
       } else if (attentionCount > 0) {
         setHidden(triggerBtn, false);
-        if (triggerLabel) triggerLabel.textContent = attentionCount + ' 个任务需要处理';
+        if (triggerLabel) triggerLabel.textContent = t('tasks.attention_count', attentionCount);
         if (triggerDot) triggerDot.style.display = 'none';
       } else {
         setHidden(triggerBtn, true);
@@ -1450,33 +2280,40 @@
         var task = _taskCards[id];
         var card = document.createElement('article'); card.className = 'task-queue-item'; card.style.setProperty('--item-index', index);
         var top = document.createElement('div'); top.className = 'task-topline';
-        var title = document.createElement('h2'); title.textContent = task.title || '稿件生成';
-        var badge = document.createElement('span'); badge.className = 'badge ' + (task.status === 'success' ? 'badge-success' : (task.status === 'failed' || task.status === 'cancelled') ? 'badge-error' : 'badge-accent'); badge.textContent = task.status === 'success' ? '已完成' : task.status === 'cancelled' ? '已取消' : task.status === 'failed' ? '生成失败' : task.progress + '%';
+        var title = document.createElement('h2'); title.textContent = task.title || t('tasks.default_title');
+        var badge = document.createElement('span'); badge.className = 'badge ' + (task.status === 'success' ? 'badge-success' : (task.status === 'failed' || task.status === 'cancelled') ? 'badge-error' : 'badge-accent'); badge.textContent = task.status === 'success' ? t('stage.success') : task.status === 'cancelled' ? t('stage.cancelled') : task.status === 'failed' ? t('stage.failed') : task.progress + '%';
         top.append(title, badge);
-        var meta = document.createElement('div'); meta.className = 'task-meta'; meta.innerHTML = '<span>正在' + escapeHtml(STAGE_LABELS[task.stage] || '处理') + '</span><span>' + task.progress + '%</span>';
+        var stageLabel = t('stage.' + (task.stage || 'queued'));
+        var meta = document.createElement('div'); meta.className = 'task-meta'; meta.innerHTML = '<span>' + escapeHtml(stageLabel) + '</span><span>' + task.progress + '%</span>';
         var status = document.createElement('h3'); status.className = 'task-stage'; status.setAttribute('aria-live', 'polite');
-        status.textContent = (task.status === 'failed' || task.status === 'cancelled') ? resolveTaskFailureMessage(task) : (task.message || ('正在' + (STAGE_LABELS[task.stage] || '处理') + '…'));
+        if (task.status === 'failed' || task.status === 'cancelled') {
+          status.textContent = resolveTaskFailureMessage(task);
+        } else if (getLocale() === 'en') {
+          status.textContent = stageLabel;
+        } else {
+          status.textContent = task.message || stageLabel;
+        }
         var progress = document.createElement('div'); progress.className = 'progress-bar'; progress.setAttribute('role', 'progressbar'); progress.setAttribute('aria-valuemin', '0'); progress.setAttribute('aria-valuemax', '100'); progress.setAttribute('aria-valuenow', String(task.progress));
         var inner = document.createElement('div'); inner.className = 'progress-inner'; inner.style.width = task.progress + '%'; progress.appendChild(inner);
         var steps = document.createElement('div'); steps.className = 'task-steps';
         var activeStep = Object.prototype.hasOwnProperty.call(STAGE_STEP_INDEX, task.stage) ? STAGE_STEP_INDEX[task.stage] : -1;
-        ['获取音频', '转写', '整理', '保存'].forEach(function (label, stepIndex) { var step = document.createElement('span'); step.textContent = label; step.className = stepIndex <= activeStep ? 'is-active' : ''; if (stepIndex < activeStep) { step.classList.add('is-done'); step.insertAdjacentHTML('afterbegin', uiIcon('check')); } steps.appendChild(step); });
+        [t('stage.step_audio'), t('stage.step_transcribe'), t('stage.step_refine'), t('stage.step_save')].forEach(function (label, stepIndex) { var step = document.createElement('span'); step.textContent = label; step.className = stepIndex <= activeStep ? 'is-active' : ''; if (stepIndex < activeStep) { step.classList.add('is-done'); step.insertAdjacentHTML('afterbegin', uiIcon('check')); } steps.appendChild(step); });
         card.append(top, meta, status, progress, steps);
         if (task.status === 'running' || task.status === 'pending') {
           var cancelBtn = document.createElement('button');
           cancelBtn.type = 'button';
           cancelBtn.className = 'task-cancel';
-          cancelBtn.textContent = '停止';
-          cancelBtn.setAttribute('aria-label', '停止「' + String(task.title || '稿件生成') + '」');
+          cancelBtn.textContent = t('tasks.cancel');
+          cancelBtn.setAttribute('aria-label', t('tasks.cancel_aria', String(task.title || t('tasks.default_title'))));
           cancelBtn.addEventListener('click', function () { cancelTask(id, cancelBtn); });
           card.appendChild(cancelBtn);
         } else if (task.status === 'failed' || task.status === 'cancelled') {
           var actions = document.createElement('div'); actions.className = 'task-actions';
           if (id !== 'local') {
-            var retryBtn = document.createElement('button'); retryBtn.type = 'button'; retryBtn.className = 'task-action task-action-primary'; retryBtn.textContent = '重试'; retryBtn.addEventListener('click', function () { retryTask(id, retryBtn); });
+            var retryBtn = document.createElement('button'); retryBtn.type = 'button'; retryBtn.className = 'task-action task-action-primary'; retryBtn.textContent = t('tasks.retry'); retryBtn.addEventListener('click', function () { retryTask(id, retryBtn); });
             actions.appendChild(retryBtn);
           }
-          var clearBtn = document.createElement('button'); clearBtn.type = 'button'; clearBtn.className = 'task-action'; clearBtn.textContent = '移除'; clearBtn.addEventListener('click', function () { clearTask(id, clearBtn); });
+          var clearBtn = document.createElement('button'); clearBtn.type = 'button'; clearBtn.className = 'task-action'; clearBtn.textContent = t('tasks.delete'); clearBtn.addEventListener('click', function () { clearTask(id, clearBtn); });
           actions.appendChild(clearBtn); card.appendChild(actions);
         }
         list.appendChild(card);
@@ -1486,50 +2323,50 @@
       var id = String(taskId || '');
       if (!id || !requireControl('tasks')) return;
       if (id === 'local') { delete _taskCards[id]; renderTaskQueue(); return; }
-      if (button) { button.disabled = true; button.textContent = '移除中…'; }
+      if (button) { button.disabled = true; button.textContent = t('tasks.deleting'); }
       fetch(safeTaskUrl(id, ''), { method: 'DELETE' })
         .then(readApiResponse)
-        .then(function () { delete _taskCards[id]; clearPolling(id); renderTaskQueue(); loadHistory(); addLog('记录已移除。', 'info'); })
-        .catch(function (error) { if (button) { button.disabled = false; button.textContent = '移除'; } addLog(errorMessage(error), 'warning'); });
+        .then(function () { delete _taskCards[id]; clearPolling(id); renderTaskQueue(); loadHistory(); addLog(t('tasks.dismissed'), 'info'); })
+        .catch(function (error) { if (button) { button.disabled = false; button.textContent = t('tasks.delete'); } addLog(errorMessage(error), 'warning'); });
     }
     function retryTask(taskId, button) {
       if (!requireControl('tasks')) return;
       var id = String(taskId || '');
       var oldTask = _taskCards[id];
       if (!id || !oldTask) return;
-      if (button) { button.disabled = true; button.textContent = '重试中…'; }
+      if (button) { button.disabled = true; button.textContent = t('tasks.retrying'); }
       fetch(safeTaskUrl(id, '/retry'), { method: 'POST' })
         .then(readApiResponse)
         .then(function (data) {
           delete _taskCards[id]; clearPolling(id);
           watchTask(data.task_id, oldTask.title);
-          loadHistory(); addLog('已重新开始生成。', 'info');
+          loadHistory(); addLog(t('tasks.restarted'), 'info');
         })
-        .catch(function (error) { if (button) { button.disabled = false; button.textContent = '重试'; } addLog(errorMessage(error), 'warning'); });
+        .catch(function (error) { if (button) { button.disabled = false; button.textContent = t('tasks.retry'); } addLog(errorMessage(error), 'warning'); });
     }
     function cancelTask(taskId, button) {
       var id = String(taskId || '');
       if (!id || !requireControl('tasks')) return;
-      if (button) { button.disabled = true; button.textContent = '取消中…'; }
+      if (button) { button.disabled = true; button.textContent = t('tasks.cancelling'); }
       fetch(safeTaskUrl(id, ''), { method: 'DELETE' })
         .then(readApiResponse)
         .then(function () {
-          addLog('已发送取消请求，正在停止任务…', 'info');
-          if (_taskCards[id]) { _taskCards[id].message = '正在取消…'; renderTaskQueue(); }
+          addLog(t('tasks.cancelling_msg'), 'info');
+          if (_taskCards[id]) { _taskCards[id].message = t('tasks.cancelling'); renderTaskQueue(); }
         })
         .catch(function (error) {
-          addLog(error && error.message ? error.message : '取消任务失败', 'warning');
-          if (button) { button.disabled = false; button.textContent = '取消任务'; }
+          addLog(error && error.message ? error.message : t('fail.default'), 'warning');
+          if (button) { button.disabled = false; button.textContent = t('tasks.cancel_task'); }
         });
     }
     function ensureTaskCard(taskId, title, podcastName) {
       var id = String(taskId || 'local');
-      if (!_taskCards[id]) _taskCards[id] = { stage: 'queued', progress: 0, status: 'running', startedAt: Date.now(), message: '正在获取音频…' };
+      if (!_taskCards[id]) _taskCards[id] = { stage: 'queued', progress: 0, status: 'running', startedAt: Date.now(), message: t('stage.queued') };
       var card = _taskCards[id];
       if (podcastName !== undefined && podcastName !== null && podcastName !== '') card.podcastName = String(podcastName).trim();
       if (title !== undefined && title !== null && title !== '') card.episodeTitle = String(title).trim();
-      card.title = card.episodeTitle || card.title || '稿件生成';
-      card.isCustomUpload = (card.podcastName === '本地音频' || card.podcastName === '自定义音频' || id === 'local');
+      card.title = card.episodeTitle || card.title || t('tasks.default_title');
+      card.isCustomUpload = (card.podcastName === '本地音频' || card.podcastName === '自定义音频' || card.podcastName === t('custom.local_audio') || card.podcastName === t('custom.custom_audio') || id === 'local');
       _taskStartedAt[id] = card.startedAt;
       return card;
     }
@@ -1543,8 +2380,10 @@
       card.progress = Math.max(0, Math.min(100, Number(task.progress_pct) || 0));
       if (card.status === 'failed' || card.status === 'cancelled') {
         card.message = resolveTaskFailureMessage(task);
+      } else if (getLocale() === 'en') {
+        card.message = t('stage.' + card.stage);
       } else {
-        card.message = String(task.message || ('正在' + (STAGE_LABELS[card.stage] || '处理') + '…'));
+        card.message = String(task.message || t('stage.' + card.stage));
       }
       card.startedAt = new Date(task.created_at || Date.now()).getTime();
       return card;
@@ -1556,7 +2395,7 @@
       if (succeeded) {
         task.stage = 'done';
         task.progress = 100;
-        task.message = details.message || '稿件已经准备好了。';
+        task.message = details.message || t('tasks.success_msg');
       } else {
         if (details.stage) task.stage = details.stage;
         task.progress = Math.max(task.progress || 0, Number(details.progress) || 0);
@@ -1569,20 +2408,20 @@
         byId('download-result-btn').href = safeTaskUrl(taskId, '/download');
         byId('read-result-btn').onclick = function () { openManuscript(taskId); };
         setHidden(byId('download-result-wrap'), false);
-        addLog('任务全流程处理成功', 'success');
+        addLog(t('tasks.success_log'), 'success');
       } else {
-        addLog(task.message || '任务处理失败', 'error');
+        addLog(task.message || t('tasks.failed_log'), 'error');
       }
       setPodcastDot(_currentTaskPodcastName || selectedPodcast, succeeded ? 'var(--success)' : 'var(--error)', false);
     }
     function handleTaskCancelled(taskId) {
       var task = ensureTaskCard(taskId);
       task.status = 'cancelled';
-      task.message = task.message || '任务已停止，可以稍后重试。';
+      task.message = task.message || t('fail.cancelled');
       clearPolling(String(taskId || ''));
       renderTaskQueue();
       loadHistory();
-      addLog('任务已取消', 'info');
+      addLog(t('tasks.cancelled_msg'), 'info');
       setPodcastDot(_currentTaskPodcastName || selectedPodcast, 'var(--error)', false);
     }
     function startPolling(taskId) {
@@ -1650,19 +2489,28 @@
         var matchesState = _libraryFilter === 'all' || (_libraryFilter === 'read' ? read : !read);
         return matchesQuery && matchesState;
       });
-      if (!visible.length && query) { list.innerHTML = '<div class="library-empty">' + uiIcon('book-open') + '<strong>没有找到匹配的稿件</strong><span>换个关键词试试。</span></div>'; return; }
-      if (!visible.length) { list.innerHTML = '<div class="library-empty">' + uiIcon('book-open') + '<strong>还没有可以阅读的稿件</strong><span>从订阅里选择一期，或导入一段音频。</span><div class="button-row"><button type="button" data-empty-mode="podcast">查看订阅</button><button type="button" data-empty-mode="custom">导入音频</button></div></div>'; list.querySelectorAll('[data-empty-mode]').forEach(function (button) { button.addEventListener('click', function () { switchMode(button.dataset.emptyMode); }); }); return; }
+      if (!visible.length && query) {
+        list.innerHTML = '<div class="library-empty">' + uiIcon('book-open') + '<strong>' + escapeHtml(t('library.empty_query')) + '</strong><span>' + escapeHtml(t('library.empty_query_hint')) + '</span></div>';
+        return;
+      }
+      if (!visible.length) {
+        list.innerHTML = '<div class="library-empty">' + uiIcon('book-open') + '<strong>' + escapeHtml(t('library.empty')) + '</strong><span>' + escapeHtml(t('library.empty_hint')) + '</span><div class="button-row"><button type="button" data-empty-mode="podcast">' + escapeHtml(t('library.view_subscriptions')) + '</button><button type="button" data-empty-mode="custom">' + escapeHtml(t('library.import_audio')) + '</button></div></div>';
+        list.querySelectorAll('[data-empty-mode]').forEach(function (button) { button.addEventListener('click', function () { switchMode(button.dataset.emptyMode); }); });
+        return;
+      }
       visible.forEach(function (article, index) {
         var taskId = String(article.task_id || article.id || '');
         var item = document.createElement('article'); item.className = 'library-item'; item.style.setProperty('--item-index', index);
         var copy = document.createElement('div');
-        var source = document.createElement('span'); source.className = 'library-source'; source.textContent = String(article.podcast_name || '导入音频');
-        var title = document.createElement('strong'); title.textContent = String(article.title || article.episode_title || '未命名稿件');
-        var meta = document.createElement('span'); meta.textContent = new Date(article.updated_at || article.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+        var source = document.createElement('span'); source.className = 'library-source'; source.textContent = String(article.podcast_name || t('custom.local_audio'));
+        var title = document.createElement('strong'); title.textContent = String(article.title || article.episode_title || t('episode.untitled'));
+        var meta = document.createElement('span'); meta.textContent = new Date(article.updated_at || article.created_at).toLocaleDateString(getLocale() === 'en' ? 'en-US' : 'zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
         copy.append(source, title, meta);
         var actions = document.createElement('div'); actions.className = 'library-actions';
-        var read = document.createElement('button'); read.type = 'button'; read.className = 'episode-action'; read.textContent = '阅读'; read.addEventListener('click', function () { openManuscript(taskId, null, article); });
-        var download = document.createElement('a'); download.className = 'download-btn'; download.href = articleUrl(taskId, '/download'); download.download = ''; download.innerHTML = uiIcon('download'); download.appendChild(document.createTextNode('下载'));
+        var read = document.createElement('button'); read.type = 'button'; read.className = 'episode-action'; read.textContent = t('library.read'); read.addEventListener('click', function () { openManuscript(taskId, null, article); });
+        var download = document.createElement('a'); download.className = 'download-btn'; download.href = articleUrl(taskId, '/download'); download.download = ''; download.innerHTML = uiIcon('download');
+        var dlText = document.createTextNode(t('library.download'));
+        download.appendChild(dlText);
         actions.append(read, download); item.append(copy, actions); list.appendChild(item);
       });
     }
@@ -1672,7 +2520,7 @@
       return fetch(browseApi('/articles?limit=200'))
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (data) { _libraryArticles = Array.isArray(data) ? data : []; renderLibrary(_libraryArticles); return _libraryArticles; })
-        .catch(function (error) { addLog('稿件加载失败：' + errorMessage(error), 'warning'); });
+        .catch(function (error) { addLog(t('library.load_failed') + errorMessage(error), 'warning'); });
     }
 
     var _toastState = {};
@@ -1686,7 +2534,7 @@
       var toast = document.createElement('div'); toast.className = 'toast toast-' + safeLevel; toast.setAttribute('role', safeLevel === 'error' ? 'alert' : 'status');
       var icon = document.createElement('span'); icon.className = 'toast-icon'; icon.innerHTML = uiIcon(safeLevel === 'success' ? 'check-circle' : (safeLevel === 'error' || safeLevel === 'warning') ? 'alert-circle' : 'info');
       var copy = document.createElement('span'); copy.className = 'toast-copy'; copy.textContent = text;
-      var close = document.createElement('button'); close.type = 'button'; close.className = 'toast-close'; close.setAttribute('aria-label', '关闭提示'); close.innerHTML = uiIcon('close');
+      var close = document.createElement('button'); close.type = 'button'; close.className = 'toast-close'; close.setAttribute('aria-label', t('toast.close')); close.innerHTML = uiIcon('close');
       close.addEventListener('click', function () { toast.remove(); delete _toastState[key]; }); toast.append(icon, copy, close); byId('toast-container').appendChild(toast);
       _toastState[key] = { node: toast, time: now, count: 1 };
       if (safeLevel === 'info' || safeLevel === 'running' || safeLevel === 'success') setTimeout(function () { if (toast.isConnected) toast.remove(); delete _toastState[key]; }, 4000);
@@ -1699,7 +2547,7 @@
       if (Object.prototype.hasOwnProperty.call(STAGE_LABELS, normalizedStage)) task.stage = normalizedStage;
       else if (!message) message = String(stage || '');
       task.progress = Math.max(0, Math.min(100, Number(progress) || 0));
-      task.message = message || (task.progress >= 100 ? '稿件已经准备好了。' : ('正在' + (STAGE_LABELS[task.stage] || '处理') + '…'));
+      task.message = message || (task.progress >= 100 ? t('tasks.success_msg') : t('stage.' + task.stage));
       renderTaskQueue();
       if (pageEpisodes.length) renderEpisodeList();
       if (selectedEpisode) renderEpisodeInspector(selectedEpisode);
@@ -1734,7 +2582,7 @@
       var seq = ++_drawerSearchSeq;
       var query = value.trim();
       if (!query) { byId('drawer-results').replaceChildren(); return; }
-      byId('drawer-results').textContent = /^https?:\/\//i.test(query) ? '正在识别订阅地址…' : '搜索中…';
+      byId('drawer-results').textContent = /^https?:\/\//i.test(query) ? t('drawer.identifying') : t('drawer.searching');
       // 200ms debounce：比原来的 420ms 明显更快给出结果，同时保留防抖语义。
       _drawerSearchTimer = setTimeout(function () {
         if (seq !== _drawerSearchSeq) return;
@@ -1746,10 +2594,10 @@
       var results = byId('drawer-results'); results.replaceChildren();
       var item = document.createElement('div'); item.className = 'search-result rss-candidate';
       var copy = document.createElement('span'); copy.style.minWidth = '0';
-      var name = document.createElement('span'); name.className = 'result-name'; name.textContent = 'RSS 订阅地址';
+      var name = document.createElement('span'); name.className = 'result-name'; name.textContent = t('drawer.rss_feed');
       var meta = document.createElement('span'); meta.className = 'result-meta'; meta.textContent = url;
       copy.append(name, meta);
-      var subscribe = document.createElement('button'); subscribe.type = 'button'; subscribe.className = 'solid-btn'; subscribe.textContent = '订阅';
+      var subscribe = document.createElement('button'); subscribe.type = 'button'; subscribe.className = 'solid-btn'; subscribe.textContent = t('drawer.subscribe');
       subscribe.addEventListener('click', function () { confirmAddPodcast('', url, '', subscribe); });
       item.append(copy, subscribe); results.appendChild(item);
     }
@@ -1767,43 +2615,68 @@
       if (!items.length) {
         var empty = document.createElement('div'); empty.className = 'empty-state'; empty.style.minHeight = '180px';
         var emptyIcon = document.createElement('span'); emptyIcon.className = 'empty-state-icon'; emptyIcon.innerHTML = uiIcon('search'); empty.appendChild(emptyIcon);
-        var message = document.createElement('div'); message.innerHTML = '<strong>没有找到匹配内容</strong><br><span>试试更短的关键词。</span>';
+        var message = document.createElement('div'); message.innerHTML = '<strong>' + escapeHtml(t('drawer.no_matches')) + '</strong><br><span>' + escapeHtml(t('drawer.no_matches_hint')) + '</span>';
         empty.appendChild(message); results.appendChild(empty); return;
       }
       items.forEach(function (podcast, index) {
         var item = document.createElement('div'); item.className = 'search-result'; item.style.setProperty('--item-index', index);
         var monogram = makeArtworkTile(artworkUrl(podcast.image), podcast.name, 'result-monogram');
         var copy = document.createElement('span'); copy.style.minWidth = '0';
-        var name = document.createElement('span'); name.className = 'result-name'; name.style.display = 'block'; name.textContent = String(podcast.name || '未命名播客');
-        var meta = document.createElement('span'); meta.className = 'result-meta'; meta.style.display = 'block'; meta.textContent = [podcast.artist, podcast.genre, podcast.track_count ? podcast.track_count + ' 集' : ''].filter(Boolean).join(' · ');
+        var name = document.createElement('span'); name.className = 'result-name'; name.style.display = 'block'; name.textContent = String(podcast.name || t('drawer.untitled_podcast'));
+        var meta = document.createElement('span'); meta.className = 'result-meta'; meta.style.display = 'block'; meta.textContent = [podcast.artist, podcast.genre, podcast.track_count ? podcast.track_count + t('drawer.episodes_count') : ''].filter(Boolean).join(' · ');
         copy.append(name, meta);
-        var subscribe = document.createElement('button'); subscribe.type = 'button'; subscribe.className = 'solid-btn'; subscribe.textContent = '订阅';
+        var subscribe = document.createElement('button'); subscribe.type = 'button'; subscribe.className = 'solid-btn'; subscribe.textContent = t('drawer.subscribe');
         subscribe.addEventListener('click', function () { confirmAddPodcast(String(podcast.name || ''), String(podcast.rss_url || ''), String(podcast.image || ''), subscribe); });
         item.append(monogram, copy, subscribe); results.appendChild(item);
       });
     }
     function confirmAddPodcast(name, rssUrl, image, sourceButton) {
       var cleanName = String(name || '').trim(); var cleanUrl = String(rssUrl || '').trim();
-      if (!cleanUrl) { addLog('请输入有效的 RSS 地址。', 'error'); return; }
+      if (!cleanUrl) { addLog(t('drawer.invalid_rss'), 'error'); return; }
       if (!requireControl('subscribe')) return;
       if (sourceButton) sourceButton.disabled = true;
-      addLog('正在添加订阅…', 'running');
+      addLog(t('drawer.subscribing'), 'running');
       fetch(appUrl('/api/control/subscriptions'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: cleanName, rss_url: cleanUrl, image: String(image || '') }) })
         .then(readApiResponse)
-        .then(function (data) { addLog('已订阅「' + String(data.name || cleanName || '新节目') + '」', 'success'); closeDrawer(); loadSubscriptions(); })
-        .catch(function (error) { addLog('添加失败：' + errorMessage(error), 'error'); })
+        .then(function (data) { addLog(t('drawer.subscribed_log', String(data.name || cleanName || t('drawer.new_podcast'))), 'success'); closeDrawer(); loadSubscriptions(); })
+        .catch(function (error) { addLog(t('drawer.add_failed') + errorMessage(error), 'error'); })
         .finally(function () { if (sourceButton) sourceButton.disabled = false; });
     }
 
     var _tocObserver = null;
+    var _lastReaderText = '';
+
     function updateReaderStats(rawText) {
-      var cleanText = String(rawText || '').replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n*/, '').replace(/\s+/g, '');
-      var count = cleanText.length;
-      var minutes = Math.max(1, Math.round(count / 750));
-      var countStr = count >= 10000 ? (count / 10000).toFixed(1) + ' 万字' : count + ' 字';
+      if (rawText !== undefined) _lastReaderText = rawText;
+      var textToUse = rawText !== undefined ? rawText : _lastReaderText;
+      var withoutFrontmatter = String(textToUse || '').replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n*/, '');
       var statsEl = byId('reader-meta-stats');
-      if (statsEl) {
-        statsEl.textContent = count ? (countStr + ' · 约 ' + minutes + ' 分钟') : '';
+      if (!statsEl) return;
+      var clean = withoutFrontmatter.trim();
+      if (!clean) { statsEl.textContent = ''; return; }
+
+      // 按稿件内容本身判定中文字符计数还是西文词数，而非按 UI 语言
+      var sample = clean.slice(0, 20000);
+      var cjkMatches = sample.match(/[\u4e00-\u9fa5\u3400-\u4dbf\uf900-\ufaff]/g);
+      var cjkCount = cjkMatches ? cjkMatches.length : 0;
+      var latinMatches = sample.match(/[a-zA-Z]/g);
+      var latinCount = latinMatches ? latinMatches.length : 0;
+      var isCJK = cjkCount >= 20 || (cjkCount > 0 && cjkCount >= latinCount * 0.1);
+
+      if (isCJK) {
+        var charCount = clean.replace(/\s+/g, '').length;
+        var minutes = Math.max(1, Math.round(charCount / 750));
+        var countStr = (getLocale() === 'en')
+          ? (charCount >= 1000 ? t('reader.characters_large', (charCount / 1000).toFixed(1)) : t('reader.characters', charCount))
+          : (charCount >= 10000 ? t('reader.characters_large', (charCount / 10000).toFixed(1)) : t('reader.characters', charCount));
+        statsEl.textContent = charCount ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
+      } else {
+        var words = clean.split(/\s+/).filter(Boolean).length;
+        var minutes = Math.max(1, Math.round(words / 220));
+        var countStr = words >= 1000
+          ? t('reader.word_count_large', (words / 1000).toFixed(1))
+          : t('reader.word_count', words);
+        statsEl.textContent = words ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       }
     }
 
@@ -1821,7 +2694,7 @@
       if (sheetProgressVal) sheetProgressVal.textContent = rounded + '%';
 
       var barProgressLabel = byId('reader-bar-progress-label');
-      if (barProgressLabel) barProgressLabel.textContent = '进度 ' + rounded + '%';
+      if (barProgressLabel) barProgressLabel.textContent = t('reader.progress_val', rounded);
 
       if (bounded >= 99.5 && _currentReadingRef && !isRead(_currentReadingRef)) {
         setRead(_currentReadingRef, true);
@@ -1874,7 +2747,7 @@
       var leadingWs = leadingWsMatch ? leadingWsMatch[0] : '';
       var content = body.slice(leadingWs.length);
 
-      var headingMatch = content.match(/^#{1,6}\s+(?:[📌⏱️🕒]\s*)?节目大纲与时间线\s*[:：]?[^\S\n]*(?:\n|$)/u);
+      var headingMatch = content.match(/^#{1,6}\s+(?:[📌⏱️🕒]\s*)?(?:节目大纲与时间线|(?:Episode\s+)?Outline\s*(?:&|and)\s*Timeline|Timeline\s*(?:&|and)\s*Outline)\s*[:：]?[^\S\n]*(?:\n|$)/iu);
       if (!headingMatch) return raw;
 
       var rest = content.slice(headingMatch[0].length);
@@ -2115,14 +2988,14 @@
       var source = task || article;
       _currentReadingRef = episode ? episodeReadRef(episode) : { episode_id: source && source.episode_id ? String(source.episode_id) : null, task_id: cleanId };
       var title = (task && task.episode_title) || (article && article.title) || '';
-      byId('reader-title').textContent = title ? String(title) : '阅读';
+      byId('reader-title').textContent = title ? String(title) : t('reader.title');
       byId('reader-download').href = articleUrl(cleanId, '/download');
       updateReaderReadState();
       
       var tocContainer = byId('reader-toc');
       setHidden(tocContainer, true);
       tocContainer.replaceChildren();
-      byId('manuscript-body').innerHTML = '<div class="reader-state reader-loading">正在展开稿纸</div>';
+      byId('manuscript-body').innerHTML = '<div class="reader-state reader-loading">' + escapeHtml(t('reader.loading')) + '</div>';
       
       var progressRange = byId('reader-progress-range');
       var progressValue = byId('reader-progress-value');
@@ -2158,7 +3031,7 @@
         .then(function (result) {
           if (result.title) byId('reader-title').textContent = String(result.title);
           if (!result.content) { 
-            byId('manuscript-body').innerHTML = '<div class="reader-state">稿件内容为空。</div>'; 
+            byId('manuscript-body').innerHTML = '<div class="reader-state">' + escapeHtml(t('reader.empty_content')) + '</div>'; 
             updateReaderStats('');
             return; 
           }
@@ -2174,12 +3047,12 @@
             var tocHead = document.createElement('div');
             tocHead.className = 'reader-sheet-head reader-toc-sheet-head';
             var tocTitle = document.createElement('h3');
-            tocTitle.textContent = '大纲目录';
+            tocTitle.textContent = t('reader.toc_label');
             tocHead.appendChild(tocTitle);
             var tocCloseBtn = document.createElement('button');
             tocCloseBtn.className = 'close-btn reader-sheet-close';
             tocCloseBtn.type = 'button';
-            tocCloseBtn.setAttribute('aria-label', '关闭目录');
+            tocCloseBtn.setAttribute('aria-label', t('reader.close_toc'));
             tocCloseBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
             tocCloseBtn.addEventListener('click', closeReaderSheets);
             tocHead.appendChild(tocCloseBtn);
@@ -2229,7 +3102,7 @@
           byId('manuscript-body').replaceChildren(); 
           var state = document.createElement('div'); 
           state.className = 'reader-state'; 
-          state.textContent = '稿件读取失败：' + errorMessage(error); 
+          state.textContent = t('reader.load_failed') + errorMessage(error); 
           byId('manuscript-body').appendChild(state); 
           updateReaderStats('');
         });
@@ -2245,7 +3118,7 @@
       section.className = 'concepts-section';
 
       var title = document.createElement('h3');
-      title.textContent = '关键概念';
+      title.textContent = t('concepts.title');
       section.appendChild(title);
 
       var body = document.createElement('div');
@@ -2268,13 +3141,15 @@
       body.replaceChildren();
       var loading = document.createElement('div');
       loading.className = 'concepts-empty';
-      loading.textContent = IS_MANAGE ? '正在抽取关键概念…' : '正在读取关键概念…';
+      loading.textContent = IS_MANAGE ? t('concepts.extracting') : t('concepts.reading');
       body.appendChild(loading);
 
       // 控制模式按需抽取（会调用模型并写缓存）；公开浏览只读取已缓存的结果。
+      var lang = getLocale() === 'en' ? 'en' : 'zh';
+      var suffix = lang === 'en' ? '/concepts?lang=en' : '/concepts';
       var request = IS_MANAGE
-        ? fetch(safeTaskUrl(taskId, '/concepts'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
-        : fetch(articleUrl(taskId, '/concepts'));
+        ? fetch(safeTaskUrl(taskId, suffix), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+        : fetch(articleUrl(taskId, suffix));
       request
         .then(function (response) {
           return response.text().then(function (raw) {
@@ -2296,7 +3171,7 @@
           if (!concepts.length) {
             var empty = document.createElement('div');
             empty.className = 'concepts-empty';
-            empty.textContent = '没有找到可链接到维基百科的概念。';
+            empty.textContent = t('concepts.empty');
             body.appendChild(empty);
             return;
           }
@@ -2342,12 +3217,12 @@
           }
           var failed = document.createElement('div');
           failed.className = 'concepts-empty';
-          failed.textContent = '抽取失败：' + errorMessage(error);
+          failed.textContent = t('concepts.failed') + errorMessage(error);
           body.appendChild(failed);
           var retry = document.createElement('button');
           retry.type = 'button';
           retry.className = 'concepts-load-btn';
-          retry.textContent = '重试';
+          retry.textContent = t('concepts.retry');
           retry.addEventListener('click', function () { loadConcepts(taskId, body); });
           body.appendChild(retry);
         });
@@ -2403,7 +3278,7 @@
       link.href = url;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
-      link.title = '维基百科';
+      link.title = t('concepts.wiki_title');
       link.textContent = match.nodeValue;
       match.parentNode.replaceChild(link, match);
     }
@@ -2627,12 +3502,35 @@
       else if (byId('episode-summary-drawer').classList.contains('is-open')) closeEpisodeSummary();
     });
 
+    function reloadReaderConcepts() {
+      if (!_currentReadingTaskId) return;
+      var tocContainer = byId('reader-toc');
+      if (!tocContainer) return;
+      var existingSection = tocContainer.querySelector('.concepts-section');
+      if (existingSection) existingSection.remove();
+      var root = byId('manuscript-body');
+      if (root) {
+        var inlineLinks = root.querySelectorAll('a.concept-inline-link');
+        inlineLinks.forEach(function (link) {
+          var textNode = document.createTextNode(link.textContent);
+          link.parentNode.replaceChild(textNode, link);
+        });
+        root.normalize();
+      }
+      renderConceptsSection(_currentReadingTaskId, tocContainer);
+      setHidden(tocContainer, false);
+    }
+
+    byId('lang-toggle-btn').addEventListener('click', toggleLocale);
+    byId('reader-lang-toggle-btn').addEventListener('click', toggleLocale);
+
     // 两种模式进入同一个工作区。
     switchMode('podcast');
 
     // ── 个人配置面板（服务商地址、模型、密钥与文件位置）────────
     var _settingsEntries = [];
     var _settingsBusy = false;
+    var _lastSettingsData = null;
 
     // ── 外观（应用主题：浅色 / 深色 / 自动）────────────────
     var _appearanceMedia = null;
@@ -2655,29 +3553,73 @@
       else if (_appearanceMedia.addListener) _appearanceMedia.addListener(handler);
     }
 
+    function buildLanguageGroup() {
+      var section = document.createElement('section');
+      section.className = 'settings-group';
+      var head = document.createElement('div');
+      head.className = 'settings-group-head';
+      var title = document.createElement('h3');
+      title.textContent = t('settings.lang');
+      head.appendChild(title);
+      section.appendChild(head);
+      var desc = document.createElement('p');
+      desc.className = 'settings-group-desc';
+      desc.textContent = t('settings.lang_desc');
+      section.appendChild(desc);
+
+      var segmented = document.createElement('div');
+      segmented.className = 'appearance-segmented';
+      segmented.setAttribute('role', 'group');
+      segmented.setAttribute('aria-label', t('settings.lang'));
+      var current = getLocale();
+      [
+        { value: 'zh', label: '中文' },
+        { value: 'en', label: 'English' }
+      ].forEach(function (option) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'appearance-btn' + (current === option.value ? ' active' : '');
+        btn.dataset.langValue = option.value;
+        btn.setAttribute('aria-pressed', current === option.value ? 'true' : 'false');
+        btn.textContent = option.label;
+        btn.addEventListener('click', function () {
+          setLocale(option.value, true);
+          segmented.querySelectorAll('.appearance-btn').forEach(function (b) {
+            var active = b.dataset.langValue === option.value;
+            b.classList.toggle('active', active);
+            b.setAttribute('aria-pressed', active ? 'true' : 'false');
+          });
+          loadSettings();
+        });
+        segmented.appendChild(btn);
+      });
+      section.appendChild(segmented);
+      return section;
+    }
+
     function buildAppearanceGroup() {
       var section = document.createElement('section');
       section.className = 'settings-group';
       var head = document.createElement('div');
       head.className = 'settings-group-head';
       var title = document.createElement('h3');
-      title.textContent = '外观';
+      title.textContent = t('appearance.theme');
       head.appendChild(title);
       section.appendChild(head);
       var desc = document.createElement('p');
       desc.className = 'settings-group-desc';
-      desc.textContent = '选择界面外观；「自动」跟随系统深浅色。';
+      desc.textContent = t('appearance.desc');
       section.appendChild(desc);
 
       var segmented = document.createElement('div');
       segmented.className = 'appearance-segmented';
       segmented.setAttribute('role', 'group');
-      segmented.setAttribute('aria-label', '应用外观');
+      segmented.setAttribute('aria-label', t('appearance.group'));
       var stored = _cloudPrefs.app_theme || 'auto';
       [
-        { value: 'light', label: '浅色', icon: 'sun' },
-        { value: 'dark', label: '深色', icon: 'moon' },
-        { value: 'auto', label: '自动', icon: 'auto' }
+        { value: 'light', label: t('appearance.light'), icon: 'sun' },
+        { value: 'dark', label: t('appearance.dark'), icon: 'moon' },
+        { value: 'auto', label: t('appearance.auto'), icon: 'auto' }
       ].forEach(function (option) {
         var btn = document.createElement('button');
         btn.type = 'button';
@@ -2736,41 +3678,51 @@
       body.replaceChildren();
       var state = document.createElement('p');
       state.className = 'settings-state';
-      state.textContent = '正在读取配置…';
+      state.textContent = t('settings.loading');
       body.appendChild(state);
       fetch(appUrl('/api/control/settings'))
         .then(readApiResponse)
-        .then(function (data) { renderSettings(data); })
-        .catch(function (error) { state.textContent = '配置读取失败：' + errorMessage(error); });
+        .then(function (data) {
+          _lastSettingsData = data;
+          renderSettings(data);
+        })
+        .catch(function (error) { state.textContent = t('settings.read_failed') + errorMessage(error); });
     }
 
     function buildSettingsField(field) {
       var wrap = document.createElement('div');
       wrap.className = 'settings-field';
-      var inputId = 'setting-' + String(field.key || '').replace(/[^a-zA-Z0-9]+/g, '-');
+      var fieldKey = String(field.key || '');
+      var inputId = 'setting-' + fieldKey.replace(/[^a-zA-Z0-9]+/g, '-');
       var isSecret = field.type === 'secret';
+
+      var labelKey = 'setting.' + fieldKey + '.label';
+      var phKey = 'setting.' + fieldKey + '.placeholder';
+      var hintKey = 'setting.' + fieldKey + '.hint';
 
       var label = document.createElement('label');
       label.className = 'form-label';
       label.setAttribute('for', inputId);
       var labelText = document.createElement('span');
-      labelText.textContent = String(field.label || field.key || '');
+      var localizedLabel = t(labelKey);
+      labelText.textContent = localizedLabel !== labelKey ? localizedLabel : String(field.label || fieldKey || '');
       label.appendChild(labelText);
       if (isSecret) {
         var badge = document.createElement('span');
         badge.className = 'settings-badge' + (field.configured ? ' is-set' : '');
-        badge.textContent = field.configured ? '已配置' : '未配置';
+        badge.textContent = field.configured ? t('settings.configured') : t('settings.not_configured');
         label.appendChild(badge);
       }
       wrap.appendChild(label);
 
-      var entry = { key: String(field.key || ''), type: field.type, locked: !!field.locked || isSecret };
+      var entry = { key: fieldKey, type: field.type, locked: !!field.locked || isSecret };
 
       if (isSecret) {
         // 不可编辑项不展示输入框。
         var hintP = document.createElement('p');
         hintP.className = 'settings-field-hint settings-field-locked';
-        hintP.textContent = String(field.hint || '此项不能在这里修改');
+        var secretHint = t(hintKey);
+        hintP.textContent = secretHint !== hintKey ? secretHint : String(field.hint || t('settings.not_editable'));
         wrap.appendChild(hintP);
         _settingsEntries.push(entry);
         return wrap;
@@ -2782,7 +3734,9 @@
         (field.options || []).forEach(function (option) {
           var node = document.createElement('option');
           node.value = String(option.value == null ? '' : option.value);
-          node.textContent = String(option.label || option.value || '');
+          var optKey = 'setting.' + fieldKey + '.option.' + option.value;
+          var localizedOpt = t(optKey);
+          node.textContent = localizedOpt !== optKey ? localizedOpt : String(option.label || option.value || '');
           control.appendChild(node);
         });
         control.value = String(field.value == null ? '' : field.value);
@@ -2791,7 +3745,8 @@
         control.type = 'text';
         control.autocomplete = 'off';
         control.spellcheck = false;
-        control.placeholder = String(field.placeholder || '');
+        var localizedPh = t(phKey);
+        control.placeholder = localizedPh !== phKey ? localizedPh : String(field.placeholder || '');
         control.value = String(field.value == null ? '' : field.value);
       }
       control.className = 'form-input';
@@ -2803,8 +3758,17 @@
       wrap.appendChild(control);
 
       var hints = [];
-      if (field.locked && field.locked_reason) hints.push(String(field.locked_reason));
-      if (field.hint) hints.push(String(field.hint));
+      if (field.locked && field.locked_reason) {
+        var lockedKey = 'setting.' + fieldKey + '.locked';
+        var localizedLocked = t(lockedKey);
+        hints.push(localizedLocked !== lockedKey ? localizedLocked : String(field.locked_reason));
+      }
+      var localizedHint = t(hintKey);
+      if (localizedHint !== hintKey) {
+        hints.push(localizedHint);
+      } else if (field.hint) {
+        hints.push(String(field.hint));
+      }
       if (hints.length) {
         var hint = document.createElement('p');
         hint.className = 'settings-field-hint' + (field.locked ? ' settings-field-locked' : '');
@@ -2820,12 +3784,14 @@
       var body = byId('settings-body');
       body.replaceChildren();
       _settingsEntries = [];
+      _lastSettingsData = data;
+      body.appendChild(buildLanguageGroup());
       body.appendChild(buildAppearanceGroup());
       var groups = data && Array.isArray(data.groups) ? data.groups : [];
       if (!groups.length) {
         var empty = document.createElement('p');
         empty.className = 'settings-state';
-        empty.textContent = '没有可编辑的配置项。';
+        empty.textContent = t('settings.empty');
         body.appendChild(empty);
         return;
       }
@@ -2834,18 +3800,18 @@
       if (refiner) {
         var section = document.createElement('section'); section.className = 'settings-group';
         var head = document.createElement('div'); head.className = 'settings-group-head';
-        var title = document.createElement('h3'); title.textContent = '文字整理'; head.appendChild(title);
-        var testBtn = document.createElement('button'); testBtn.type = 'button'; testBtn.className = 'ghost-btn settings-test-btn'; testBtn.textContent = '测试'; testBtn.addEventListener('click', function () { testSettings('refiner', testBtn); }); head.appendChild(testBtn);
+        var title = document.createElement('h3'); title.textContent = t('settings.refinement'); head.appendChild(title);
+        var testBtn = document.createElement('button'); testBtn.type = 'button'; testBtn.className = 'ghost-btn settings-test-btn'; testBtn.textContent = t('settings.test'); testBtn.addEventListener('click', function () { testSettings('refiner', testBtn); }); head.appendChild(testBtn);
         section.appendChild(head);
         var fields = refiner.fields || [];
         fields.filter(function (field) { return field.key === 'refiner.model'; }).forEach(function (field) { section.appendChild(buildSettingsField(field)); });
         body.appendChild(section);
         var advanced = document.createElement('details'); advanced.className = 'settings-group settings-advanced';
-        var summary = document.createElement('summary'); summary.textContent = '高级设置'; advanced.appendChild(summary);
+        var summary = document.createElement('summary'); summary.textContent = t('settings.advanced'); advanced.appendChild(summary);
         fields.filter(function (field) { return field.key !== 'refiner.model'; }).forEach(function (field) { advanced.appendChild(buildSettingsField(field)); });
         if (quality) {
           (quality.fields || []).forEach(function (field) { advanced.appendChild(buildSettingsField(field)); });
-          var hint = document.createElement('p'); hint.className = 'settings-group-desc'; hint.textContent = '成稿明显过短时不会发布。'; advanced.appendChild(hint);
+          var hint = document.createElement('p'); hint.className = 'settings-group-desc'; hint.textContent = t('settings.quality_hint'); advanced.appendChild(hint);
         }
         body.appendChild(advanced);
       }
@@ -2869,7 +3835,7 @@
       var saveBtn = byId('settings-save-btn');
       _settingsBusy = true;
       saveBtn.disabled = true;
-      saveBtn.textContent = '保存中…';
+      saveBtn.textContent = t('settings.saving');
       fetch(appUrl('/api/control/settings'), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -2878,12 +3844,12 @@
         .then(readApiResponse)
         .then(function (data) {
           renderSettings(data);
-          addLog('设置已保存。', 'success');
+          addLog(t('settings.saved'), 'success');
         })
-        .catch(function (error) { addLog('保存失败：' + errorMessage(error), 'error'); })
+        .catch(function (error) { addLog(t('settings.save_failed') + errorMessage(error), 'error'); })
         .then(function () {
           _settingsBusy = false;
-          saveBtn.textContent = '保存';
+          saveBtn.textContent = t('settings.save');
           saveBtn.disabled = false;
         });
     }
@@ -2891,15 +3857,15 @@
     function testSettings(target, button) {
       var original = button.textContent;
       button.disabled = true;
-      button.textContent = '测试中…';
+      button.textContent = t('settings.testing');
       fetch(appUrl('/api/control/settings/test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ target: target })
       })
         .then(readApiResponse)
-        .then(function (data) { addLog((data && data.detail) || '连接正常。', 'success'); })
-        .catch(function (error) { addLog('测试失败：' + errorMessage(error), 'error'); })
+        .then(function (data) { addLog((data && data.detail) || t('settings.test_success'), 'success'); })
+        .catch(function (error) { addLog(t('settings.test_failed') + errorMessage(error), 'error'); })
         .then(function () { button.disabled = false; button.textContent = original; });
     }
 
@@ -2921,9 +3887,9 @@
       });
       var summary = byId('public-theme-btn');
       if (summary) {
-        var labels = { auto: '自动', light: '浅色', dark: '深色' };
-        summary.title = '外观：' + (labels[stored] || '自动');
-        summary.setAttribute('aria-label', '选择外观，当前' + (labels[stored] || '自动'));
+        var themeLabel = t('appearance.' + stored) || t('appearance.auto');
+        summary.title = t('appearance.summary_title', themeLabel);
+        summary.setAttribute('aria-label', t('appearance.summary_aria', themeLabel));
       }
     }
 
@@ -2964,6 +3930,7 @@
 
     watchSystemTheme();
     initSettings();
+    applyLocale(getLocale());
     loadCloudPreferences();
     // 订阅、单集快照与稿件在两种模式下都可浏览（browseApi 决定走 public 还是 control）。
     var subscriptionsReady = loadSubscriptions();

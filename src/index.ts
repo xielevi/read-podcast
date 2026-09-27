@@ -67,7 +67,10 @@ async function routePublic(path: string, url: URL, env: Env): Promise<Response> 
   const match = path.match(/^\/api\/public\/articles\/([0-9a-f-]+)\/(content|download|concepts)$/i);
   if (match?.[2] === "content") return publicArticleContent(match[1], url, env);
   if (match?.[2] === "download") return publicArticleDownload(match[1], url, env);
-  if (match?.[2] === "concepts") return publicArticleConcepts(match[1], env);
+  if (match?.[2] === "concepts") {
+    const lang = url.searchParams.get("lang") === "en" ? "en" : "zh";
+    return publicArticleConcepts(match[1], env, lang);
+  }
   return error(404, "not_found", "API route not found");
 }
 
@@ -135,7 +138,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   const downloadMatch = path.match(/^\/api\/control\/tasks\/([0-9a-f-]+)\/download$/i);
   if (downloadMatch && method === "GET") return taskDownload(downloadMatch[1], env);
   const conceptsMatch = path.match(/^\/api\/control\/tasks\/([0-9a-f-]+)\/concepts$/i);
-  if (conceptsMatch && method === "POST") return taskConcepts(conceptsMatch[1], env);
+  if (conceptsMatch && method === "POST") {
+    const lang = url.searchParams.get("lang") === "en" ? "en" : "zh";
+    return taskConcepts(conceptsMatch[1], env, lang);
+  }
   const taskMatch = path.match(/^\/api\/control\/tasks\/([0-9a-f-]+)$/i);
   if (taskMatch && method === "GET") return getTask(taskMatch[1], env);
   if (taskMatch && method === "DELETE") return cancelOrDeleteTask(taskMatch[1], env, ctx);

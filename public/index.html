@@ -18,6 +18,19 @@
       document.documentElement.dataset.appTheme = dark ? 'dark' : 'light';
       var meta = document.querySelector('meta[name="color-scheme"]');
       if (meta) meta.setAttribute('content', dark ? 'dark' : 'light');
+
+      var loc = 'zh';
+      try {
+        var savedLoc = localStorage.getItem('app_locale');
+        if (savedLoc === 'zh' || savedLoc === 'en') {
+          loc = savedLoc;
+        } else {
+          var navLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
+          loc = navLang.startsWith('zh') ? 'zh' : 'en';
+        }
+      } catch (ignore) {}
+      document.documentElement.lang = loc === 'zh' ? 'zh-CN' : 'en';
+      document.documentElement.dataset.locale = loc;
     }());
   </script>
   <script>
@@ -36,7 +49,7 @@
   </script>
 </head>
 <body data-mode="podcast">
-  <a class="skip-link" href="#episode-list">跳到单集列表</a>
+  <a class="skip-link" href="#episode-list" data-i18n="skip.link">跳到单集列表</a>
 
   <div class="app-shell">
     <header class="masthead">
@@ -44,88 +57,89 @@
         <div class="logo-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg></div>
         <div class="brand-copy">
           <h1>Read Podcast</h1>
-          <span class="brand-kicker">让播客，从声音变成阅读</span>
+          <span class="brand-kicker" data-i18n="brand.kicker">让播客，从声音变成阅读</span>
         </div>
       </div>
       <div class="mast-actions">
+        <button class="ghost-btn lang-toggle-btn" id="lang-toggle-btn" type="button" aria-label="切换语言" title="切换语言" data-i18n-aria-label="lang.toggle_label" data-i18n-title="lang.toggle_label">中 / EN</button>
         <details class="public-theme-menu public-only" id="public-theme-menu">
-          <summary class="ghost-btn public-theme-summary" id="public-theme-btn" aria-label="选择外观">外观</summary>
-          <div class="public-theme-popover" role="group" aria-label="应用外观">
-            <button type="button" data-public-theme="auto" aria-pressed="false">自动</button>
-            <button type="button" data-public-theme="light" aria-pressed="false">浅色</button>
-            <button type="button" data-public-theme="dark" aria-pressed="false">深色</button>
+          <summary class="ghost-btn public-theme-summary" id="public-theme-btn" aria-label="选择外观" data-i18n="appearance.theme" data-i18n-aria-label="appearance.choose">外观</summary>
+          <div class="public-theme-popover" role="group" aria-label="应用外观" data-i18n-aria-label="appearance.group">
+            <button type="button" data-public-theme="auto" aria-pressed="false" data-i18n="appearance.auto">自动</button>
+            <button type="button" data-public-theme="light" aria-pressed="false" data-i18n="appearance.light">浅色</button>
+            <button type="button" data-public-theme="dark" aria-pressed="false" data-i18n="appearance.dark">深色</button>
           </div>
         </details>
-        <a class="ghost-btn manage-link public-only" id="manage-link" href="/manage">登录管理</a>
-        <button class="task-trigger owner-state-only" id="task-panel-btn" type="button" hidden aria-haspopup="dialog"><span class="task-trigger-dot" aria-hidden="true"></span><span id="task-trigger-label">处理中 0</span></button>
-        <button class="icon-btn" id="settings-btn" type="button" title="设置" aria-label="打开设置" aria-haspopup="dialog"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h8M16 8h4M4 16h4M12 16h8"/><circle cx="14" cy="8" r="2.4"/><circle cx="10" cy="16" r="2.4"/></svg></button>
+        <a data-i18n="masthead.manage" class="ghost-btn manage-link public-only" id="manage-link" href="/manage">登录管理</a>
+        <button class="task-trigger owner-state-only" id="task-panel-btn" type="button" hidden aria-haspopup="dialog" aria-label="任务" data-i18n-aria-label="tasks.title"><span class="task-trigger-dot" aria-hidden="true"></span><span id="task-trigger-label" data-i18n="tasks.processing_default">处理中 0</span></button>
+        <button class="icon-btn" id="settings-btn" type="button" title="设置" aria-label="打开设置" aria-haspopup="dialog" data-i18n-title="masthead.settings" data-i18n-aria-label="masthead.settings_open"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h8M16 8h4M4 16h4M12 16h8"/><circle cx="14" cy="8" r="2.4"/><circle cx="10" cy="16" r="2.4"/></svg></button>
       </div>
     </header>
 
     <main class="workspace">
-      <aside class="left-rail" aria-label="主导航">
-        <div class="nav-tabs" role="tablist" aria-label="工作区">
-          <button class="nav-tab active" id="tab-podcast" type="button" role="tab" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5.5a13.5 13.5 0 0 1 13.5 13.5"/><path d="M5 11.5a7.5 7.5 0 0 1 7.5 7.5"/><circle cx="5.8" cy="18.2" r="1.4" fill="currentColor" stroke="none"/></svg>订阅</button>
-          <button class="nav-tab" id="tab-custom" type="button" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5"/><path d="M4 16.5v1.8A2.7 2.7 0 0 0 6.7 21h10.6a2.7 2.7 0 0 0 2.7-2.7v-1.8"/></svg>导入</button>
-          <button class="nav-tab" id="tab-library" type="button" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5C10.5 5 8 4.5 4.5 4.5v13C8 17.5 10.5 18 12 19.5c1.5-1.5 4-2 7.5-2v-13C16 4.5 13.5 5 12 6.5z"/><path d="M12 6.5v13"/></svg>稿件</button>
+      <aside class="left-rail" aria-label="主导航" data-i18n-aria-label="nav.aria_label">
+        <div class="nav-tabs" role="tablist" aria-label="工作区" data-i18n-aria-label="nav.workspace">
+          <button class="nav-tab active" id="tab-podcast" type="button" role="tab" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5.5a13.5 13.5 0 0 1 13.5 13.5"/><path d="M5 11.5a7.5 7.5 0 0 1 7.5 7.5"/><circle cx="5.8" cy="18.2" r="1.4" fill="currentColor" stroke="none"/></svg><span data-i18n="nav.podcast">订阅</span></button>
+          <button class="nav-tab" id="tab-custom" type="button" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5"/><path d="M4 16.5v1.8A2.7 2.7 0 0 0 6.7 21h10.6a2.7 2.7 0 0 0 2.7-2.7v-1.8"/></svg><span data-i18n="nav.custom">导入</span></button>
+          <button class="nav-tab" id="tab-library" type="button" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5C10.5 5 8 4.5 4.5 4.5v13C8 17.5 10.5 18 12 19.5c1.5-1.5 4-2 7.5-2v-13C16 4.5 13.5 5 12 6.5z"/><path d="M12 6.5v13"/></svg><span data-i18n="nav.library">稿件</span></button>
         </div>
         <div class="podcast-scroll">
           <div id="podcast-list"></div>
-          <button class="btn-add" id="add-podcast-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>添加订阅</button>
+          <button class="btn-add" id="add-podcast-btn" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span data-i18n="nav.add_podcast">添加订阅</span></button>
         </div>
       </aside>
 
       <section class="content" id="main-content">
         <div class="mode-panel is-active" id="podcast-panel" role="tabpanel">
-          <section class="cover-collage" id="cover-collage" aria-label="订阅封面合集" hidden>
+          <section class="cover-collage" id="cover-collage" aria-label="订阅封面合集" data-i18n-aria-label="cover.aria_label" hidden>
             <div class="cover-strip" id="cover-strip"></div>
             <div class="cover-caption">
-              <span class="cover-kicker">播客电子杂志</span>
+              <span class="cover-kicker" data-i18n="cover.kicker">播客电子杂志</span>
               <strong id="cover-edition"></strong>
             </div>
           </section>
           <div class="content-head">
             <div class="headline-group">
-              <span class="overline" id="center-sub">最新单集</span>
-              <h2 id="center-title">全部订阅</h2>
+              <span class="overline" id="center-sub" data-i18n="content.latest_episodes">最新单集</span>
+              <h2 id="center-title" data-i18n="content.all_subscriptions">全部订阅</h2>
             </div>
             <div class="head-actions">
               <label class="search" for="episode-search">
-                <span class="visually-hidden">搜索单集</span>
+                <span class="visually-hidden" data-i18n="content.search_placeholder">搜索单集标题</span>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M15.8 15.8 21 21"/></svg>
-                <input id="episode-search" type="search" placeholder="搜索单集标题" disabled>
+                <input id="episode-search" type="search" placeholder="搜索单集标题" data-i18n-placeholder="content.search_placeholder" disabled>
               </label>
-              <button class="icon-btn" id="refresh-btn" type="button" title="刷新单集" aria-label="刷新单集" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3L19.5 9"/><path d="M19.5 4.5V9H15"/></svg></button>
+              <button class="icon-btn" id="refresh-btn" type="button" title="刷新单集" aria-label="刷新单集" data-i18n-title="content.refresh" data-i18n-aria-label="content.refresh" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3L19.5 9"/><path d="M19.5 4.5V9H15"/></svg></button>
             </div>
           </div>
-          <div class="story-filter owner-state-only" role="tablist" aria-label="阅读状态过滤">
-            <button class="active" id="filter-all" type="button" role="tab" aria-selected="true" aria-controls="episode-list">全部 <span class="filter-count" id="filter-all-count">0</span></button>
-            <button id="filter-readable" type="button" role="tab" aria-selected="false" aria-controls="episode-list">待读 <span class="filter-count" id="filter-readable-count">0</span></button>
-            <button id="filter-unread" type="button" role="tab" aria-selected="false" aria-controls="episode-list">未生成 <span class="filter-count" id="filter-unread-count">0</span></button>
-            <button id="filter-read" type="button" role="tab" aria-selected="false" aria-controls="episode-list">已读 <span class="filter-count" id="filter-read-count">0</span></button>
+          <div class="story-filter owner-state-only" role="tablist" aria-label="阅读状态过滤" data-i18n-aria-label="filter.label">
+            <button class="active" id="filter-all" type="button" role="tab" aria-selected="true" aria-controls="episode-list"><span data-i18n="filter.all">全部</span> <span class="filter-count" id="filter-all-count">0</span></button>
+            <button id="filter-readable" type="button" role="tab" aria-selected="false" aria-controls="episode-list"><span data-i18n="filter.readable">待读</span> <span class="filter-count" id="filter-readable-count">0</span></button>
+            <button id="filter-unread" type="button" role="tab" aria-selected="false" aria-controls="episode-list"><span data-i18n="filter.unread">未生成</span> <span class="filter-count" id="filter-unread-count">0</span></button>
+            <button id="filter-read" type="button" role="tab" aria-selected="false" aria-controls="episode-list"><span data-i18n="filter.read">已读</span> <span class="filter-count" id="filter-read-count">0</span></button>
           </div>
-          <div class="empty-state" id="episode-empty"><div><h3>还没有订阅</h3><p>添加一档播客，最新单集会自动出现在这里。</p><button class="solid-btn" type="button" onclick="document.getElementById('add-podcast-btn').click()">添加订阅</button></div></div>
+          <div class="empty-state" id="episode-empty"><div><h3 data-i18n="empty.no_subscriptions">还没有订阅</h3><p data-i18n="empty.no_subscriptions_desc">添加一档播客，最新单集会自动出现在这里。</p><button class="solid-btn" type="button" onclick="document.getElementById('add-podcast-btn').click()" data-i18n="nav.add_podcast">添加订阅</button></div></div>
           <div class="episode-list" id="episode-list" hidden></div>
-          <nav class="pagination" id="episode-pagination" aria-label="单集分页" hidden>
-            <button id="page-prev" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg>上一页</button>
-            <span id="page-label" aria-live="polite">第 1 页</span>
-            <button id="page-next" type="button">下一页<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
+          <nav class="pagination" id="episode-pagination" aria-label="单集分页" data-i18n-aria-label="pagination.aria_label" hidden>
+            <button id="page-prev" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg><span data-i18n="pagination.prev">上一页</span></button>
+            <span id="page-label" aria-live="polite" data-i18n="pagination.initial_page">第 1 页</span>
+            <button id="page-next" type="button"><span data-i18n="pagination.next">下一页</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
           </nav>
         </div>
 
         <div class="mode-panel" id="custom-panel" role="tabpanel">
           <div class="content-head">
             <div class="headline-group">
-              <h2>导入音频</h2>
-              <p>把录音、访谈或其他音频整理成可以阅读的稿件。</p>
+              <h2 data-i18n="custom.title">导入音频</h2>
+              <p data-i18n="custom.desc">把录音、访谈或其他音频整理成可以阅读的稿件。</p>
             </div>
           </div>
           <div class="custom-form">
             <div class="form-block">
-              <label class="form-label">音频文件 <span class="hint">支持常见音频格式，单个文件最大 200 MiB</span></label>
-              <div class="upload-zone" id="upload-drop-zone" role="button" tabindex="0" aria-label="点击或拖拽上传音频">
+              <label class="form-label"><span data-i18n="custom.audio_file">音频文件</span> <span class="hint" data-i18n="custom.audio_hint">支持常见音频格式，单个文件最大 200 MiB</span></label>
+              <div class="upload-zone" id="upload-drop-zone" role="button" tabindex="0" aria-label="点击或拖拽上传音频" data-i18n-aria-label="custom.drop_hint">
                 <input type="file" id="audio-file-input" accept=".mp3,.m4a,.wav,.flac,.ogg,.aac,.opus,.wma" hidden>
-                <div class="upload-hint" id="upload-hint"><span class="upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5"/><path d="M4 16.5v1.8A2.7 2.7 0 0 0 6.7 21h10.6a2.7 2.7 0 0 0 2.7-2.7v-1.8"/></svg></span><strong>选择音频文件</strong><span>也可以拖到这里</span></div>
+                <div class="upload-hint" id="upload-hint"><span class="upload-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V5M7.5 9.5 12 5l4.5 4.5"/><path d="M4 16.5v1.8A2.7 2.7 0 0 0 6.7 21h10.6a2.7 2.7 0 0 0 2.7-2.7v-1.8"/></svg></span><strong data-i18n="custom.choose_audio">选择音频文件</strong><span data-i18n="custom.drop_or_drag">也可以拖到这里</span></div>
                 <div id="upload-progress-wrap" hidden>
                   <div class="progress-bar"><div class="progress-inner" id="upload-progress-inner"></div></div>
                   <div class="upload-hint" id="upload-status"></div>
@@ -135,22 +149,22 @@
             </div>
 
             <div class="form-block">
-              <label class="form-label" for="prompt-template-select">稿件风格</label>
-              <select class="form-input" id="prompt-template-select"><option value="">标准整理</option></select>
+              <label class="form-label" for="prompt-template-select" data-i18n="custom.prompt_template">稿件风格</label>
+              <select class="form-input" id="prompt-template-select"><option value="" data-i18n="custom.template_standard">标准整理</option></select>
             </div>
 
             <details class="form-block advanced-prompt">
-              <summary>高级说明</summary>
+              <summary data-i18n="custom.advanced">高级说明</summary>
               <div class="prompt-head">
-                <label class="form-label" for="custom-prompt">补充整理要求</label>
+                <label class="form-label" for="custom-prompt" data-i18n="custom.prompt">补充整理要求</label>
               </div>
-              <textarea class="form-textarea" id="custom-prompt" rows="5" placeholder="例如：保留问答结构，统一人名写法。"></textarea>
+              <textarea class="form-textarea" id="custom-prompt" rows="5" placeholder="例如：保留问答结构，统一人名写法。" data-i18n-placeholder="custom.prompt_placeholder"></textarea>
             </details>
 
-            <button class="solid-btn custom-submit" id="custom-submit-btn" type="button">生成稿件</button>
+            <button class="solid-btn custom-submit" id="custom-submit-btn" type="button" data-i18n="custom.submit">生成稿件</button>
             <div class="result-actions" id="download-result-wrap" hidden>
-              <button class="solid-btn" id="read-result-btn" type="button">阅读</button>
-              <a class="download-btn" id="download-result-btn" href="#" download><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v11M7.5 11.5 12 16l4.5-4.5"/><path d="M4 16.5v1.8A2.7 2.7 0 0 0 6.7 21h10.6a2.7 2.7 0 0 0 2.7-2.7v-1.8"/></svg>下载</a>
+              <button class="solid-btn" id="read-result-btn" type="button" data-i18n="library.read">阅读</button>
+              <a class="download-btn" id="download-result-btn" href="#" download><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v11M7.5 11.5 12 16l4.5-4.5"/><path d="M4 16.5v1.8A2.7 2.7 0 0 0 6.7 21h10.6a2.7 2.7 0 0 0 2.7-2.7v-1.8"/></svg><span data-i18n="library.download">下载</span></a>
             </div>
           </div>
         </div>
@@ -158,18 +172,18 @@
         <div class="mode-panel" id="library-panel" role="tabpanel">
           <div class="content-head">
             <div class="headline-group">
-              <h2>稿件</h2>
+              <h2 data-i18n="library.title">稿件</h2>
             </div>
             <label class="search" for="library-search">
-              <span class="visually-hidden">搜索稿件</span>
+              <span class="visually-hidden" data-i18n="library.search_placeholder">搜索标题或节目</span>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M15.8 15.8 21 21"/></svg>
-              <input id="library-search" type="search" placeholder="搜索标题或节目">
+              <input id="library-search" type="search" placeholder="搜索标题或节目" data-i18n-placeholder="library.search_placeholder">
             </label>
           </div>
-          <div class="story-filter library-filter owner-state-only" role="tablist" aria-label="稿件阅读状态">
-            <button class="active" type="button" data-library-filter="all">全部</button>
-            <button type="button" data-library-filter="unread">待读</button>
-            <button type="button" data-library-filter="read">已读</button>
+          <div class="story-filter library-filter owner-state-only" role="tablist" aria-label="稿件阅读状态" data-i18n-aria-label="filter.label">
+            <button class="active" type="button" data-library-filter="all" data-i18n="library.filter_all">全部</button>
+            <button type="button" data-library-filter="unread" data-i18n="library.filter_subscription">待读</button>
+            <button type="button" data-library-filter="read" data-i18n="library.filter_read">已读</button>
           </div>
           <div class="library-list" id="library-list" aria-live="polite"></div>
         </div>
@@ -177,9 +191,9 @@
 
       <aside class="right-rail" aria-labelledby="inspector-title">
         <section class="episode-inspector" id="episode-inspector">
-          <h2 id="inspector-title">选择一期节目</h2>
-          <div class="inspector-meta" id="inspector-meta">点击单集卡片，在这里查看介绍。</div>
-          <div class="inspector-summary" id="inspector-summary">选择一期单集，在这里查看介绍并生成稿件。</div>
+          <h2 id="inspector-title" data-i18n="inspector.select_title">选择一期节目</h2>
+          <div class="inspector-meta" id="inspector-meta" data-i18n="inspector.select_meta">点击单集卡片，在这里查看介绍。</div>
+          <div class="inspector-summary" id="inspector-summary" data-i18n="inspector.select_summary">选择一期单集，在这里查看介绍并生成稿件。</div>
           <div class="inspector-progress" id="inspector-progress" hidden></div>
           <div class="inspector-actions" id="inspector-actions"></div>
         </section>
@@ -189,9 +203,9 @@
 
   <div class="overlay" id="task-panel-overlay"></div>
   <aside class="task-panel" id="task-panel" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="task-panel-title">
-    <div class="drawer-head"><div><h2 id="task-panel-title">任务</h2></div><button class="close-btn" id="task-panel-close" type="button" aria-label="关闭任务面板">×</button></div>
-    <section class="current-task" id="task-card" aria-label="任务列表" hidden>
-      <div class="task-queue-head"><strong>任务</strong><span id="task-queue-count"></span></div>
+    <div class="drawer-head"><div><h2 id="task-panel-title" data-i18n="tasks.title">任务</h2></div><button class="close-btn" id="task-panel-close" type="button" aria-label="关闭任务面板" data-i18n-aria-label="tasks.close">×</button></div>
+    <section class="current-task" id="task-card" aria-label="任务列表" data-i18n-aria-label="tasks.list_label" hidden>
+      <div class="task-queue-head"><strong data-i18n="tasks.title">任务</strong><span id="task-queue-count"></span></div>
       <div class="task-list" id="task-list" aria-live="polite"></div>
     </section>
   </aside>
@@ -200,10 +214,10 @@
   <div class="overlay episode-summary-overlay" id="episode-summary-overlay"></div>
   <aside class="episode-summary-drawer" id="episode-summary-drawer" aria-hidden="true" aria-labelledby="episode-summary-title" hidden>
     <div class="drawer-head">
-      <div><span class="overline">本期简介</span><h2 id="episode-summary-title">选择一期节目</h2><p id="episode-summary-meta"></p></div>
-      <button class="close-btn" id="episode-summary-close-btn" type="button" aria-label="关闭本期简介"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <div><span class="overline" data-i18n="inspector.summary_title">本期简介</span><h2 id="episode-summary-title" data-i18n="inspector.select_title">选择一期节目</h2><p id="episode-summary-meta"></p></div>
+      <button class="close-btn" id="episode-summary-close-btn" type="button" aria-label="关闭本期简介" data-i18n-aria-label="inspector.close_summary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
-    <div class="inspector-summary" id="episode-summary-copy">选择一期单集，在这里查看介绍并生成稿件。</div>
+    <div class="inspector-summary" id="episode-summary-copy" data-i18n="inspector.select_summary">选择一期单集，在这里查看介绍并生成稿件。</div>
     <div class="inspector-progress" id="episode-summary-progress" hidden></div>
     <div class="inspector-actions" id="episode-summary-actions"></div>
   </aside>
@@ -211,11 +225,11 @@
   <div class="overlay" id="drawer-overlay"></div>
   <aside class="drawer" id="drawer" aria-hidden="true" aria-labelledby="drawer-title">
     <div class="drawer-head">
-      <div><h2 id="drawer-title">添加订阅</h2><p>搜索节目名称或粘贴 RSS 地址</p></div>
-      <button class="close-btn" id="drawer-close-btn" type="button" aria-label="关闭添加订阅"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <div><h2 id="drawer-title" data-i18n="drawer.title">添加订阅</h2><p data-i18n="drawer.desc">搜索节目名称或粘贴 RSS 地址</p></div>
+      <button class="close-btn" id="drawer-close-btn" type="button" aria-label="关闭添加订阅" data-i18n-aria-label="drawer.close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
     <div class="drawer-tools">
-      <input class="drawer-input" id="drawer-search" type="search" placeholder="搜索节目名称或粘贴 RSS 地址">
+      <input class="drawer-input" id="drawer-search" type="search" placeholder="搜索节目名称或粘贴 RSS 地址" data-i18n-placeholder="drawer.search_placeholder">
     </div>
     <div class="drawer-results" id="drawer-results"></div>
   </aside>
@@ -223,15 +237,15 @@
   <div class="overlay" id="settings-overlay"></div>
   <aside class="drawer settings-drawer" id="settings-drawer" role="dialog" aria-hidden="true" aria-labelledby="settings-title">
     <div class="drawer-head">
-      <div><h2 id="settings-title">设置</h2><p>调整外观和文字整理方式。</p></div>
-      <button class="close-btn" id="settings-close-btn" type="button" aria-label="关闭设置"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      <div><h2 id="settings-title" data-i18n="settings.title">设置</h2><p data-i18n="settings.desc">调整外观和文字整理方式。</p></div>
+      <button class="close-btn" id="settings-close-btn" type="button" aria-label="关闭设置" data-i18n-aria-label="settings.close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     </div>
-    <div class="settings-body" id="settings-body"><p class="settings-state">正在读取配置…</p></div>
+    <div class="settings-body" id="settings-body"><p class="settings-state" data-i18n="settings.loading">正在读取配置…</p></div>
     <div class="settings-footer">
       <p class="settings-note" id="settings-note"></p>
       <div class="button-row">
-        <button class="ghost-btn" id="settings-reload-btn" type="button">取消</button>
-        <button class="solid-btn" id="settings-save-btn" type="button">保存</button>
+        <button class="ghost-btn" id="settings-reload-btn" type="button" data-i18n="settings.cancel">取消</button>
+        <button class="solid-btn" id="settings-save-btn" type="button" data-i18n="settings.save">保存</button>
       </div>
     </div>
   </aside>
@@ -242,105 +256,106 @@
     <article class="reader-sheet">
       <header class="reader-head">
         <div class="reader-head-info">
-          <h2 class="reader-title" id="reader-title">阅读</h2>
+          <h2 class="reader-title" id="reader-title" data-i18n="reader.title">阅读</h2>
           <div class="reader-meta-stats" id="reader-meta-stats"></div>
         </div>
         <div class="reader-actions">
-          <button class="control-btn reader-toc-btn" id="reader-toc-toggle-btn" type="button" title="大纲目录" aria-label="大纲目录">
+          <button class="control-btn reader-toc-btn" id="reader-toc-toggle-btn" type="button" title="大纲目录" aria-label="大纲目录" data-i18n-title="reader.toc_label" data-i18n-aria-label="reader.toc_label">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
-            <span class="reader-btn-label">大纲</span>
+            <span class="reader-btn-label" data-i18n="reader.toc">大纲</span>
           </button>
           <details class="reader-menu reader-appearance" id="reader-appearance-menu">
-            <summary class="control-btn" aria-label="阅读外观">Aa</summary>
+            <summary class="control-btn" aria-label="阅读外观" data-i18n-aria-label="reader.appearance">Aa</summary>
             <div class="reader-menu-popover reader-appearance-popover" id="reader-appearance-popover">
               <div class="appearance-panel">
                 <div class="appearance-section">
-                  <div class="appearance-label">主题</div>
-                  <div class="theme-picker" role="radiogroup" aria-label="阅读主题">
-                    <button class="theme-btn theme-follow active" id="theme-follow-btn" type="button" data-theme="follow" title="跟随应用" aria-label="跟随应用"><span>自动</span></button>
-                    <button class="theme-btn theme-paper" id="theme-light-btn" type="button" data-theme="paper" title="杏仁纸张" aria-label="杏仁纸张"></button>
-                    <button class="theme-btn theme-warm" id="theme-warm-btn" type="button" data-theme="warm" title="暖阳羊皮" aria-label="暖阳羊皮"></button>
-                    <button class="theme-btn theme-green" id="theme-green-btn" type="button" data-theme="green" title="护眼绿" aria-label="护眼绿"></button>
-                    <button class="theme-btn theme-dark" id="theme-dark-btn" type="button" data-theme="dark" title="极夜黑" aria-label="极夜黑"></button>
+                  <div class="appearance-label" data-i18n="reader.theme">主题</div>
+                  <div class="theme-picker" role="radiogroup" aria-label="阅读主题" data-i18n-aria-label="reader.theme_picker_label">
+                    <button class="theme-btn theme-follow active" id="theme-follow-btn" type="button" data-theme="follow" title="跟随应用" aria-label="跟随应用" data-i18n-title="reader.theme_follow" data-i18n-aria-label="reader.theme_follow"><span data-i18n="appearance.auto">自动</span></button>
+                    <button class="theme-btn theme-paper" id="theme-light-btn" type="button" data-theme="paper" title="杏仁纸张" aria-label="杏仁纸张" data-i18n-title="reader.theme_paper" data-i18n-aria-label="reader.theme_paper"></button>
+                    <button class="theme-btn theme-warm" id="theme-warm-btn" type="button" data-theme="warm" title="暖阳羊皮" aria-label="暖阳羊皮" data-i18n-title="reader.theme_warm" data-i18n-aria-label="reader.theme_warm"></button>
+                    <button class="theme-btn theme-green" id="theme-green-btn" type="button" data-theme="green" title="护眼绿" aria-label="护眼绿" data-i18n-title="reader.theme_green" data-i18n-aria-label="reader.theme_green"></button>
+                    <button class="theme-btn theme-dark" id="theme-dark-btn" type="button" data-theme="dark" title="极夜黑" aria-label="极夜黑" data-i18n-title="reader.theme_dark" data-i18n-aria-label="reader.theme_dark"></button>
                   </div>
                 </div>
                 <div class="appearance-section">
-                  <div class="appearance-label">字体</div>
-                  <div class="segmented-control" role="radiogroup" aria-label="字体预设">
-                    <button class="segment-btn active" id="font-preset-classical" type="button" data-preset="classical">文雅经典</button>
-                    <button class="segment-btn" id="font-preset-modern" type="button" data-preset="modern">现代清晰</button>
+                  <div class="appearance-label" data-i18n="reader.font">字体</div>
+                  <div class="segmented-control" role="radiogroup" aria-label="字体预设" data-i18n-aria-label="reader.font_preset_label">
+                    <button class="segment-btn active" id="font-preset-classical" type="button" data-preset="classical" data-i18n="reader.preset_classical">文雅经典</button>
+                    <button class="segment-btn" id="font-preset-modern" type="button" data-preset="modern" data-i18n="reader.preset_modern">现代清晰</button>
                   </div>
                 </div>
                 <div class="appearance-section">
-                  <div class="appearance-label">字号</div>
+                  <div class="appearance-label" data-i18n="reader.font_size">字号</div>
                   <div class="size-control">
-                    <button class="control-btn size-btn" id="font-dec-btn" type="button" title="减小字号" aria-label="减小字号">A-</button>
+                    <button class="control-btn size-btn" id="font-dec-btn" type="button" title="减小字号" aria-label="减小字号" data-i18n-title="reader.font_dec" data-i18n-aria-label="reader.font_dec">A-</button>
                     <span class="size-indicator" id="font-size-val">19</span>
-                    <button class="control-btn size-btn" id="font-inc-btn" type="button" title="增大字号" aria-label="增大字号">A+</button>
+                    <button class="control-btn size-btn" id="font-inc-btn" type="button" title="增大字号" aria-label="增大字号" data-i18n-title="reader.font_inc" data-i18n-aria-label="reader.font_inc">A+</button>
                   </div>
                 </div>
                 <div class="appearance-section">
-                  <div class="appearance-label">行距</div>
-                  <div class="segmented-control" role="radiogroup" aria-label="行距">
-                    <button class="segment-btn" id="leading-compact-btn" type="button" data-leading="compact">紧凑</button>
-                    <button class="segment-btn active" id="leading-normal-btn" type="button" data-leading="normal">舒适</button>
-                    <button class="segment-btn" id="leading-relaxed-btn" type="button" data-leading="relaxed">宽松</button>
+                  <div class="appearance-label" data-i18n="reader.line_height">行距</div>
+                  <div class="segmented-control" role="radiogroup" aria-label="行距" data-i18n-aria-label="reader.line_height">
+                    <button class="segment-btn" id="leading-compact-btn" type="button" data-leading="compact" data-i18n="reader.leading_compact">紧凑</button>
+                    <button class="segment-btn active" id="leading-normal-btn" type="button" data-leading="normal" data-i18n="reader.leading_normal">舒适</button>
+                    <button class="segment-btn" id="leading-relaxed-btn" type="button" data-leading="relaxed" data-i18n="reader.leading_relaxed">宽松</button>
                   </div>
                 </div>
               </div>
             </div>
           </details>
-          <a class="reader-download" id="reader-download" href="#" download title="下载 Markdown"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v11M7.5 11.5 12 16l4.5-4.5"/><path d="M4 16.5v1.8A2.7 2.7 0 0 0 6.7 21h10.6a2.7 2.7 0 0 0 2.7-2.7v-1.8"/></svg><span class="reader-download-label">下载 Markdown</span></a>
-          <button class="control-btn reader-read-toggle owner-state-only" id="reader-read-toggle" type="button" aria-pressed="false" hidden>标记为已读</button>
-          <button class="close-btn" id="reader-close-btn" type="button" aria-label="关闭阅读"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          <button class="ghost-btn reader-lang-btn" id="reader-lang-toggle-btn" type="button" aria-label="切换语言" title="切换语言" data-i18n-aria-label="lang.toggle_label" data-i18n-title="lang.toggle_label">中 / EN</button>
+          <a class="reader-download" id="reader-download" href="#" download title="下载 Markdown" data-i18n-title="reader.download_md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v11M7.5 11.5 12 16l4.5-4.5"/><path d="M4 16.5v1.8A2.7 2.7 0 0 0 6.7 21h10.6a2.7 2.7 0 0 0 2.7-2.7v-1.8"/></svg><span class="reader-download-label" data-i18n="reader.download_md">下载 Markdown</span></a>
+          <button class="control-btn reader-read-toggle owner-state-only" id="reader-read-toggle" type="button" aria-pressed="false" hidden data-i18n="reader.mark_read">标记为已读</button>
+          <button class="close-btn" id="reader-close-btn" type="button" aria-label="关闭阅读" data-i18n-aria-label="reader.close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
       </header>
       <div class="reader-progress reader-progress-line owner-state-only">
-        <input id="reader-progress-range" type="range" min="0" max="100" step="0.1" value="0" aria-label="阅读进度">
+        <input id="reader-progress-range" type="range" min="0" max="100" step="0.1" value="0" aria-label="阅读进度" data-i18n-aria-label="reader.progress">
         <span class="reader-progress-value" id="reader-progress-value">0%</span>
       </div>
       <div class="reader-layout">
-        <aside class="reader-toc" id="reader-toc" aria-label="大纲目录" hidden></aside>
-        <div class="manuscript-body" id="manuscript-body"><div class="reader-state">选择一份已完成稿件开始阅读。</div></div>
+        <aside class="reader-toc" id="reader-toc" aria-label="大纲目录" data-i18n-aria-label="reader.toc_label" hidden></aside>
+        <div class="manuscript-body" id="manuscript-body"><div class="reader-state" data-i18n="reader.initial_state">选择一份已完成稿件开始阅读。</div></div>
       </div>
-      <nav class="reader-bottom-bar" id="reader-bottom-bar" aria-label="阅读工具栏">
-        <button class="reader-bar-btn" id="reader-bar-toc-btn" type="button" aria-label="目录与大纲">
+      <nav class="reader-bottom-bar" id="reader-bottom-bar" aria-label="阅读工具栏" data-i18n-aria-label="reader.toolbar_label">
+        <button class="reader-bar-btn" id="reader-bar-toc-btn" type="button" aria-label="目录与大纲" data-i18n-aria-label="reader.toc_label">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>
-          <span>目录</span>
+          <span data-i18n="reader.toc">大纲</span>
         </button>
-        <button class="reader-bar-btn owner-state-only" id="reader-bar-progress-btn" type="button" aria-label="阅读进度">
+        <button class="reader-bar-btn owner-state-only" id="reader-bar-progress-btn" type="button" aria-label="阅读进度" data-i18n-aria-label="reader.progress">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><polyline points="12 6 12 12 16 14"/></svg>
-          <span id="reader-bar-progress-label">进度 0%</span>
+          <span id="reader-bar-progress-label" data-i18n="reader.progress_initial">进度 0%</span>
         </button>
-        <button class="reader-bar-btn" id="reader-bar-appearance-btn" type="button" aria-label="排版与主题">
+        <button class="reader-bar-btn" id="reader-bar-appearance-btn" type="button" aria-label="排版与主题" data-i18n-aria-label="reader.appearance">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 19L9.5 5h5L20 19"/><path d="M6.8 14h10.4"/></svg>
-          <span>排版</span>
+          <span data-i18n="reader.bar_appearance">排版</span>
         </button>
       </nav>
       <div class="reader-sheet-backdrop" id="reader-sheet-backdrop"></div>
-      <div class="reader-bottom-sheet owner-state-only" id="reader-progress-sheet" aria-label="阅读进度调整">
+      <div class="reader-bottom-sheet owner-state-only" id="reader-progress-sheet" aria-label="阅读进度调整" data-i18n-aria-label="reader.sheet_label">
         <div class="reader-sheet-head">
-          <span class="reader-sheet-title">阅读进度</span>
-          <button class="close-btn reader-sheet-close" id="reader-progress-sheet-close" type="button" aria-label="关闭进度面板"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+          <span class="reader-sheet-title" data-i18n="reader.progress">阅读进度</span>
+          <button class="close-btn reader-sheet-close" id="reader-progress-sheet-close" type="button" aria-label="关闭进度面板" data-i18n-aria-label="reader.close_progress"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
         <div class="reader-sheet-body">
           <div class="sheet-progress-row">
-            <input id="reader-sheet-progress-range" type="range" min="0" max="100" step="0.1" value="0" aria-label="移动端阅读进度">
+            <input id="reader-sheet-progress-range" type="range" min="0" max="100" step="0.1" value="0" aria-label="移动端阅读进度" data-i18n-aria-label="reader.sheet_progress_label">
             <span class="sheet-progress-val" id="reader-sheet-progress-val">0%</span>
           </div>
           <div class="sheet-progress-actions">
-            <button class="control-btn" id="reader-jump-start-btn" type="button">返回顶部</button>
-            <button class="control-btn" id="reader-jump-end-btn" type="button">翻至文末</button>
+            <button class="control-btn" id="reader-jump-start-btn" type="button" data-i18n="reader.jump_start">返回顶部</button>
+            <button class="control-btn" id="reader-jump-end-btn" type="button" data-i18n="reader.jump_end">翻至文末</button>
           </div>
         </div>
       </div>
     </article>
   </section>
 
-  <nav class="mobile-nav" aria-label="主导航">
-    <button class="active" type="button" data-mode="podcast">订阅</button>
-    <button type="button" data-mode="custom">导入</button>
-    <button type="button" data-mode="library">稿件</button>
+  <nav class="mobile-nav" aria-label="主导航" data-i18n-aria-label="nav.aria_label">
+    <button class="active" type="button" data-mode="podcast" data-i18n="nav.podcast">订阅</button>
+    <button type="button" data-mode="custom" data-i18n="nav.custom">导入</button>
+    <button type="button" data-mode="library" data-i18n="nav.library">稿件</button>
   </nav>
 
   <script>

@@ -1,11 +1,36 @@
+    var _lastReaderText = '';
+
     function updateReaderStats(rawText) {
-      var cleanText = String(rawText || '').replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n*/, '').replace(/\s+/g, '');
-      var count = cleanText.length;
-      var minutes = Math.max(1, Math.round(count / 750));
-      var countStr = count >= 10000 ? (count / 10000).toFixed(1) + ' 万字' : count + ' 字';
+      if (rawText !== undefined) _lastReaderText = rawText;
+      var textToUse = rawText !== undefined ? rawText : _lastReaderText;
+      var withoutFrontmatter = String(textToUse || '').replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n*/, '');
       var statsEl = byId('reader-meta-stats');
-      if (statsEl) {
-        statsEl.textContent = count ? (countStr + ' · 约 ' + minutes + ' 分钟') : '';
+      if (!statsEl) return;
+      var clean = withoutFrontmatter.trim();
+      if (!clean) { statsEl.textContent = ''; return; }
+
+      // 按稿件内容本身判定中文字符计数还是西文词数，而非按 UI 语言
+      var sample = clean.slice(0, 20000);
+      var cjkMatches = sample.match(/[\u4e00-\u9fa5\u3400-\u4dbf\uf900-\ufaff]/g);
+      var cjkCount = cjkMatches ? cjkMatches.length : 0;
+      var latinMatches = sample.match(/[a-zA-Z]/g);
+      var latinCount = latinMatches ? latinMatches.length : 0;
+      var isCJK = cjkCount >= 20 || (cjkCount > 0 && cjkCount >= latinCount * 0.1);
+
+      if (isCJK) {
+        var charCount = clean.replace(/\s+/g, '').length;
+        var minutes = Math.max(1, Math.round(charCount / 750));
+        var countStr = (getLocale() === 'en')
+          ? (charCount >= 1000 ? t('reader.characters_large', (charCount / 1000).toFixed(1)) : t('reader.characters', charCount))
+          : (charCount >= 10000 ? t('reader.characters_large', (charCount / 10000).toFixed(1)) : t('reader.characters', charCount));
+        statsEl.textContent = charCount ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
+      } else {
+        var words = clean.split(/\s+/).filter(Boolean).length;
+        var minutes = Math.max(1, Math.round(words / 220));
+        var countStr = words >= 1000
+          ? t('reader.word_count_large', (words / 1000).toFixed(1))
+          : t('reader.word_count', words);
+        statsEl.textContent = words ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       }
     }
 
@@ -23,7 +48,7 @@
       if (sheetProgressVal) sheetProgressVal.textContent = rounded + '%';
 
       var barProgressLabel = byId('reader-bar-progress-label');
-      if (barProgressLabel) barProgressLabel.textContent = '进度 ' + rounded + '%';
+      if (barProgressLabel) barProgressLabel.textContent = t('reader.progress_val', rounded);
 
       if (bounded >= 99.5 && _currentReadingRef && !isRead(_currentReadingRef)) {
         setRead(_currentReadingRef, true);
@@ -76,7 +101,7 @@
       var leadingWs = leadingWsMatch ? leadingWsMatch[0] : '';
       var content = body.slice(leadingWs.length);
 
-      var headingMatch = content.match(/^#{1,6}\s+(?:[📌⏱️🕒]\s*)?节目大纲与时间线\s*[:：]?[^\S\n]*(?:\n|$)/u);
+      var headingMatch = content.match(/^#{1,6}\s+(?:[📌⏱️🕒]\s*)?(?:节目大纲与时间线|(?:Episode\s+)?Outline\s*(?:&|and)\s*Timeline|Timeline\s*(?:&|and)\s*Outline)\s*[:：]?[^\S\n]*(?:\n|$)/iu);
       if (!headingMatch) return raw;
 
       var rest = content.slice(headingMatch[0].length);
@@ -317,14 +342,14 @@
       var source = task || article;
       _currentReadingRef = episode ? episodeReadRef(episode) : { episode_id: source && source.episode_id ? String(source.episode_id) : null, task_id: cleanId };
       var title = (task && task.episode_title) || (article && article.title) || '';
-      byId('reader-title').textContent = title ? String(title) : '阅读';
+      byId('reader-title').textContent = title ? String(title) : t('reader.title');
       byId('reader-download').href = articleUrl(cleanId, '/download');
       updateReaderReadState();
       
       var tocContainer = byId('reader-toc');
       setHidden(tocContainer, true);
       tocContainer.replaceChildren();
-      byId('manuscript-body').innerHTML = '<div class="reader-state reader-loading">正在展开稿纸</div>';
+      byId('manuscript-body').innerHTML = '<div class="reader-state reader-loading">' + escapeHtml(t('reader.loading')) + '</div>';
       
       var progressRange = byId('reader-progress-range');
       var progressValue = byId('reader-progress-value');
@@ -360,7 +385,7 @@
         .then(function (result) {
           if (result.title) byId('reader-title').textContent = String(result.title);
           if (!result.content) { 
-            byId('manuscript-body').innerHTML = '<div class="reader-state">稿件内容为空。</div>'; 
+            byId('manuscript-body').innerHTML = '<div class="reader-state">' + escapeHtml(t('reader.empty_content')) + '</div>'; 
             updateReaderStats('');
             return; 
           }
@@ -376,12 +401,12 @@
             var tocHead = document.createElement('div');
             tocHead.className = 'reader-sheet-head reader-toc-sheet-head';
             var tocTitle = document.createElement('h3');
-            tocTitle.textContent = '大纲目录';
+            tocTitle.textContent = t('reader.toc_label');
             tocHead.appendChild(tocTitle);
             var tocCloseBtn = document.createElement('button');
             tocCloseBtn.className = 'close-btn reader-sheet-close';
             tocCloseBtn.type = 'button';
-            tocCloseBtn.setAttribute('aria-label', '关闭目录');
+            tocCloseBtn.setAttribute('aria-label', t('reader.close_toc'));
             tocCloseBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
             tocCloseBtn.addEventListener('click', closeReaderSheets);
             tocHead.appendChild(tocCloseBtn);
@@ -431,7 +456,7 @@
           byId('manuscript-body').replaceChildren(); 
           var state = document.createElement('div'); 
           state.className = 'reader-state'; 
-          state.textContent = '稿件读取失败：' + errorMessage(error); 
+          state.textContent = t('reader.load_failed') + errorMessage(error); 
           byId('manuscript-body').appendChild(state); 
           updateReaderStats('');
         });

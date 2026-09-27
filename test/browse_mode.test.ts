@@ -71,6 +71,7 @@ function openPage(path: string): Page {
     pretendToBeVisual: true,
     virtualConsole,
     beforeParse(window) {
+      Object.defineProperty(window.navigator, "language", { value: "zh-CN", configurable: true });
       (window as unknown as { fetch: typeof fetch }).fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
         const url = new URL(String(input), window.location.href);
         sent.push({ method: (init?.method ?? "GET").toUpperCase(), path: decodeURIComponent(url.pathname + url.search) });

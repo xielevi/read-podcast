@@ -2,7 +2,7 @@
       if (event) event.stopPropagation();
       var sourceName = String(episode.podcast_name || selectedPodcast || '').trim();
       var title = String(episode.title || '');
-      if (!sourceName) { addLog('错误：未找到节目来源', 'error'); return; }
+      if (!sourceName) { addLog(t('tasks.no_source'), 'error'); return; }
       if (!requireControl('generate', { podcast: sourceName })) return;
       var button = event && event.currentTarget && event.currentTarget.tagName === 'BUTTON' ? event.currentTarget : null;
       _currentTaskPodcastName = sourceName;
@@ -12,7 +12,7 @@
       _submittingEpisodes[episodeKey] = true;
       if (button) button.disabled = true;
       setHidden(byId('task-card'), false);
-      setTaskStatus('正在生成稿件', 0);
+      setTaskStatus(t('inspector.generating_head'), 0);
       var url = appUrl('/api/control/tasks');
       fetch(url, {
         method: 'POST',
@@ -21,18 +21,18 @@
       })
         .then(readApiResponse)
         .then(function (data) {
-          if (data.status === 'existing') addLog('这期稿件正在生成，已打开处理进度。', 'info');
+          if (data.status === 'existing') addLog(t('tasks.generating_progress'), 'info');
           watchTask(data.task_id, title, sourceName);
           ensureTaskCard(data.task_id).episodeId = episodeKey;
         })
         .catch(function (error) {
           if (error && error.status === 409) {
-            setTaskStatus(error.message || '这期稿件已经生成，可从更多菜单重新生成。', 0);
-            setTaskBadge('info', '已完成');
-            addLog(error.message || '稿件已经生成', 'info');
+            setTaskStatus(error.message || t('tasks.already_generated'), 0);
+            setTaskBadge('info', t('tasks.completed_badge'));
+            addLog(error.message || t('tasks.already_generated_log'), 'info');
           } else {
-            setTaskStatus('这次没有生成成功，请稍后再试。', 0);
-            setTaskBadge('error', '未成功');
+            setTaskStatus(t('tasks.failed_retry_msg'), 0);
+            setTaskBadge('error', t('tasks.failed_badge'));
           }
         })
         .finally(function () {
@@ -45,26 +45,27 @@
       if (!requireControl('import')) return;
       var uploadId = _uploadedAudioPath;
       var prompt = byId('custom-prompt').value.trim();
-      var title = _uploadedAudioTitle || '自定义音频';
-      if (!uploadId) { setHidden(byId('task-card'), false); setTaskStatus('请先选择音频文件。', 0); setTaskBadge('error', '还差一步'); return; }
-      if (!prompt) { setHidden(byId('task-card'), false); setTaskStatus('请选择一种文字样式。', 0); setTaskBadge('error', '还差一步'); return; }
+      var title = _uploadedAudioTitle || t('custom.custom_audio');
+      if (!uploadId) { setHidden(byId('task-card'), false); setTaskStatus(t('tasks.need_audio_file'), 0); setTaskBadge('error', t('tasks.step_missing_badge')); return; }
       var button = byId('custom-submit-btn');
-      button.disabled = true; button.textContent = '生成中…';
+      button.disabled = true; button.textContent = t('custom.generating');
       setHidden(byId('download-result-wrap'), true);
       setHidden(byId('task-card'), false);
-      setTaskStatus('正在生成稿件', 0);
+      setTaskStatus(t('inspector.generating_head'), 0);
+      var payload = { upload_id: uploadId, title: title };
+      if (prompt) payload.custom_prompt = prompt;
       fetch(appUrl('/api/control/tasks/custom'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upload_id: uploadId, title: title, custom_prompt: prompt })
+        body: JSON.stringify(payload)
       })
         .then(readApiResponse)
-        .then(function (data) { watchTask(data.task_id, title, '本地音频'); })
+        .then(function (data) { watchTask(data.task_id, title, t('custom.local_audio')); })
         .catch(function (err) {
-          setTaskStatus('这次没有生成成功：' + (err.message || '请稍后再试'), 0);
-          setTaskBadge('error', '未成功');
+          setTaskStatus(t('tasks.failed_prefix') + (err.message || t('tasks.retry_hint')), 0);
+          setTaskBadge('error', t('tasks.failed_badge'));
         })
-        .finally(function () { button.disabled = false; button.textContent = '生成稿件'; });
+        .finally(function () { button.disabled = false; button.textContent = t('custom.submit'); });
     }
 
     var STAGE_LABELS = { queued: '获取音频', resolving: '获取音频', downloading: '获取音频', transcribing: '转写', refining: '整理', finalizing: '保存', done: '保存', success: '保存', error: '失败', cancelled: '已取消' };
@@ -175,25 +176,47 @@
       return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
     }
     function resolveTaskFailureMessage(task) {
-      if (!task) return '这次没有生成成功，请稍后再试。';
+      if (!task) return t('fail.default');
+      var stage = String(task.stage || '');
+      if (getLocale() === 'en') {
+        if (stage === 'downloading' || stage === 'queued' || stage === 'resolving') {
+          return t('fail.audio');
+        }
+        if (stage === 'transcribing') {
+          return t('fail.transcribe');
+        }
+        if (stage === 'refining') {
+          return t('fail.refine');
+        }
+        if (stage === 'finalizing') {
+          return t('fail.finalize');
+        }
+        if (task.status === 'cancelled') {
+          return t('fail.cancelled');
+        }
+        return t('fail.default');
+      }
       var msg = String(task.message || '').trim();
-      if (msg && !/^([a-z0-9_]+|error|\[object.*\])$/i.test(msg) && msg !== 'AI 整理暂时没有完成。') {
+      var isChinese = /[\u4e00-\u9fa5]/.test(msg);
+      if (msg && !/^([a-z0-9_]+|error|\[object.*\])$/i.test(msg) && (getLocale() !== 'en' || !isChinese)) {
         return msg;
       }
-      var stage = String(task.stage || '');
       if (stage === 'downloading' || stage === 'queued' || stage === 'resolving') {
-        return '无法获取音频，请稍后重试。';
+        return t('fail.audio');
       }
       if (stage === 'transcribing') {
-        return '这次没有完成转写，请重试。';
+        return t('fail.transcribe');
       }
       if (stage === 'refining') {
-        return '文字整理暂时没有完成，请重试。';
+        return t('fail.refine');
       }
       if (stage === 'finalizing') {
-        return '稿件保存失败，请重试。';
+        return t('fail.finalize');
       }
-      return '这次没有生成成功，请稍后再试。';
+      if (task.status === 'cancelled') {
+        return t('fail.cancelled');
+      }
+      return t('fail.default');
     }
 
     function renderTaskQueue() {
@@ -214,11 +237,11 @@
 
       if (runningCount > 0) {
         setHidden(triggerBtn, false);
-        if (triggerLabel) triggerLabel.textContent = '处理中 ' + runningCount;
+        if (triggerLabel) triggerLabel.textContent = t('tasks.processing_count', runningCount);
         if (triggerDot) triggerDot.style.display = '';
       } else if (attentionCount > 0) {
         setHidden(triggerBtn, false);
-        if (triggerLabel) triggerLabel.textContent = attentionCount + ' 个任务需要处理';
+        if (triggerLabel) triggerLabel.textContent = t('tasks.attention_count', attentionCount);
         if (triggerDot) triggerDot.style.display = 'none';
       } else {
         setHidden(triggerBtn, true);
@@ -229,33 +252,40 @@
         var task = _taskCards[id];
         var card = document.createElement('article'); card.className = 'task-queue-item'; card.style.setProperty('--item-index', index);
         var top = document.createElement('div'); top.className = 'task-topline';
-        var title = document.createElement('h2'); title.textContent = task.title || '稿件生成';
-        var badge = document.createElement('span'); badge.className = 'badge ' + (task.status === 'success' ? 'badge-success' : (task.status === 'failed' || task.status === 'cancelled') ? 'badge-error' : 'badge-accent'); badge.textContent = task.status === 'success' ? '已完成' : task.status === 'cancelled' ? '已取消' : task.status === 'failed' ? '生成失败' : task.progress + '%';
+        var title = document.createElement('h2'); title.textContent = task.title || t('tasks.default_title');
+        var badge = document.createElement('span'); badge.className = 'badge ' + (task.status === 'success' ? 'badge-success' : (task.status === 'failed' || task.status === 'cancelled') ? 'badge-error' : 'badge-accent'); badge.textContent = task.status === 'success' ? t('stage.success') : task.status === 'cancelled' ? t('stage.cancelled') : task.status === 'failed' ? t('stage.failed') : task.progress + '%';
         top.append(title, badge);
-        var meta = document.createElement('div'); meta.className = 'task-meta'; meta.innerHTML = '<span>正在' + escapeHtml(STAGE_LABELS[task.stage] || '处理') + '</span><span>' + task.progress + '%</span>';
+        var stageLabel = t('stage.' + (task.stage || 'queued'));
+        var meta = document.createElement('div'); meta.className = 'task-meta'; meta.innerHTML = '<span>' + escapeHtml(stageLabel) + '</span><span>' + task.progress + '%</span>';
         var status = document.createElement('h3'); status.className = 'task-stage'; status.setAttribute('aria-live', 'polite');
-        status.textContent = (task.status === 'failed' || task.status === 'cancelled') ? resolveTaskFailureMessage(task) : (task.message || ('正在' + (STAGE_LABELS[task.stage] || '处理') + '…'));
+        if (task.status === 'failed' || task.status === 'cancelled') {
+          status.textContent = resolveTaskFailureMessage(task);
+        } else if (getLocale() === 'en') {
+          status.textContent = stageLabel;
+        } else {
+          status.textContent = task.message || stageLabel;
+        }
         var progress = document.createElement('div'); progress.className = 'progress-bar'; progress.setAttribute('role', 'progressbar'); progress.setAttribute('aria-valuemin', '0'); progress.setAttribute('aria-valuemax', '100'); progress.setAttribute('aria-valuenow', String(task.progress));
         var inner = document.createElement('div'); inner.className = 'progress-inner'; inner.style.width = task.progress + '%'; progress.appendChild(inner);
         var steps = document.createElement('div'); steps.className = 'task-steps';
         var activeStep = Object.prototype.hasOwnProperty.call(STAGE_STEP_INDEX, task.stage) ? STAGE_STEP_INDEX[task.stage] : -1;
-        ['获取音频', '转写', '整理', '保存'].forEach(function (label, stepIndex) { var step = document.createElement('span'); step.textContent = label; step.className = stepIndex <= activeStep ? 'is-active' : ''; if (stepIndex < activeStep) { step.classList.add('is-done'); step.insertAdjacentHTML('afterbegin', uiIcon('check')); } steps.appendChild(step); });
+        [t('stage.step_audio'), t('stage.step_transcribe'), t('stage.step_refine'), t('stage.step_save')].forEach(function (label, stepIndex) { var step = document.createElement('span'); step.textContent = label; step.className = stepIndex <= activeStep ? 'is-active' : ''; if (stepIndex < activeStep) { step.classList.add('is-done'); step.insertAdjacentHTML('afterbegin', uiIcon('check')); } steps.appendChild(step); });
         card.append(top, meta, status, progress, steps);
         if (task.status === 'running' || task.status === 'pending') {
           var cancelBtn = document.createElement('button');
           cancelBtn.type = 'button';
           cancelBtn.className = 'task-cancel';
-          cancelBtn.textContent = '停止';
-          cancelBtn.setAttribute('aria-label', '停止「' + String(task.title || '稿件生成') + '」');
+          cancelBtn.textContent = t('tasks.cancel');
+          cancelBtn.setAttribute('aria-label', t('tasks.cancel_aria', String(task.title || t('tasks.default_title'))));
           cancelBtn.addEventListener('click', function () { cancelTask(id, cancelBtn); });
           card.appendChild(cancelBtn);
         } else if (task.status === 'failed' || task.status === 'cancelled') {
           var actions = document.createElement('div'); actions.className = 'task-actions';
           if (id !== 'local') {
-            var retryBtn = document.createElement('button'); retryBtn.type = 'button'; retryBtn.className = 'task-action task-action-primary'; retryBtn.textContent = '重试'; retryBtn.addEventListener('click', function () { retryTask(id, retryBtn); });
+            var retryBtn = document.createElement('button'); retryBtn.type = 'button'; retryBtn.className = 'task-action task-action-primary'; retryBtn.textContent = t('tasks.retry'); retryBtn.addEventListener('click', function () { retryTask(id, retryBtn); });
             actions.appendChild(retryBtn);
           }
-          var clearBtn = document.createElement('button'); clearBtn.type = 'button'; clearBtn.className = 'task-action'; clearBtn.textContent = '移除'; clearBtn.addEventListener('click', function () { clearTask(id, clearBtn); });
+          var clearBtn = document.createElement('button'); clearBtn.type = 'button'; clearBtn.className = 'task-action'; clearBtn.textContent = t('tasks.delete'); clearBtn.addEventListener('click', function () { clearTask(id, clearBtn); });
           actions.appendChild(clearBtn); card.appendChild(actions);
         }
         list.appendChild(card);
@@ -265,50 +295,50 @@
       var id = String(taskId || '');
       if (!id || !requireControl('tasks')) return;
       if (id === 'local') { delete _taskCards[id]; renderTaskQueue(); return; }
-      if (button) { button.disabled = true; button.textContent = '移除中…'; }
+      if (button) { button.disabled = true; button.textContent = t('tasks.deleting'); }
       fetch(safeTaskUrl(id, ''), { method: 'DELETE' })
         .then(readApiResponse)
-        .then(function () { delete _taskCards[id]; clearPolling(id); renderTaskQueue(); loadHistory(); addLog('记录已移除。', 'info'); })
-        .catch(function (error) { if (button) { button.disabled = false; button.textContent = '移除'; } addLog(errorMessage(error), 'warning'); });
+        .then(function () { delete _taskCards[id]; clearPolling(id); renderTaskQueue(); loadHistory(); addLog(t('tasks.dismissed'), 'info'); })
+        .catch(function (error) { if (button) { button.disabled = false; button.textContent = t('tasks.delete'); } addLog(errorMessage(error), 'warning'); });
     }
     function retryTask(taskId, button) {
       if (!requireControl('tasks')) return;
       var id = String(taskId || '');
       var oldTask = _taskCards[id];
       if (!id || !oldTask) return;
-      if (button) { button.disabled = true; button.textContent = '重试中…'; }
+      if (button) { button.disabled = true; button.textContent = t('tasks.retrying'); }
       fetch(safeTaskUrl(id, '/retry'), { method: 'POST' })
         .then(readApiResponse)
         .then(function (data) {
           delete _taskCards[id]; clearPolling(id);
           watchTask(data.task_id, oldTask.title);
-          loadHistory(); addLog('已重新开始生成。', 'info');
+          loadHistory(); addLog(t('tasks.restarted'), 'info');
         })
-        .catch(function (error) { if (button) { button.disabled = false; button.textContent = '重试'; } addLog(errorMessage(error), 'warning'); });
+        .catch(function (error) { if (button) { button.disabled = false; button.textContent = t('tasks.retry'); } addLog(errorMessage(error), 'warning'); });
     }
     function cancelTask(taskId, button) {
       var id = String(taskId || '');
       if (!id || !requireControl('tasks')) return;
-      if (button) { button.disabled = true; button.textContent = '取消中…'; }
+      if (button) { button.disabled = true; button.textContent = t('tasks.cancelling'); }
       fetch(safeTaskUrl(id, ''), { method: 'DELETE' })
         .then(readApiResponse)
         .then(function () {
-          addLog('已发送取消请求，正在停止任务…', 'info');
-          if (_taskCards[id]) { _taskCards[id].message = '正在取消…'; renderTaskQueue(); }
+          addLog(t('tasks.cancelling_msg'), 'info');
+          if (_taskCards[id]) { _taskCards[id].message = t('tasks.cancelling'); renderTaskQueue(); }
         })
         .catch(function (error) {
-          addLog(error && error.message ? error.message : '取消任务失败', 'warning');
-          if (button) { button.disabled = false; button.textContent = '取消任务'; }
+          addLog(error && error.message ? error.message : t('fail.default'), 'warning');
+          if (button) { button.disabled = false; button.textContent = t('tasks.cancel_task'); }
         });
     }
     function ensureTaskCard(taskId, title, podcastName) {
       var id = String(taskId || 'local');
-      if (!_taskCards[id]) _taskCards[id] = { stage: 'queued', progress: 0, status: 'running', startedAt: Date.now(), message: '正在获取音频…' };
+      if (!_taskCards[id]) _taskCards[id] = { stage: 'queued', progress: 0, status: 'running', startedAt: Date.now(), message: t('stage.queued') };
       var card = _taskCards[id];
       if (podcastName !== undefined && podcastName !== null && podcastName !== '') card.podcastName = String(podcastName).trim();
       if (title !== undefined && title !== null && title !== '') card.episodeTitle = String(title).trim();
-      card.title = card.episodeTitle || card.title || '稿件生成';
-      card.isCustomUpload = (card.podcastName === '本地音频' || card.podcastName === '自定义音频' || id === 'local');
+      card.title = card.episodeTitle || card.title || t('tasks.default_title');
+      card.isCustomUpload = (card.podcastName === '本地音频' || card.podcastName === '自定义音频' || card.podcastName === t('custom.local_audio') || card.podcastName === t('custom.custom_audio') || id === 'local');
       _taskStartedAt[id] = card.startedAt;
       return card;
     }
@@ -322,8 +352,10 @@
       card.progress = Math.max(0, Math.min(100, Number(task.progress_pct) || 0));
       if (card.status === 'failed' || card.status === 'cancelled') {
         card.message = resolveTaskFailureMessage(task);
+      } else if (getLocale() === 'en') {
+        card.message = t('stage.' + card.stage);
       } else {
-        card.message = String(task.message || ('正在' + (STAGE_LABELS[card.stage] || '处理') + '…'));
+        card.message = String(task.message || t('stage.' + card.stage));
       }
       card.startedAt = new Date(task.created_at || Date.now()).getTime();
       return card;
@@ -335,7 +367,7 @@
       if (succeeded) {
         task.stage = 'done';
         task.progress = 100;
-        task.message = details.message || '稿件已经准备好了。';
+        task.message = details.message || t('tasks.success_msg');
       } else {
         if (details.stage) task.stage = details.stage;
         task.progress = Math.max(task.progress || 0, Number(details.progress) || 0);
@@ -348,20 +380,20 @@
         byId('download-result-btn').href = safeTaskUrl(taskId, '/download');
         byId('read-result-btn').onclick = function () { openManuscript(taskId); };
         setHidden(byId('download-result-wrap'), false);
-        addLog('任务全流程处理成功', 'success');
+        addLog(t('tasks.success_log'), 'success');
       } else {
-        addLog(task.message || '任务处理失败', 'error');
+        addLog(task.message || t('tasks.failed_log'), 'error');
       }
       setPodcastDot(_currentTaskPodcastName || selectedPodcast, succeeded ? 'var(--success)' : 'var(--error)', false);
     }
     function handleTaskCancelled(taskId) {
       var task = ensureTaskCard(taskId);
       task.status = 'cancelled';
-      task.message = task.message || '任务已停止，可以稍后重试。';
+      task.message = task.message || t('fail.cancelled');
       clearPolling(String(taskId || ''));
       renderTaskQueue();
       loadHistory();
-      addLog('任务已取消', 'info');
+      addLog(t('tasks.cancelled_msg'), 'info');
       setPodcastDot(_currentTaskPodcastName || selectedPodcast, 'var(--error)', false);
     }
     function startPolling(taskId) {
@@ -429,19 +461,28 @@
         var matchesState = _libraryFilter === 'all' || (_libraryFilter === 'read' ? read : !read);
         return matchesQuery && matchesState;
       });
-      if (!visible.length && query) { list.innerHTML = '<div class="library-empty">' + uiIcon('book-open') + '<strong>没有找到匹配的稿件</strong><span>换个关键词试试。</span></div>'; return; }
-      if (!visible.length) { list.innerHTML = '<div class="library-empty">' + uiIcon('book-open') + '<strong>还没有可以阅读的稿件</strong><span>从订阅里选择一期，或导入一段音频。</span><div class="button-row"><button type="button" data-empty-mode="podcast">查看订阅</button><button type="button" data-empty-mode="custom">导入音频</button></div></div>'; list.querySelectorAll('[data-empty-mode]').forEach(function (button) { button.addEventListener('click', function () { switchMode(button.dataset.emptyMode); }); }); return; }
+      if (!visible.length && query) {
+        list.innerHTML = '<div class="library-empty">' + uiIcon('book-open') + '<strong>' + escapeHtml(t('library.empty_query')) + '</strong><span>' + escapeHtml(t('library.empty_query_hint')) + '</span></div>';
+        return;
+      }
+      if (!visible.length) {
+        list.innerHTML = '<div class="library-empty">' + uiIcon('book-open') + '<strong>' + escapeHtml(t('library.empty')) + '</strong><span>' + escapeHtml(t('library.empty_hint')) + '</span><div class="button-row"><button type="button" data-empty-mode="podcast">' + escapeHtml(t('library.view_subscriptions')) + '</button><button type="button" data-empty-mode="custom">' + escapeHtml(t('library.import_audio')) + '</button></div></div>';
+        list.querySelectorAll('[data-empty-mode]').forEach(function (button) { button.addEventListener('click', function () { switchMode(button.dataset.emptyMode); }); });
+        return;
+      }
       visible.forEach(function (article, index) {
         var taskId = String(article.task_id || article.id || '');
         var item = document.createElement('article'); item.className = 'library-item'; item.style.setProperty('--item-index', index);
         var copy = document.createElement('div');
-        var source = document.createElement('span'); source.className = 'library-source'; source.textContent = String(article.podcast_name || '导入音频');
-        var title = document.createElement('strong'); title.textContent = String(article.title || article.episode_title || '未命名稿件');
-        var meta = document.createElement('span'); meta.textContent = new Date(article.updated_at || article.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' });
+        var source = document.createElement('span'); source.className = 'library-source'; source.textContent = String(article.podcast_name || t('custom.local_audio'));
+        var title = document.createElement('strong'); title.textContent = String(article.title || article.episode_title || t('episode.untitled'));
+        var meta = document.createElement('span'); meta.textContent = new Date(article.updated_at || article.created_at).toLocaleDateString(getLocale() === 'en' ? 'en-US' : 'zh-CN', { year: 'numeric', month: 'short', day: 'numeric' });
         copy.append(source, title, meta);
         var actions = document.createElement('div'); actions.className = 'library-actions';
-        var read = document.createElement('button'); read.type = 'button'; read.className = 'episode-action'; read.textContent = '阅读'; read.addEventListener('click', function () { openManuscript(taskId, null, article); });
-        var download = document.createElement('a'); download.className = 'download-btn'; download.href = articleUrl(taskId, '/download'); download.download = ''; download.innerHTML = uiIcon('download'); download.appendChild(document.createTextNode('下载'));
+        var read = document.createElement('button'); read.type = 'button'; read.className = 'episode-action'; read.textContent = t('library.read'); read.addEventListener('click', function () { openManuscript(taskId, null, article); });
+        var download = document.createElement('a'); download.className = 'download-btn'; download.href = articleUrl(taskId, '/download'); download.download = ''; download.innerHTML = uiIcon('download');
+        var dlText = document.createTextNode(t('library.download'));
+        download.appendChild(dlText);
         actions.append(read, download); item.append(copy, actions); list.appendChild(item);
       });
     }
@@ -451,7 +492,7 @@
       return fetch(browseApi('/articles?limit=200'))
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (data) { _libraryArticles = Array.isArray(data) ? data : []; renderLibrary(_libraryArticles); return _libraryArticles; })
-        .catch(function (error) { addLog('稿件加载失败：' + errorMessage(error), 'warning'); });
+        .catch(function (error) { addLog(t('library.load_failed') + errorMessage(error), 'warning'); });
     }
 
     var _toastState = {};
@@ -465,7 +506,7 @@
       var toast = document.createElement('div'); toast.className = 'toast toast-' + safeLevel; toast.setAttribute('role', safeLevel === 'error' ? 'alert' : 'status');
       var icon = document.createElement('span'); icon.className = 'toast-icon'; icon.innerHTML = uiIcon(safeLevel === 'success' ? 'check-circle' : (safeLevel === 'error' || safeLevel === 'warning') ? 'alert-circle' : 'info');
       var copy = document.createElement('span'); copy.className = 'toast-copy'; copy.textContent = text;
-      var close = document.createElement('button'); close.type = 'button'; close.className = 'toast-close'; close.setAttribute('aria-label', '关闭提示'); close.innerHTML = uiIcon('close');
+      var close = document.createElement('button'); close.type = 'button'; close.className = 'toast-close'; close.setAttribute('aria-label', t('toast.close')); close.innerHTML = uiIcon('close');
       close.addEventListener('click', function () { toast.remove(); delete _toastState[key]; }); toast.append(icon, copy, close); byId('toast-container').appendChild(toast);
       _toastState[key] = { node: toast, time: now, count: 1 };
       if (safeLevel === 'info' || safeLevel === 'running' || safeLevel === 'success') setTimeout(function () { if (toast.isConnected) toast.remove(); delete _toastState[key]; }, 4000);
@@ -478,7 +519,7 @@
       if (Object.prototype.hasOwnProperty.call(STAGE_LABELS, normalizedStage)) task.stage = normalizedStage;
       else if (!message) message = String(stage || '');
       task.progress = Math.max(0, Math.min(100, Number(progress) || 0));
-      task.message = message || (task.progress >= 100 ? '稿件已经准备好了。' : ('正在' + (STAGE_LABELS[task.stage] || '处理') + '…'));
+      task.message = message || (task.progress >= 100 ? t('tasks.success_msg') : t('stage.' + task.stage));
       renderTaskQueue();
       if (pageEpisodes.length) renderEpisodeList();
       if (selectedEpisode) renderEpisodeInspector(selectedEpisode);
