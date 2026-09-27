@@ -7,51 +7,51 @@
     /* ── 1. 设计 Token ─────────────────────────────────── */
 
     /* 颜色职责（组件只引用语义 token，不写色值）：
-       - 中性（象牙 / 墨色）承担绝大部分界面：玻璃表面、文字、边框、选中态。
-       - Primary = 墨色：普通主按钮，不带品牌色。
-       - Accent = 陶土色：只用于品牌标记、进行中（进度 / 运行态）、焦点环与链接。
+       - 中性（暖米 / 咖啡墨）承担绝大部分界面：玻璃表面、文字、边框、选中态。
+       - Primary = 胡桃木棕（暗色反转为浅沙）：普通主按钮。
+       - Accent = 琥珀：只用于品牌标记、进行中（进度 / 运行态）、焦点环与链接。
        - 状态色（success / warning / danger / info）只表达状态；danger 只用于破坏性操作与失败。 */
     :root {
-      --bg-base: #f5f3ec;
-      --surface: rgba(255, 255, 255, .62);
-      --surface-strong: rgba(255, 255, 255, .82);
-      --surface-weak: rgba(255, 255, 255, .38);
-      --selected: rgba(31, 30, 29, .06);
-      --sunken: rgba(31, 30, 29, .07);
-      --text-primary: #1f1e1d;
-      --text-secondary: rgba(61, 59, 55, .82);
-      --text-tertiary: rgba(61, 59, 55, .7);
-      --primary: #1f1e1d;
-      --primary-hover: #3d3d3a;
-      --on-primary: #faf9f5;
-      --accent: #c96442;
-      --accent-strong: #b05535;
-      --accent-text: #a8512f;
-      --accent-soft: rgba(201, 100, 66, .12);
-      --success: #2f7348;
-      --success-soft: rgba(47, 115, 72, .12);
-      --warning: #935e0c;
-      --warning-soft: rgba(147, 94, 12, .12);
-      --danger: #b3362c;
-      --danger-strong: #962b23;
-      --danger-soft: rgba(179, 54, 44, .1);
+      --bg-base: #f1e8da;
+      --surface: rgba(255, 251, 244, .6);
+      --surface-strong: rgba(255, 251, 244, .8);
+      --surface-weak: rgba(255, 251, 244, .36);
+      --selected: rgba(42, 32, 25, .06);
+      --sunken: rgba(42, 32, 25, .08);
+      --text-primary: #2a2019;
+      --text-secondary: rgba(58, 44, 34, .84);
+      --text-tertiary: rgba(58, 44, 34, .72);
+      --primary: #5b3b28;
+      --primary-hover: #6d4832;
+      --on-primary: #f8f0e4;
+      --accent: #c4812a;
+      --accent-strong: #a86c1f;
+      --accent-text: #84541a;
+      --accent-soft: rgba(196, 129, 42, .14);
+      --success: #466e33;
+      --success-soft: rgba(70, 110, 51, .13);
+      --warning: #8c5a12;
+      --warning-soft: rgba(140, 90, 18, .12);
+      --danger: #a3322b;
+      --danger-strong: #872821;
+      --danger-soft: rgba(163, 50, 43, .1);
       --on-danger: #ffffff;
-      --info: #3d6689;
+      --info: #3f6480;
       /* 兼容 JS 内联引用的历史 token 名（setPodcastDot / server-dot） */
       --error: var(--danger);
       --rust: var(--accent);
-      --border: rgba(31, 30, 29, .1);
-      --border-strong: rgba(31, 30, 29, .2);
-      --hairline: rgba(255, 255, 255, .55);
-      --specular: rgba(255, 255, 255, .6);
-      --ring: rgba(201, 100, 66, .38);
-      --scrim: rgba(31, 30, 29, .36);
-      --scrollbar: rgba(31, 30, 29, .2);
+      --border: rgba(42, 32, 25, .11);
+      --border-strong: rgba(42, 32, 25, .22);
+      --hairline: rgba(255, 251, 244, .55);
+      --specular: rgba(255, 251, 244, .6);
+      --ring: rgba(196, 129, 42, .45);
+      --scrim: rgba(42, 32, 25, .38);
+      --scrollbar: rgba(42, 32, 25, .2);
       /* 任务卡的暖色染色玻璃 */
-      --tint-surface: linear-gradient(180deg, rgba(255, 255, 255, .9) 0%, rgba(252, 243, 236, .8) 100%);
-      --tint-border: rgba(201, 100, 66, .18);
-      --shadow-1: 0 1px 2px rgba(31, 30, 29, .05), 0 8px 24px rgba(31, 30, 29, .07);
-      --shadow-2: 0 2px 6px rgba(31, 30, 29, .08), 0 16px 40px rgba(31, 30, 29, .11);
+      --tint-surface: linear-gradient(180deg, rgba(255, 251, 244, .9) 0%, rgba(248, 234, 210, .8) 100%);
+      --tint-border: rgba(196, 129, 42, .22);
+      --shadow-1: 0 1px 2px rgba(42, 32, 25, .05), 0 8px 24px rgba(42, 32, 25, .08);
+      --shadow-2: 0 2px 6px rgba(42, 32, 25, .08), 0 16px 40px rgba(42, 32, 25, .12);
       --glass-blur: blur(28px) saturate(170%);
       --radius-sm: 10px;
       --radius-md: 16px;
@@ -63,54 +63,54 @@
       --ease: cubic-bezier(.16, 1, .3, 1);
       /* 背景光晕提取为 token：body 直接画（桌面 background-attachment: fixed），
          移动端改画在 fixed 伪元素上，避免滚动时整页重绘（见「移动端渲染性能」一节）。
-         暖色系：杏色 / 沙色 / 陶土，给玻璃提供可折射的内容，不用冷蓝紫。 */
-      --bg-glow:
-        radial-gradient(46% 38% at 16% 4%, rgba(240, 208, 184, .55), transparent 72%),
-        radial-gradient(42% 34% at 86% 10%, rgba(222, 214, 190, .55), transparent 72%),
-        radial-gradient(50% 42% at 62% 98%, rgba(226, 172, 148, .34), transparent 74%);
+         暖色系：琥珀 / 沙色 / 胡桃，给玻璃提供可折射的内容，不用冷蓝紫。 */
+      --bg-glow: 
+        radial-gradient(46% 38% at 16% 4%, rgba(236, 198, 150, .5), transparent 72%),
+        radial-gradient(42% 34% at 86% 10%, rgba(214, 196, 168, .55), transparent 72%),
+        radial-gradient(50% 42% at 62% 98%, rgba(176, 124, 88, .3), transparent 74%);
     }
 
     html[data-app-theme="dark"] {
-      --bg-base: #1c1b19;
-      --surface: rgba(48, 47, 44, .55);
-      --surface-strong: rgba(52, 51, 48, .8);
-      --surface-weak: rgba(48, 47, 44, .35);
-      --selected: rgba(245, 244, 238, .07);
-      --sunken: rgba(0, 0, 0, .24);
-      --text-primary: #f5f4ee;
-      --text-secondary: rgba(236, 234, 226, .72);
-      --text-tertiary: rgba(236, 234, 226, .56);
-      --primary: #f5f4ee;
-      --primary-hover: #ffffff;
-      --on-primary: #1f1e1d;
-      --accent: #d97757;
-      --accent-strong: #e08a6d;
-      --accent-text: #e39274;
-      --accent-soft: rgba(217, 119, 87, .16);
-      --success: #86c093;
-      --success-soft: rgba(134, 192, 147, .14);
-      --warning: #dcaa55;
-      --warning-soft: rgba(220, 170, 85, .14);
-      --danger: #f0857a;
-      --danger-strong: #f49b91;
-      --danger-soft: rgba(240, 133, 122, .14);
-      --on-danger: #1f1e1d;
-      --info: #93b4d4;
-      --border: rgba(236, 234, 226, .1);
-      --border-strong: rgba(236, 234, 226, .2);
-      --hairline: rgba(255, 255, 255, .12);
-      --specular: rgba(255, 255, 255, .07);
-      --ring: rgba(217, 119, 87, .45);
+      --bg-base: #1d1712;
+      --surface: rgba(54, 43, 34, .55);
+      --surface-strong: rgba(60, 48, 38, .8);
+      --surface-weak: rgba(54, 43, 34, .35);
+      --selected: rgba(241, 232, 218, .07);
+      --sunken: rgba(0, 0, 0, .26);
+      --text-primary: #f1e8da;
+      --text-secondary: rgba(236, 224, 206, .74);
+      --text-tertiary: rgba(236, 224, 206, .58);
+      --primary: #e3cfae;
+      --primary-hover: #eedcbf;
+      --on-primary: #2a2019;
+      --accent: #d99a4e;
+      --accent-strong: #e4ac66;
+      --accent-text: #e4ad6a;
+      --accent-soft: rgba(217, 154, 78, .16);
+      --success: #a3c486;
+      --success-soft: rgba(163, 196, 134, .14);
+      --warning: #e2b766;
+      --warning-soft: rgba(226, 183, 102, .14);
+      --danger: #e8857b;
+      --danger-strong: #ef9c93;
+      --danger-soft: rgba(232, 133, 123, .14);
+      --on-danger: #2a2019;
+      --info: #9fbad0;
+      --border: rgba(236, 224, 206, .1);
+      --border-strong: rgba(236, 224, 206, .2);
+      --hairline: rgba(255, 244, 228, .12);
+      --specular: rgba(255, 244, 228, .07);
+      --ring: rgba(217, 154, 78, .5);
       --scrim: rgba(0, 0, 0, .5);
-      --scrollbar: rgba(236, 234, 226, .22);
-      --tint-surface: linear-gradient(180deg, rgba(52, 51, 48, .88) 0%, rgba(60, 46, 39, .78) 100%);
-      --tint-border: rgba(217, 119, 87, .24);
+      --scrollbar: rgba(236, 224, 206, .22);
+      --tint-surface: linear-gradient(180deg, rgba(60, 48, 38, .88) 0%, rgba(74, 54, 32, .78) 100%);
+      --tint-border: rgba(217, 154, 78, .26);
       --shadow-1: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px rgba(0, 0, 0, .32);
       --shadow-2: 0 2px 6px rgba(0, 0, 0, .35), 0 16px 40px rgba(0, 0, 0, .45);
-      --bg-glow:
-        radial-gradient(46% 38% at 16% 4%, rgba(92, 62, 44, .5), transparent 72%),
-        radial-gradient(42% 34% at 86% 10%, rgba(64, 58, 44, .5), transparent 72%),
-        radial-gradient(50% 42% at 62% 98%, rgba(88, 48, 36, .42), transparent 74%);
+      --bg-glow: 
+        radial-gradient(46% 38% at 16% 4%, rgba(98, 64, 40, .5), transparent 72%),
+        radial-gradient(42% 34% at 86% 10%, rgba(92, 70, 38, .42), transparent 72%),
+        radial-gradient(50% 42% at 62% 98%, rgba(84, 50, 34, .45), transparent 74%);
     }
 
     /* ── 2. 基础 ───────────────────────────────────────── */
@@ -503,13 +503,13 @@
     .pagination span { min-width: 74px; text-align: center; font-variant-numeric: tabular-nums; }
 
     /* 杂志封面合集 */
-    .cover-collage { position: relative; margin: 0 0 18px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); background: #1d2026; animation: list-in .4s both; }
+    .cover-collage { position: relative; margin: 0 0 18px; overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-1); background: #1d1712; animation: list-in .4s both; }
     .cover-collage[hidden] { display: none; }
     .cover-strip { display: flex; height: 132px; }
     .cover-tile { position: relative; flex: 1 1 0; min-width: 0; padding: 0; border: 0; border-right: 1px solid rgba(255, 255, 255, .12); cursor: pointer; background: transparent; transition: flex-grow .3s var(--ease); }
     .cover-tile:last-child { border-right: 0; }
     .cover-tile:hover { flex-grow: 1.5; }
-    .cover-art { position: absolute; inset: 0; display: grid; overflow: hidden; place-items: center; background: #3d3d3a; color: rgba(255, 255, 255, .55); font-size: 28px; }
+    .cover-art { position: absolute; inset: 0; display: grid; overflow: hidden; place-items: center; background: #3b2f26; color: rgba(255, 255, 255, .55); font-size: 28px; }
     .result-monogram img, .cover-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
     .cover-caption { display: flex; flex-direction: column; gap: 2px; padding: 10px 16px; background: linear-gradient(0deg, rgba(0, 0, 0, .86), rgba(0, 0, 0, .72)); }
     .cover-kicker { color: rgba(255, 255, 255, .62); font-size: 10px; font-weight: 700; letter-spacing: .18em; text-transform: uppercase; }
@@ -845,9 +845,9 @@
       --reader-ink-soft: rgba(43, 38, 34, .68);
       --reader-line: rgba(43, 38, 34, .12);
       --reader-chrome: rgba(251, 248, 241, .88);
-      --reader-accent: #a8512f;
-      --reader-accent-soft: rgba(168, 81, 47, .1);
-      --reader-link: #a8512f;
+      --reader-accent: #84541a;
+      --reader-accent-soft: rgba(196, 129, 42, .12);
+      --reader-link: #84541a;
       --reader-shadow: 0 4px 24px rgba(43, 38, 34, .08);
 
       position: fixed;
@@ -870,9 +870,9 @@
       --reader-ink-soft: rgba(43, 38, 34, .68);
       --reader-line: rgba(43, 38, 34, .12);
       --reader-chrome: rgba(251, 248, 241, .88);
-      --reader-accent: #a8512f;
-      --reader-accent-soft: rgba(168, 81, 47, .1);
-      --reader-link: #a8512f;
+      --reader-accent: #84541a;
+      --reader-accent-soft: rgba(196, 129, 42, .12);
+      --reader-link: #84541a;
       --reader-shadow: 0 4px 24px rgba(43, 38, 34, .08);
     }
 
@@ -885,9 +885,9 @@
       --reader-ink-soft: rgba(51, 43, 34, .68);
       --reader-line: rgba(51, 43, 34, .12);
       --reader-chrome: rgba(246, 240, 226, .88);
-      --reader-accent: #a35329;
-      --reader-accent-soft: rgba(163, 83, 41, .1);
-      --reader-link: #a35329;
+      --reader-accent: #7e4f16;
+      --reader-accent-soft: rgba(196, 129, 42, .12);
+      --reader-link: #7e4f16;
       --reader-shadow: 0 4px 24px rgba(51, 43, 34, .08);
     }
 
@@ -908,31 +908,31 @@
 
     /* 4. Dark (极夜黑 / 舒适暗色) */
     .reader[data-reader-theme="dark"] {
-      --reader-bg: #262624;
-      --reader-surface: #30302e;
-      --reader-surface-active: #3a3a37;
-      --reader-ink: #e8e6dd;
-      --reader-ink-soft: rgba(232, 230, 221, .66);
-      --reader-line: rgba(222, 220, 209, .14);
-      --reader-chrome: rgba(38, 38, 36, .88);
-      --reader-accent: #e39274;
-      --reader-accent-soft: rgba(227, 146, 116, .15);
-      --reader-link: #e39274;
+      --reader-bg: #221b16;
+      --reader-surface: #2c241e;
+      --reader-surface-active: #372d25;
+      --reader-ink: #ece2d2;
+      --reader-ink-soft: rgba(236, 226, 210, .68);
+      --reader-line: rgba(236, 226, 210, .14);
+      --reader-chrome: rgba(34, 27, 22, .88);
+      --reader-accent: #e4ad6a;
+      --reader-accent-soft: rgba(228, 173, 106, .15);
+      --reader-link: #e4ad6a;
       --reader-shadow: 0 4px 24px rgba(0, 0, 0, .45);
     }
 
     /* 5. Follow App (跟随应用) */
     html[data-app-theme="dark"] .reader[data-reader-theme="follow"] {
-      --reader-bg: #262624;
-      --reader-surface: #30302e;
-      --reader-surface-active: #3a3a37;
-      --reader-ink: #e8e6dd;
-      --reader-ink-soft: rgba(232, 230, 221, .66);
-      --reader-line: rgba(222, 220, 209, .14);
-      --reader-chrome: rgba(38, 38, 36, .88);
-      --reader-accent: #e39274;
-      --reader-accent-soft: rgba(227, 146, 116, .15);
-      --reader-link: #e39274;
+      --reader-bg: #221b16;
+      --reader-surface: #2c241e;
+      --reader-surface-active: #372d25;
+      --reader-ink: #ece2d2;
+      --reader-ink-soft: rgba(236, 226, 210, .68);
+      --reader-line: rgba(236, 226, 210, .14);
+      --reader-chrome: rgba(34, 27, 22, .88);
+      --reader-accent: #e4ad6a;
+      --reader-accent-soft: rgba(228, 173, 106, .15);
+      --reader-link: #e4ad6a;
       --reader-shadow: 0 4px 24px rgba(0, 0, 0, .45);
     }
     html[data-app-theme="light"] .reader[data-reader-theme="follow"] {
@@ -943,9 +943,9 @@
       --reader-ink-soft: rgba(43, 38, 34, .68);
       --reader-line: rgba(43, 38, 34, .12);
       --reader-chrome: rgba(251, 248, 241, .88);
-      --reader-accent: #a8512f;
-      --reader-accent-soft: rgba(168, 81, 47, .1);
-      --reader-link: #a8512f;
+      --reader-accent: #84541a;
+      --reader-accent-soft: rgba(196, 129, 42, .12);
+      --reader-link: #84541a;
       --reader-shadow: 0 4px 24px rgba(43, 38, 34, .08);
     }
 
@@ -1045,7 +1045,7 @@
     .theme-btn.theme-paper { background: #fbf8f1; }
     .theme-btn.theme-warm { background: #f6f0e2; }
     .theme-btn.theme-green { background: #eaf2e8; }
-    .theme-btn.theme-dark { background: #262624; border-color: rgba(222, 220, 209, .3); }
+    .theme-btn.theme-dark { background: #221b16; border-color: rgba(236, 226, 210, .3); }
 
     .segmented-control {
       display: flex;
@@ -1679,22 +1679,22 @@
 
     @media (prefers-contrast: more) {
       :root {
-        --border: rgba(31, 30, 29, .35);
-        --border-strong: rgba(31, 30, 29, .6);
-        --text-secondary: rgba(31, 30, 29, .88);
-        --text-tertiary: rgba(31, 30, 29, .76);
-        --accent-text: #8a3f22;
+        --border: rgba(42, 32, 25, .35);
+        --border-strong: rgba(42, 32, 25, .6);
+        --text-secondary: rgba(42, 32, 25, .9);
+        --text-tertiary: rgba(42, 32, 25, .78);
+        --accent-text: #6c4412;
         --surface: #ffffff;
         --surface-strong: #ffffff;
       }
       html[data-app-theme="dark"] {
-        --border: rgba(236, 234, 226, .32);
-        --border-strong: rgba(236, 234, 226, .55);
-        --text-secondary: rgba(245, 244, 238, .88);
-        --text-tertiary: rgba(245, 244, 238, .74);
-        --accent-text: #efae96;
-        --surface: #262624;
-        --surface-strong: #30302e;
+        --border: rgba(236, 224, 206, .32);
+        --border-strong: rgba(236, 224, 206, .55);
+        --text-secondary: rgba(241, 232, 218, .88);
+        --text-tertiary: rgba(241, 232, 218, .76);
+        --accent-text: #f0c48c;
+        --surface: #261f19;
+        --surface-strong: #30271f;
       }
       :focus-visible {
         outline: 2.5px solid currentColor !important;
@@ -1705,15 +1705,15 @@
     @media (prefers-reduced-transparency: reduce) {
       :root {
         --glass-blur: none;
-        --surface: #ffffff;
-        --surface-strong: #ffffff;
-        --surface-weak: #eeebe2;
+        --surface: #fbf6ee;
+        --surface-strong: #fdf9f3;
+        --surface-weak: #e9dfcf;
       }
       html[data-app-theme="dark"] {
         --glass-blur: none;
-        --surface: #2a2927;
-        --surface-strong: #33322f;
-        --surface-weak: #3a3936;
+        --surface: #2c241d;
+        --surface-strong: #352c24;
+        --surface-weak: #3d332a;
       }
       body::before {
         opacity: .12;
