@@ -36,6 +36,7 @@ export const SECRET_PROMPTS = [
   { name: "R2_SECRET_ACCESS_KEY", hint: "secret access key of the same credential" },
   { name: "CF_ACCESS_CLIENT_ID", hint: "Client ID of the Access service token for the transcription hostname" },
   { name: "CF_ACCESS_CLIENT_SECRET", hint: "Client Secret of the same token" },
+  { name: "DASHSCOPE_API_KEY", hint: "only for READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope; press Enter to skip otherwise" },
 ];
 
 const REQUIRED_DEPLOY_KEYS = [
@@ -48,6 +49,7 @@ const OPTIONAL_DEPLOY_KEYS = [
   "READ_PODCAST_GITHUB_BRANCH",
   "READ_PODCAST_GITHUB_PATH",
   "READ_PODCAST_TRANSCRIPTION_LANGUAGE",
+  "READ_PODCAST_TRANSCRIPTION_PROVIDER",
   "READ_PODCAST_TIME_ZONE",
 ];
 
@@ -193,7 +195,7 @@ export function deployEnvContent(values) {
     "# 部署值（npm run deploy 读取）。由 npm run setup 生成；同名环境变量优先。见 docs/DEPLOYMENT.md。",
     "",
     `READ_PODCAST_DOMAIN=${quoted(value("READ_PODCAST_DOMAIN"))}`,
-    `READ_PODCAST_TRANSCRIPTION_URL=${quoted(value("READ_PODCAST_TRANSCRIPTION_URL"))}`,
+    ...(value("READ_PODCAST_TRANSCRIPTION_URL") ? [`READ_PODCAST_TRANSCRIPTION_URL=${quoted(value("READ_PODCAST_TRANSCRIPTION_URL"))}`] : []),
     `READ_PODCAST_GITHUB_OWNER=${quoted(value("READ_PODCAST_GITHUB_OWNER"))}`,
     `READ_PODCAST_GITHUB_REPO=${quoted(value("READ_PODCAST_GITHUB_REPO"))}`,
   ];
@@ -224,7 +226,9 @@ const DEPLOY_PROMPTS = {
 };
 
 /** 单项校验，返回错误消息或 null；总闸由 scripts/deploy.mjs 的 buildDeployArgs 把守。 */
-function fieldError(key, text) {
+function fieldError(key, text, provider) {
+  // dashscope 由 Worker 直连服务商，没有转录主机：转录地址可以留空（与 deploy.mjs 同一规则）。
+  if (!text && key === "READ_PODCAST_TRANSCRIPTION_URL" && provider === "dashscope") return null;
   if (!text) return `${key} is required`;
   if (key === "READ_PODCAST_DOMAIN" && !DOMAIN_RE.test(text)) {
     return `${key} must be a bare hostname without scheme or path (got ${text})`;
@@ -237,6 +241,7 @@ function fieldError(key, text) {
 
 /** 交互式收集部署值：当前值作为默认，逐项校验，最后用 buildDeployArgs 总闸把关。 */
 async function collectDeployValues(deps, current) {
+  const provider = (current.READ_PODCAST_TRANSCRIPTION_PROVIDER ?? "").trim().toLowerCase() || "self-hosted";
   for (let round = 0; round < 3; round++) {
     const values = {};
     let fieldProblem = null;
@@ -244,7 +249,7 @@ async function collectDeployValues(deps, current) {
       const existing = (current[key] ?? "").trim();
       const answer = (await deps.prompt(`${DEPLOY_PROMPTS[key]}\n  ${key}${existing ? ` [${existing}]` : ""}: `, existing)) ?? existing;
       const text = answer.trim() || existing;
-      fieldProblem = fieldError(key, text);
+      fieldProblem = fieldError(key, text, provider);
       if (fieldProblem) break;
       values[key] = text;
     }

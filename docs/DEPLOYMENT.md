@@ -38,7 +38,8 @@ and applies remote migrations, creates the R2 bucket with the three lifecycle ru
 them, prompts for every secret (input hidden, never written to any file), generates `.deploy.env`
 with the same validation as `npm run deploy` (documentation placeholders are refused), and prints
 the manual checklist below. Steps can also be run individually, for example
-`npm run setup -- --step d1`.
+`npm run setup -- --step d1`. With `READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope` already in `.deploy.env`
+(see Cloud transcription below) the script keeps it and does not require a transcription URL.
 
 The script cannot do these parts; finish them by hand using the matching sections:
 

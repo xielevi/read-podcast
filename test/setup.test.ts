@@ -195,7 +195,7 @@ describe("生命周期规则", () => {
 describe("secrets 与部署值", () => {
   it("SECRET_PROMPTS 与 docs/DEPLOYMENT.md 的 secret 清单一致", () => {
     expect(setup.SECRET_PROMPTS.map(secret => secret.name)).toEqual([
-      "GITHUB_TOKEN", "REFINER_API_KEY", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET",
+      "GITHUB_TOKEN", "REFINER_API_KEY", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET", "DASHSCOPE_API_KEY",
     ]);
     for (const secret of setup.SECRET_PROMPTS) {
       expect(deploymentDoc).toContain(`wrangler secret put ${secret.name}`);
@@ -213,6 +213,36 @@ describe("secrets 与部署值", () => {
     expect(content).toContain("READ_PODCAST_TIME_ZONE='Asia/Shanghai # test'");
     expect(content).not.toContain("READ_PODCAST_GITHUB_BRANCH");
     expect(content).not.toContain("READ_PODCAST_TRANSCRIPTION_LANGUAGE");
+  });
+
+  it("deployEnvContent 保留 TRANSCRIPTION_PROVIDER；dashscope 下转录地址可省略", () => {
+    const content = setup.deployEnvContent({
+      ...VALID_ENV,
+      READ_PODCAST_TRANSCRIPTION_URL: "",
+      READ_PODCAST_TRANSCRIPTION_PROVIDER: "dashscope",
+    });
+    expect(content).toContain("READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope");
+    expect(content).not.toContain("READ_PODCAST_TRANSCRIPTION_URL");
+  });
+
+  it("重跑 env 步骤：已有 dashscope 部署不要求转录地址，且 provider 原样保留（不会悄悄回退到自托管）", async () => {
+    let written: string | undefined;
+    const code = await setup.runSetup(baseDeps({
+      argv: ["--step", "env"],
+      readFile: () => [
+        "READ_PODCAST_DOMAIN=podcast.mydomain.net",
+        "READ_PODCAST_GITHUB_OWNER=someone",
+        "READ_PODCAST_GITHUB_REPO=notes",
+        "READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope",
+        "",
+      ].join("\n"),
+      writeFile: (_path, content) => {
+        written = content;
+      },
+    }));
+    expect(code).toBe(0);
+    expect(written).toContain("READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope");
+    expect(written).not.toContain("READ_PODCAST_TRANSCRIPTION_URL");
   });
 
   it("smokeChecks 与 docs/DEPLOYMENT.md 的边界 curl 一致", () => {
