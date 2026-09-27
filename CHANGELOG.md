@@ -53,7 +53,7 @@ v1.0 implements flexible transcription compute backends conforming to the statel
   - Raw speech-to-text transcripts stored in R2 immediately upon completion: failed refinement retries without re-transcribing; failed manuscript commits retry without re-calling the LLM.
   - Automated recovery via scheduled Cron Trigger: reclaims queued tasks and detects failed workflows so tasks never hang silently.
 - **Dual-Mode WebUI**:
-  - **Public Browse Mode (`/` and `/api/public/*`)**: Read-only, unauthenticated, side-effect-free reading interface for browsing subscriptions and reading published manuscripts, cached at Cloudflare's global edge.
+  - **Public Browse Mode (`/` and `/api/public/*`)**: Read-only, unauthenticated, side-effect-free reading interface for browsing subscriptions and reading published manuscripts. Cloudflare deployments cache published manuscript snapshots at the edge; Docker serves them from the local app.
   - **Authenticated Control Mode (`/manage*` and `/api/control/*`)**: Protected by Cloudflare Access with Zero Trust email/OTP or SSO authentication. Manages subscriptions, triggers episode generation, configures settings, and tracks reading progress.
 - **Bring-Your-Own Compute & Storage**:
   - **Refinement Provider**: Works with any OpenAI-compatible LLM API (e.g. DeepSeek, OpenCode Go, OpenAI, Qwen, etc.).
@@ -65,5 +65,5 @@ v1.0 implements flexible transcription compute backends conforming to the statel
 - **Docker / Node Deployment**:
   - `docker compose up -d` starts a Node web app with SQLite, in-process task recovery, local object storage and a bind-mounted manuscript directory; the transcription container uses Faster-Whisper by default.
 - **Comprehensive Quality and Test Suite**:
-  - Over 760 automated tests covering Cloudflare Workers, D1 schema migrations, RSS parsing, Markdown generation, and frontend invariants.
-  - Over 160 unit tests verifying transcription engine contracts and service endpoints.
+  - 800+ automated tests covering Cloudflare Workers, D1 / SQLite migrations, RSS parsing, Markdown generation, local runtime behavior, and frontend invariants.
+  - 190+ transcription-service tests covering engine contracts and service endpoints.
