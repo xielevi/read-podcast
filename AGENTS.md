@@ -19,13 +19,13 @@ publication.
 | Cloudflare application (D1, ProcessingWorkflow, R2) | Worker / D1 / Workflows / R2 |
 | Transcription Service — replaceable transcription compute | `transcription_service/` |
 | Refinement Provider — replaceable LLM compute | any OpenAI-compatible API |
-| Canonical Manuscript Store — final manuscript persistence | user-configured GitHub repository |
+| Canonical Manuscript Store — final manuscript persistence | user-configured GitHub repository (Cloudflare deployment) or local directory (Docker deployment, default; GitHub optional fallback) |
 
 ## Invariants
 
 - D1 is the durable business record; the ProcessingWorkflow is the execution owner with
   durable checkpoints; R2 holds raw / refined / upload payload checkpoints; published manuscripts live only in the
-  Canonical Manuscript Store.
+  Canonical Manuscript Store (GitHub repository on Cloudflare; local directory by default on Docker).
 - The Transcription Service holds no business state and no Cloudflare, R2 or LLM credential —
   and no application token or user-maintained configuration. The macOS reference deployment is
   zero-configuration (`deploy/macos/install.sh` creates runtime directories only); remote
@@ -55,8 +55,10 @@ publication.
 
 ## Concept versus implementation
 
-Do not add abstractions before a second concrete implementation exists: no `OutputBackend`
-interface, backend selector, `output_backend` column or Settings backend switch. Keep
+Two concrete Canonical Manuscript Store implementations exist (GitHub repository, local
+directory), so they stand behind the minimal `ManuscriptStore` platform interface; do not add
+further abstraction beyond it: no runtime backend selector, `output_backend` column or Settings
+backend switch — the store is chosen once at environment assembly. Keep
 implementation identifiers stable (`transcription_service/`, `TRANSCRIPTION_SERVICE_*`, D1
 columns, API paths, `deploy/macos/`) instead of renaming them for vocabulary.
 
