@@ -59,8 +59,6 @@
       --radius-xl: 28px;
       --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Helvetica Neue", sans-serif;
       --reader-serif: Georgia, "Songti SC", "STSong", "华文宋体", serif;
-      /* 展示衬线：只用于品牌名、页面大标题与单集标题，正文与控件保持无衬线 */
-      --display-serif: Georgia, "Songti SC", "STSong", "Source Han Serif SC", "Noto Serif CJK SC", serif;
       --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
       --ease: cubic-bezier(.16, 1, .3, 1);
       /* 背景光晕提取为 token：body 直接画（桌面 background-attachment: fixed），
@@ -187,10 +185,6 @@
     .brand-copy { text-align: left; }
     .brand-kicker { display: block; color: var(--text-secondary); font-size: 10px; font-weight: 600; letter-spacing: .08em; }
     .brand h1 { margin: 2px 0 0; font-size: 26px; font-weight: 680; letter-spacing: .02em; line-height: 1.1; }
-    .brand h1,
-    .content-head .headline-group h2,
-    .episode-inspector h2,
-    #episode-summary-title { font-family: var(--display-serif); }
     .logo-mark { display: grid; width: 44px; height: 44px; flex: 0 0 44px; place-items: center; color: var(--accent); }
     .logo-mark svg { width: 100%; height: 100%; }
 
@@ -421,7 +415,7 @@
     .story-filter button:hover, .story-filter button.active { color: var(--text-primary); }
     .story-filter button.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2.5px; border-radius: 2px; background: var(--text-primary); content: ""; }
     .filter-count { display: inline-flex; min-width: 20px; justify-content: center; margin-left: 3px; padding: 1px 6px; border-radius: 999px; color: var(--text-secondary); background: var(--surface-weak); font-size: 10px; font-variant-numeric: tabular-nums; }
-    .story-filter button.active .filter-count { color: var(--on-primary); background: var(--primary); }
+    .story-filter button.active .filter-count { color: var(--text-primary); background: var(--sunken); }
 
     .episode-list { flex: 1; display: grid; align-content: start; gap: 10px; }
     .episode-item {
