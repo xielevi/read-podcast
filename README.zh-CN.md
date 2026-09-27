@@ -3,9 +3,11 @@
 [English](README.md) · **简体中文**
 
 > [!NOTE]
-> **迁移说明**：原生 macOS App（v0.x / Python）已暂停维护，旧版代码归档保留在 [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python) 分支。当前主干已转向 Cloudflare 原生个人播客阅读系统架构。
+> **Cloudflare Free 计划即可运行（$0/月）**：社区用户完全可以在 Cloudflare Workers Free 计划（Workers、D1、Workflows、R2）内免费部署和运行 Read Podcast，日常无需支付云算力月租——唯一的硬性门槛是一个托管在 Cloudflare DNS 上的域名。
+>
+> **与 v0.x（Python / macOS App）的关系**：Read Podcast 最初是一个使用 Python 开发、带 DMG 打包与本地图形界面的 macOS 原生桌面应用（v0.x）。原生桌面版开发目前已暂停，v0.x 完整代码已归档至 [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python) 分支。从 v1.0 开始，项目彻底转向 Cloudflare 原生云端架构（Workers / D1 / Workflows / R2 + 外部独立算力），将阅读界面带到手机、平板与桌面所有浏览器中。
 
-**一个个人播客阅读系统。** 挑出值得留下的单集，Read Podcast 会把每一集整理成一份完整、可读的长文稿——
+**一个个人播客阅读系统——完全可在 Cloudflare Free 计划上运行（$0/月）。** 挑出值得留下的单集，Read Podcast 会把每一集整理成一份完整、可读的长文稿——
 不是摘要。你可以在任何设备上阅读它、以公开页面分享它，并以 Markdown 形式保存在你自己拥有的仓库里。
 
 <p align="center">
@@ -180,7 +182,10 @@ npx wrangler deploy --dry-run
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | 组件、不变量、任务生命周期、安全边界 |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | 生产部署、冒烟测试与运维 |
+| [docs/UPGRADING.md](docs/UPGRADING.md) | 升级路径、数据库迁移与破坏性变更处理 |
 | [docs/design.md](docs/design.md) | WebUI 产品语言与视觉系统 |
+| [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) | 本地开发、验收命令与提交规范 |
+| [.github/SECURITY.md](.github/SECURITY.md) | 安全漏洞报告与架构安全边界 |
 | [AGENTS.md](AGENTS.md) | 维护者与 Agent 指南 |
 
 ## 许可证

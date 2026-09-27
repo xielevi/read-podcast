@@ -3,9 +3,11 @@
 **English** · [简体中文](README.zh-CN.md)
 
 > [!NOTE]
-> **Migration notice**: The native macOS App (v0.x / Python) has been paused; the legacy codebase is archived in the [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python) branch. Read Podcast is now a cloud-first personal podcast reading system.
+> **Runs on Cloudflare Free plan ($0/month)**: You can deploy and run Read Podcast entirely within Cloudflare's Free tier (Workers, D1, Workflows, R2) with zero monthly cloud compute fees — the only mandatory cost is your domain on Cloudflare DNS.
+>
+> **Relation to v0.x (Python / macOS App)**: Read Podcast was originally created as a native macOS desktop app (v0.x, built with Python, local MLX Whisper, and desktop packaging). Desktop development is currently paused, and the v0.x codebase is archived on the [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python) branch. Starting with v1.0, Read Podcast has been rewritten as a cloud-native personal reading service (Cloudflare Workers/D1/Workflows/R2 + external transcription compute) with a responsive WebUI for phone, tablet, and desktop reading.
 
-**A personal podcast reading system.** Pick the episodes worth keeping, and Read Podcast turns
+**A personal podcast reading system — runs entirely on the Cloudflare Free plan ($0/month).** Pick the episodes worth keeping, and Read Podcast turns
 each one into a complete, readable long-form manuscript — not a summary — that you can read on
 any device, share as a public page, and keep as Markdown in a repository you own.
 
@@ -215,7 +217,10 @@ repository only.
 |---|---|
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Components, invariants, task lifecycle, security boundaries |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Production setup, smoke test and operations |
+| [docs/UPGRADING.md](docs/UPGRADING.md) | Upgrade paths, schema migrations, and breaking change handling |
 | [docs/design.md](docs/design.md) | WebUI product language and visual system (Chinese) |
+| [.github/CONTRIBUTING.md](.github/CONTRIBUTING.md) | Local development, validation commands, and PR guidelines |
+| [.github/SECURITY.md](.github/SECURITY.md) | Vulnerability reporting and security architecture boundaries |
 | [AGENTS.md](AGENTS.md) | Maintainer and agent guide |
 
 ## License
