@@ -60,25 +60,25 @@ jobs:
 
   # 生产发布（CD）。仅当 push 到 main、且 edge / transcription-service / docker 三个 CI job 全部成功后执行；
   # PR 事件下本 job 直接跳过（PR 只跑检查，永不部署）。
-  # 部署值来自 GitHub Actions 仓库变量（Settings → Secrets and variables → Actions → Variables），
-  # 仓库里不写任何部署者自己的域名 / 仓库名。没有设置 READ_PODCAST_DOMAIN 的仓库（例如 fork）
-  # 整个 job 跳过。变量含义见 docs/DEPLOYMENT.md（Continuous deployment）。
+  # 部署值放在 production environment Secrets 中，避免公开仓库的 Actions 日志泄露个人部署信息。
+  # 仅用不敏感的仓库变量 READ_PODCAST_DEPLOY=true 控制启用；fork 默认跳过。
+  # 变量含义见 docs/DEPLOYMENT.md（Continuous deployment）。
   deploy-production:
     name: Deploy production
     needs: [edge, transcription-service, docker]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.READ_PODCAST_DOMAIN != ''
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.READ_PODCAST_DEPLOY == 'true'
     runs-on: ubuntu-latest
     environment: production
     env:
-      READ_PODCAST_DOMAIN: ${{ vars.READ_PODCAST_DOMAIN }}
-      READ_PODCAST_TRANSCRIPTION_URL: ${{ vars.READ_PODCAST_TRANSCRIPTION_URL }}
-      READ_PODCAST_GITHUB_OWNER: ${{ vars.READ_PODCAST_GITHUB_OWNER }}
-      READ_PODCAST_GITHUB_REPO: ${{ vars.READ_PODCAST_GITHUB_REPO }}
-      READ_PODCAST_GITHUB_BRANCH: ${{ vars.READ_PODCAST_GITHUB_BRANCH }}
-      READ_PODCAST_GITHUB_PATH: ${{ vars.READ_PODCAST_GITHUB_PATH }}
-      READ_PODCAST_TRANSCRIPTION_LANGUAGE: ${{ vars.READ_PODCAST_TRANSCRIPTION_LANGUAGE }}
-      READ_PODCAST_TRANSCRIPTION_PROVIDER: ${{ vars.READ_PODCAST_TRANSCRIPTION_PROVIDER }}
-      READ_PODCAST_TIME_ZONE: ${{ vars.READ_PODCAST_TIME_ZONE }}
+      READ_PODCAST_DOMAIN: ${{ secrets.READ_PODCAST_DOMAIN }}
+      READ_PODCAST_TRANSCRIPTION_URL: ${{ secrets.READ_PODCAST_TRANSCRIPTION_URL }}
+      READ_PODCAST_GITHUB_OWNER: ${{ secrets.READ_PODCAST_GITHUB_OWNER }}
+      READ_PODCAST_GITHUB_REPO: ${{ secrets.READ_PODCAST_GITHUB_REPO }}
+      READ_PODCAST_GITHUB_BRANCH: ${{ secrets.READ_PODCAST_GITHUB_BRANCH }}
+      READ_PODCAST_GITHUB_PATH: ${{ secrets.READ_PODCAST_GITHUB_PATH }}
+      READ_PODCAST_TRANSCRIPTION_LANGUAGE: ${{ secrets.READ_PODCAST_TRANSCRIPTION_LANGUAGE }}
+      READ_PODCAST_TRANSCRIPTION_PROVIDER: ${{ secrets.READ_PODCAST_TRANSCRIPTION_PROVIDER }}
+      READ_PODCAST_TIME_ZONE: ${{ secrets.READ_PODCAST_TIME_ZONE }}
     # 同一时间只允许一个生产部署；新的 main 提交会取消尚未开始/仍在进行的旧部署。
     concurrency:
       group: read-podcast-edge-production

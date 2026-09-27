@@ -106,12 +106,17 @@ describe("仓库不含部署者自己的值", () => {
     expect(config).toContain('"preview_urls": false');
   });
 
-  it("CI 从仓库变量读取部署值，没有设置时跳过部署", () => {
+  it("CI 仅以非敏感变量启用部署，部署值来自 environment secrets", () => {
     const ci = read(".github/workflows/ci.yml");
-    expect(ci).toContain("vars.READ_PODCAST_TRANSCRIPTION_URL");
-    expect(ci).toContain("vars.READ_PODCAST_GITHUB_OWNER");
-    expect(ci).toContain("vars.READ_PODCAST_GITHUB_REPO");
-    expect(ci).toMatch(/if: .*vars\.READ_PODCAST_DOMAIN != ''/);
+    for (const name of [
+      "DOMAIN", "TRANSCRIPTION_URL", "GITHUB_OWNER", "GITHUB_REPO",
+      "GITHUB_BRANCH", "GITHUB_PATH", "TRANSCRIPTION_LANGUAGE",
+      "TRANSCRIPTION_PROVIDER", "TIME_ZONE",
+    ]) {
+      expect(ci).toContain(`secrets.READ_PODCAST_${name}`);
+      expect(ci).not.toContain(`vars.READ_PODCAST_${name}`);
+    }
+    expect(ci).toContain("vars.READ_PODCAST_DEPLOY == 'true'");
     expect(ci).toContain('base="https://${READ_PODCAST_DOMAIN}"');
     expect(ci).toContain("run: npm run deploy");
   });
