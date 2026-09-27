@@ -3,11 +3,11 @@
 **English** · [简体中文](README.zh-CN.md)
 
 > [!NOTE]
-> **Runs on the Cloudflare Free plan**: the whole Cloudflare application (Workers, D1, Workflows, R2) fits in the Workers Free tier, so there is no Cloudflare bill. You still need a domain on Cloudflare DNS, a machine to run the Transcription Service (or a cloud transcription provider), and an OpenAI-compatible LLM API for refinement, billed by that provider.
+> **Cloudflare Free target; production boundary checks pending.** The Cloudflare application uses Workers, D1, Workflows and R2 on the maintainer's Free plan; large feeds, long episodes, GitHub publication and multi-task recovery still need the production checks in [issue #30](https://github.com/xielevi/read-podcast/issues/30). Transcription and refinement may incur separate provider charges. Alternatively, run the same application on one host with Docker / Node, SQLite, local storage and local manuscripts—no Cloudflare account required.
 >
-> **Relation to v0.x (Python / macOS App)**: Read Podcast was originally created as a native macOS desktop app (v0.x, built with Python, local MLX Whisper, and desktop packaging). Desktop development is currently paused, and the v0.x codebase is archived on the [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python) branch. Starting with v1.0, Read Podcast has been rewritten as a cloud-native personal reading service (Cloudflare Workers/D1/Workflows/R2 + external transcription compute) with a responsive WebUI for phone, tablet, and desktop reading.
+> **Relation to v0.x (Python / macOS App)**: Read Podcast was originally a native macOS desktop app (v0.x, Python, MLX Whisper and DMG packaging). Desktop development is paused; the v0.x code is archived on [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python). Starting with v1.0, one TypeScript codebase supports both Cloudflare and single-host Docker / Node deployments, with a responsive browser interface.
 
-**A personal podcast reading system that runs on the Cloudflare Free plan.** Pick the episodes worth keeping, and Read Podcast turns
+**A personal podcast reading system for Cloudflare or Docker.** Pick the episodes worth keeping, and Read Podcast turns
 each one into a complete, readable long-form manuscript — not a summary — that you can read on
 any device, share as a public page, and keep as Markdown in a store you own.
 
@@ -44,9 +44,7 @@ long as the transcript it came from. You read it instead of re-listening, and it
    the first time the owner opens a manuscript and kept only if they match a real Chinese
    Wikipedia article, so every concept link points to a real page. Every manuscript can be
    downloaded as Markdown.
-4. **Share.** The same workspace is public and read-only at `/`: anyone can browse your
-   subscriptions and read published manuscripts. Everything that changes something — subscribing,
-   generating, settings, read state — lives under `/manage`, behind Cloudflare Access.
+4. **Share.** The same workspace is read-only at `/`: visitors can browse subscriptions and published manuscripts. State-changing actions live under `/manage`; protect that path and `/api/control/*` with Cloudflare Access on Cloudflare, or optional Basic Auth on Docker (which binds to localhost by default).
 
 <p align="center">
   <img src="docs/assets/readme/reader.webp" alt="Read Podcast reader: a manuscript with outline and Wikipedia-verified key concepts" width="920">
@@ -69,11 +67,7 @@ Turning a two-hour episode into a manuscript takes tens of minutes of transcript
 long LLM call. A script that does this in one go works until something fails halfway. Read
 Podcast is built so that every expensive step happens once:
 
-- **A durable pipeline, not a script.** Each generation is a Cloudflare Workflow with durable
-  checkpoints. The raw transcript is saved to R2 as soon as it exists, so a failed refinement
-  retries without transcribing again, and a failed save retries without calling the model
-  again. A scheduled job starts queued tasks that have no workflow yet and fails tasks whose
-  workflow died, so nothing hangs silently.
+- **A durable pipeline, not a script.** Cloudflare runs each generation in a Workflow with persistent checkpoints in R2. Docker uses an in-process runner with SQLite checkpoints and local object storage. A failed refinement can reuse the raw transcript; a failed publish can reuse refined output instead of repeating expensive work.
 - **Bring your own compute.** Transcription runs on a machine you choose — the reference is a
   Mac with Apple Silicon running MLX Whisper locally — behind a small HTTP contract. It holds no
   credentials and no durable business state, and only needs to be online while an episode is being transcribed.
@@ -92,6 +86,8 @@ Podcast is built so that every expensive step happens once:
 
 ## Architecture at a glance
 
+The diagram below is the Cloudflare deployment. Docker / Node uses the same application code with SQLite instead of D1, an in-process checkpointed runner instead of Workflows, local files instead of R2, and a local manuscript directory by default. See [Docker deployment](docs/DEPLOYMENT.md#7-local-docker-deployment).
+
 ```mermaid
 flowchart LR
     Browser["Browser / Mobile"] <--> CF
@@ -105,13 +101,12 @@ flowchart LR
     TS -->|"raw transcript"| CF
     CF -->|"refine request"| RP["Refinement Provider<br/>(OpenAI-compatible API)"]
     RP -->|"refined text"| CF
-    CF -->|"publish"| CMS["Canonical Manuscript Store<br/>(your GitHub repository,<br/>or a local directory on Docker)"]
+    CF -->|"publish"| CMS["Canonical Manuscript Store<br/>(your GitHub repository)"]
 ```
 
-Cloudflare owns every task from creation to publication; the other three boxes are replaceable
-dependencies it calls. Readers only ever talk to the Cloudflare application.
+In the Cloudflare path, Cloudflare owns every task from creation to publication; the other three boxes are replaceable dependencies it calls. Readers only talk to the application. In Docker, the local Node process owns the lifecycle instead.
 
-**Where your data lives**
+**Where your data lives (Cloudflare path unless noted)**
 
 | What | Where | Kept for |
 |---|---|---|
@@ -129,18 +124,12 @@ returns a secret. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the invar
 
 ## What you need to run it
 
-- **A Cloudflare account** with a domain on Cloudflare DNS. Read Podcast uses Workers (with
-  static assets), D1, R2, Workflows, a Cron Trigger, Cloudflare Access and Cloudflare Tunnel.
-- **A transcription machine.** The reference service needs an Apple Silicon Mac (macOS 14+)
-  that is on while episodes are being transcribed. Any machine or service that implements the
-  [transcription contract](docs/ARCHITECTURE.md#transcription-service-contract) can replace it.
-- **An OpenAI-compatible LLM API** and its API key.
-- **A GitHub repository** for manuscripts (private is fine) and a fine-grained token that can
-  write to it. (Docker deployments instead get a local manuscript directory by default; the
-  repository is optional there.)
+Choose one deployment path:
 
-**Cost.** **Workers Free is supported**; the maintainer's production deployment runs on it
-($0/month for Workers). Free limits include 10 ms CPU per invocation (I/O waiting does not
+- **Cloudflare:** a Cloudflare account with a domain on Cloudflare DNS, a transcription machine or provider, an OpenAI-compatible LLM API key, and a GitHub manuscript repository with a fine-grained write token. Workers (with static assets), D1, R2, Workflows, Cron, Access and optionally Tunnel are used. See [Cloudflare deployment](docs/DEPLOYMENT.md#2-cloudflare-application).
+- **Docker / Node:** a single host with Docker Compose, an OpenAI-compatible LLM API key, and local disk space for SQLite, temporary objects and manuscripts. The Compose stack includes a Faster-Whisper transcription container; no Cloudflare account, domain or GitHub repository is required. See [Docker deployment](docs/DEPLOYMENT.md#7-local-docker-deployment).
+
+**Cloudflare cost.** The maintainer's production deployment uses Workers Free, but the release boundary scenarios below are pending verification. Free limits include 10 ms CPU per invocation (I/O waiting does not
 count), 50 external subrequests and 1,000 Cloudflare service subrequests per invocation,
 3,000 Workflow steps/day, five Cron Triggers per account, and three-day Workflow instance
 state retention after completion. This application uses one Cron Trigger. Large RSS feeds,

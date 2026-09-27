@@ -138,6 +138,25 @@ Verify that the upgrade succeeded:
 
 ---
 
+## Docker / Node Upgrade Procedure
+
+The Cloudflare D1 / R2 / Wrangler steps above do **not** apply to Docker. On a single-host
+Docker deployment, stop creating new tasks and wait for active tasks to finish where possible.
+Back up the Compose `web-data` volume (SQLite database, signing key and temporary checkpoints),
+`./manuscripts/` (including `.versions/`), and your `.env` securely before changing images or
+schema. Keep `transcription-data` if you do not want Faster-Whisper to download its models again.
+
+Update the checkout, then run `docker compose up -d --build` to rebuild the web image and
+recreate services while retaining the existing volumes and bind mount. The Node server applies
+SQLite migrations on startup and resumes unfinished local workflows. Check
+`docker compose ps`, `docker compose logs web`, and
+`curl -fsS http://127.0.0.1:3000/api/public/health`, then verify existing manuscripts are
+readable and a newly started task progresses. Never run `docker compose down -v` during an
+upgrade: it removes the named data volumes. If changing the manuscript store from local to
+GitHub, plan a separate data migration; switching configuration alone does not move manuscripts.
+
+---
+
 ## Database Migration Guidelines for Contributors
 
 When introducing changes that require database alterations:

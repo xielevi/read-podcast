@@ -18,8 +18,8 @@ When you are done you will have two hostnames:
 
 - A Cloudflare account with your domain on Cloudflare DNS, R2 enabled, and a Zero Trust
   organization (for Access and Tunnel). Workers, D1, Workflows and one Cron Trigger are used.
-  Workers Free is supported and used by the maintainer in production; see *Cost* in the
-  [README](../README.md#what-you-need-to-run-it) for Free limits and validation boundaries.
+  The maintainer's production deployment uses Workers Free, but the release boundary
+  scenarios remain unverified; see [Free-plan boundary checks](#resource-names-and-free-plan-boundary-checks).
 - A Transcription Service host (reference: Apple Silicon Mac, macOS 14+, Xcode Command Line
   Tools, `uv`, `cloudflared`).
 - A private GitHub repository for manuscripts, and a fine-grained token with
@@ -275,7 +275,7 @@ them to secrets; delete affected run logs separately.
 The service is zero-configuration: no configuration file, no `.env`, no application token.
 
 ```bash
-git clone <this repository> && cd read-podcast-edge
+git clone https://github.com/xielevi/read-podcast.git && cd read-podcast
 deploy/macos/install.sh
 ```
 
