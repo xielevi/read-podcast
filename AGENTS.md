@@ -1,45 +1,71 @@
-# Read Podcast 协作边界
+# Read Podcast — Maintainer and Agent Guide
 
-## 架构约束
+## Sources of truth
 
-- 应用支持两种部署：macOS 本机原生运行（`scripts/start.sh` 一键脚本，面向个人用户的首选）与 Docker。二者共用同一套代码与配置分层。
-- 转录后端通过 `transcription.backend` 选择：默认 `mlx-api`（macOS Apple Silicon 原生 MLX HTTP 服务，行为不变）；实验分支新增 `openai-api`，作为 OpenAI 兼容 `/audio/transcriptions` 的跨平台 HTTP 客户端，并可通过单独 Compose 覆盖文件启动仓库内置 Faster-Whisper CPU 服务（见 `docs/ARCHITECTURE.md` D8）。
-- `mlx-api` 后端通过 `transcription.api_url` 访问 MLX 服务；本机原生默认 `127.0.0.1:21567`，Docker 默认 `host.docker.internal:21567`。
-- Faster-Whisper 只能存在实验分支的独立转录服务镜像中；不进入 Web 应用镜像或 Web 进程。不加入宿主硬件自动选型或进程内 MLX。
-- 架构变更必须先更新 `docs/ARCHITECTURE.md` 的设计决策小节。
+- Architecture invariants: `docs/ARCHITECTURE.md`. Operations: `docs/DEPLOYMENT.md`.
+  User-facing overview: `README.md` (canonical) and `README.zh-CN.md` (translation; keep the
+  two structurally identical).
+- Feature-level behavior lives in the code and its tests; there is no separate capability index.
+- `docs/design.md` is the WebUI visual system.
 
-## 运行边界
+## Product boundary
 
-- 应用入口：`app.standalone:app`。本机原生启动经 `scripts/start.sh`（同时托管 MLX 后端），Docker 启动经 Compose。
-- 用户交互入口仅为 WebUI；`scripts/podcast_pipeline.py` 只作为维护包装层，不参与 Web 任务执行。
-- API 前缀：`/api/read-podcast`。
-- WebUI 必须同时支持域名根路径和反向代理子路径。
-- Web 侧鉴权仅使用可选 Basic Auth；默认关闭，不加入网关专属鉴权分支。
-- 原生后端入口：`scripts/mlx_backend.py`。
-- Web 任务使用分阶段资源控制：Whisper 对外保持单请求，下载与精修允许有限并发和跨任务重叠。
-- 同机共享路径必须由 Whisper 服务端根目录 allowlist 约束；分离部署保留 multipart 上传回退。
-- 失败任务不得删除仍在保留期内的音频；只有输出文件真实存在时才能标记成功。
-- `workspace/`、`output/`、`config.yaml`、`config/secrets.env`、`.env`、数据库、音频和 Markdown 产物不得提交。
-- 精修结果必须保留长度和结构门禁，失败时回退原始转录。
-- 状态接口不得暴露 URL、Token、本机路径或其他凭据。`/settings` 是唯一例外：它回显用户自己填写的地址与目录，但同样绝不回传机密内容，只回传「是否已配置」。
-- WebUI 可写配置只能走 `modules/user_settings.py` 的显式字段白名单，不开放任意 YAML 编辑；普通配置写 `config.yaml`，机密写同目录 `secrets.env`（0600），环境变量接管的字段必须拒绝写入。
+Read Podcast is a cloud-first personal podcast subscription, processing and reading system for
+personal and small private deployments. Cloudflare owns the task lifecycle from creation to
+publication.
 
-## 验收
+| Concept | Current implementation |
+|---|---|
+| Cloudflare application (D1, ProcessingWorkflow, R2) | Worker / D1 / Workflows / R2 |
+| Transcription Service — replaceable transcription compute | `transcription_service/` |
+| Refinement Provider — replaceable LLM compute | any OpenAI-compatible API |
+| Canonical Manuscript Store — final manuscript persistence | user-configured GitHub repository |
 
-按改动涉及的代码与部署方式选择检查；纯文档修改检查内容与差异。以下是对应场景的验收入口，不要求每次任务都构建镜像或调用转录模型。
+## Invariants
+
+- D1 is the durable business record; the ProcessingWorkflow is the execution owner with
+  durable checkpoints; R2 holds raw / refined / upload payload checkpoints; published manuscripts live only in the
+  Canonical Manuscript Store.
+- The Transcription Service holds no business state and no Cloudflare, R2 or LLM credential —
+  and no application token or user-maintained configuration. The macOS reference deployment is
+  zero-configuration (`deploy/macos/install.sh` creates runtime directories only); remote
+  authentication is Cloudflare Access. After the raw transcript is in R2 nothing depends on it
+  being online.
+- Recovery is Cloudflare-owned (cron); `GET /tasks` is a pure read.
+- Read / browse is public, mutations and execution are private, authentication belongs to
+  Cloudflare Access. `/` + `/api/public/*` is Public Browse Mode of the same workspace: GET-only,
+  side-effect free (episodes are the D1 snapshot, never an RSS refresh), no reader state or task
+  status. Actions are classified by side effect; anonymous clicks on them navigate to `/manage`. Everything else is under `/manage*` + `/api/control/*`, protected by Access
+  by path; no other API prefix may exist. No users, sessions, JWTs, OAuth or account tables.
+- Readers reach articles only through the Cloudflare application; the Canonical Manuscript
+  Store is never a browser-facing entry point. One store per manuscript; exports are secondary.
+- No cloud-drive export, OAuth connectors or conversational assistant — removed by design.
+- The repository is self-contained: runtime, build, test, deployment and upgrade depend on this
+  repository only.
+- Secrets live in Wrangler secrets only: Cloudflare holds the transcription endpoint, the Access
+  service token, R2, GitHub and refinement credentials. The Transcription Service holds none, and
+  no API ever returns a secret value. Documentation and examples use placeholders
+  (`your-domain.example`, `your-github-username`, `your-manuscript-repository`,
+  `podcasts/transcripts`), never personal domains, repositories or paths.
+- Deployment-specific values (custom domain, D1 database id, transcription URL, Store repository)
+  never live in the repository: `wrangler.jsonc` stays deployment-neutral and `scripts/deploy.mjs`
+  (`npm run deploy`, also used by CI) injects them from `.deploy.env` or environment variables.
+
+## Concept versus implementation
+
+Do not add abstractions before a second concrete implementation exists: no `OutputBackend`
+interface, backend selector, `output_backend` column or Settings backend switch. Keep
+implementation identifiers stable (`transcription_service/`, `TRANSCRIPTION_SERVICE_*`, D1
+columns, API paths, `deploy/macos/`) instead of renaming them for vocabulary.
+
+Architecture changes update `docs/ARCHITECTURE.md` first. Do not introduce Durable Objects,
+Queues or permanent polling without a real need.
+
+## Validation
 
 ```bash
-uv sync --dev
-uv run pytest -q
-docker build -t read-podcast:test .
+npm run check
+npm run check:frontend
+UV_CACHE_DIR=/tmp/read-podcast-edge-uv-cache uv run --directory transcription_service pytest -q
+npx wrangler deploy --dry-run
 ```
-
-涉及相应功能或部署时验证：
-
-- `GET /`、配置的子路径与 `GET /api/read-podcast/health` 返回 `200`。
-- Basic Auth 关闭时不拦截；同时配置用户名和密码时保护 WebUI 与业务 API。
-- `GET /api/read-podcast/transcription/status` 只返回安全元数据。
-- `GET /api/read-podcast/settings` 不含任何机密内容；被环境变量接管的字段标记 `locked`，`PUT` 时返回 400。
-- 原生 MLX 后端 `/health` 与带 Token 的 `/transcribe` 通过。
-- 容器进入 `healthy`。
-- 页面可以创建任务、接收 SSE 日志并打开生成稿件。

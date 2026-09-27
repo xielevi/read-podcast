@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# 动态定位工作目录，杜绝硬编码绝对路径
+BIN_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SERVICE_DIR="$(cd "${BIN_DIR}/.." && pwd)"
+
+export PATH="/opt/homebrew/bin:/usr/local/bin:${PATH}"
+cd "${SERVICE_DIR}"
+
+# reference deployment 的本机转录引擎：只监听回环地址，只被 Transcription Service 调用。
+exec uv run uvicorn mlx_service.server:app --host 127.0.0.1 --port 21567

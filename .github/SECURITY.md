@@ -1,5 +1,8 @@
 # Security Policy
 
+> [!NOTE]
+> This security policy is currently being updated for the Cloudflare / Docker architecture (tracked in issue #37).
+
 ## Supported versions
 
 | Version | Supported |
