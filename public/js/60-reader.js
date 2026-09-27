@@ -21,15 +21,15 @@
         var charCount = clean.replace(/\s+/g, '').length;
         var minutes = Math.max(1, Math.round(charCount / 750));
         var countStr = (getLocale() === 'en')
-          ? (charCount >= 10000 ? t('reader.words_wan', (charCount / 1000).toFixed(1)) : t('reader.words', charCount))
-          : (charCount >= 10000 ? t('reader.words_wan', (charCount / 10000).toFixed(1)) : t('reader.words', charCount));
+          ? (charCount >= 1000 ? t('reader.characters_large', (charCount / 1000).toFixed(1)) : t('reader.characters', charCount))
+          : (charCount >= 10000 ? t('reader.characters_large', (charCount / 10000).toFixed(1)) : t('reader.characters', charCount));
         statsEl.textContent = charCount ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       } else {
         var words = clean.split(/\s+/).filter(Boolean).length;
         var minutes = Math.max(1, Math.round(words / 220));
-        var countStr = (getLocale() === 'en')
-          ? (words >= 10000 ? t('reader.words_wan', (words / 1000).toFixed(1)) : t('reader.words', words))
-          : (words >= 10000 ? t('reader.words_wan', (words / 10000).toFixed(1)) : t('reader.words', words));
+        var countStr = words >= 1000
+          ? t('reader.word_count_large', (words / 1000).toFixed(1))
+          : t('reader.word_count', words);
         statsEl.textContent = words ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       }
     }
