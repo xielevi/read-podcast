@@ -255,14 +255,20 @@ the provider from Cloudflare. The completeness guard hard floor (default `0.7`) 
 
 `.github/workflows/ci.yml` runs the checks on every push and pull request. On a push to `main`
 its `deploy-production` job runs the same `npm run deploy` and then the Access-boundary smoke
-test below against `READ_PODCAST_DOMAIN`. It reads the deployment values from GitHub Actions
-**repository variables** (Settings → Secrets and variables → Actions → Variables) with the names
-in the table above, and is skipped entirely while `READ_PODCAST_DOMAIN` is unset, so a fork does
-not try to deploy. To enable it:
+test below against `READ_PODCAST_DOMAIN`. For public repositories, deployment-specific values
+must be GitHub Actions **production environment secrets** (Settings → Environments → production →
+Environment secrets), not repository variables: Wrangler prints configuration in deployment logs,
+and GitHub masks secrets but does not mask variables. The only repository variable is the
+non-sensitive `READ_PODCAST_DEPLOY=true` enable flag; forks without it skip deployment. To enable it:
 
-1. Add the repository variables (at least the four required ones).
-2. Create a GitHub environment named `production` with the `CLOUDFLARE_API_TOKEN` and
-   `CLOUDFLARE_ACCOUNT_ID` secrets.
+1. Create a GitHub environment named `production` and add the deployment values from the table
+   above as environment secrets (at least the four required ones), plus `CLOUDFLARE_API_TOKEN`
+   and `CLOUDFLARE_ACCOUNT_ID`.
+2. Set the repository variable `READ_PODCAST_DEPLOY` to `true` only after all secrets exist.
+
+Do not echo deployment inputs or run `node scripts/deploy.mjs --print-args` in CI. Values
+previously used as variables may remain visible in historical Actions logs even after moving
+them to secrets; delete affected run logs separately.
 
 ## 3. Transcription Service
 
