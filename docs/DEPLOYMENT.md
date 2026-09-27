@@ -29,6 +29,30 @@ When you are done you will have two hostnames:
 
 ## 2. Cloudflare application
 
+### Setup script
+
+`npm run setup` automates most of this section interactively. Every step is idempotent — existing
+resources are detected and skipped, so it is safe to rerun at any time and after a failed run. It
+checks `wrangler` authentication, creates the D1 database (by the `wrangler.jsonc` `database_name`)
+and applies remote migrations, creates the R2 bucket with the three lifecycle rules and verifies
+them, prompts for every secret (input hidden, never written to any file), generates `.deploy.env`
+with the same validation as `npm run deploy` (documentation placeholders are refused), and prints
+the manual checklist below. Steps can also be run individually, for example
+`npm run setup -- --step d1`. With `READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope` already in `.deploy.env`
+(see Cloud transcription below) the script keeps it and does not require a transcription URL.
+
+The script cannot do these parts; finish them by hand using the matching sections:
+
+- The Cloudflare Access application for `/manage*` and `/api/control/*` (below).
+- The Access service token policy on the transcription hostname (Secrets, below).
+- The Cloudflare Tunnel and its connector on the transcription host (section 3).
+- The Transcription Service installation (`deploy/macos/install.sh`, section 3).
+- Deploying with `npm run deploy` (below) and pointing the Refinement Provider at your API.
+- Optional CI deployment variables (Continuous deployment, below).
+
+After deploying, `npm run setup -- --smoke` runs the Access-boundary smoke test (section 4) against
+your domain. The subsections below document the same steps without the script.
+
 ### D1
 
 ```bash
@@ -84,12 +108,16 @@ environment variables, which take precedence:
 | `READ_PODCAST_TIME_ZONE` | no | `MANUSCRIPT_TIME_ZONE`, the IANA time zone of `processed_at` in manuscript front matter, default `Asia/Shanghai` |
 
 `node scripts/deploy.mjs --print-args` shows the resulting `wrangler deploy` arguments without
-deploying. `GITHUB_API_BASE` (GitHub Enterprise) can still be set as a var in `wrangler.jsonc`.
+deploying. `npm run setup` writes `.deploy.env` for you (existing values are kept as defaults).
+`GITHUB_API_BASE` (GitHub Enterprise) can still be set as a var in `wrangler.jsonc`.
 
 Changing the transcription machine only requires changing `READ_PODCAST_TRANSCRIPTION_URL`,
 redeploying and, if the new hostname has its own Access service token, the `CF_ACCESS_*` secrets.
 
 ### Secrets
+
+`npm run setup` prompts for each secret below (input hidden, passed to Wrangler over stdin, never
+written to a file); press Enter to keep an existing value.
 
 ```bash
 npx wrangler secret put GITHUB_TOKEN
@@ -241,7 +269,8 @@ fetch('/api/control/settings/test', { method: 'POST', headers: { 'content-type':
   body: JSON.stringify({ target: 'transcription' }) }).then(r => r.json()).then(console.log)
 ```
 
-1. Access boundary, anonymous (no Access cookie):
+1. Access boundary, anonymous (no Access cookie) — `npm run setup -- --smoke` runs the same four
+   checks from your machine:
 
    ```bash
    curl -sS -o /dev/null -w '%{http_code}\n' https://your-domain.example/                    # 200
