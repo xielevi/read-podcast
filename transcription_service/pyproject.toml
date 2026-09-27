@@ -11,6 +11,8 @@ dependencies = [
   "requests>=2.32.0",
   # reference deployment 的本机引擎（Apple Silicon）。
   "mlx-whisper>=0.4.3 ; sys_platform == 'darwin'",
+  # 其余平台（Linux / Windows / NAS / 容器）的进程内引擎（CPU / CUDA）。
+  "faster-whisper>=1.1.0 ; sys_platform != 'darwin'",
 ]
 
 [dependency-groups]

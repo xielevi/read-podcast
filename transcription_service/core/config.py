@@ -2,7 +2,9 @@
 
 零配置设计：本服务**没有**任何用户维护的配置文件，也没有任何 application secret。
 
-- 转录引擎固定为 reference deployment 的本机 MLX Whisper（``MLX_ENDPOINT``，端口 21567）；
+- 转录引擎按平台内建选择（Apple Silicon 默认本机 MLX Whisper，其余平台默认进程内
+  Faster-Whisper），``READ_PODCAST_TRANSCRIPTION_ENGINE`` 可强制指定；Faster-Whisper 的
+  模型 / 设备 / 精度 / 线程数同样只有内建默认值 + 环境变量覆盖，没有第二配置中心；
 - 运行时默认（下载上限 / 并发 / 超时 / 活跃请求上限 / 结果 TTL）全部是程序内建默认值，
   不是 deployment configuration；
 - 唯一的显式覆盖是数据 / 日志目录（测试隔离用），只从真实 process environment 读取——
@@ -14,7 +16,9 @@
 from __future__ import annotations
 
 import os
+import platform
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 CORE_DIR = Path(__file__).resolve().parent
@@ -22,6 +26,30 @@ CORE_DIR = Path(__file__).resolve().parent
 # ── reference deployment 的固定拓扑：同机两个进程 ──
 # Transcription Service 监听 127.0.0.1:28100（见 bin/run-service），引擎是 127.0.0.1:21567。
 MLX_ENDPOINT = "http://127.0.0.1:21567"
+
+# ── 转录引擎选择：内建默认 + 环境变量强制 ──
+ENGINE_MLX = "mlx"
+ENGINE_FASTER_WHISPER = "faster-whisper"
+ENGINE_ENV_VAR = "READ_PODCAST_TRANSCRIPTION_ENGINE"
+
+
+def resolve_engine() -> str:
+    """解析转录引擎：显式环境变量优先；auto（默认）按平台选择。
+
+    Apple Silicon（darwin + arm64）默认 MLX——reference deployment 的本机引擎；
+    其余平台（Linux / Windows / NAS / 容器，含 Intel Mac）默认进程内 Faster-Whisper。
+    非法值宁可启动即报错，也不悄悄回退到「看似正常」的错误引擎。
+    """
+    explicit = os.environ.get(ENGINE_ENV_VAR, "").strip().lower()
+    if explicit and explicit != "auto":
+        if explicit not in (ENGINE_MLX, ENGINE_FASTER_WHISPER):
+            raise ValueError(
+                f"{ENGINE_ENV_VAR} 必须是 'auto' / 'mlx' / 'faster-whisper'，收到 {explicit!r}"
+            )
+        return explicit
+    if sys.platform == "darwin" and platform.machine() == "arm64":
+        return ENGINE_MLX
+    return ENGINE_FASTER_WHISPER
 
 # ── 运行时 built-in defaults ──
 MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024  # 单个音频源上限；Cloudflare 可用 source.max_bytes 收紧
@@ -53,3 +81,41 @@ def default_log_dir() -> Path:
 
 
 DATA_DIR = default_data_dir()
+
+
+# ── Faster-Whisper 引擎内建默认值（只允许环境变量逐项覆盖；没有配置文件） ──
+DEFAULT_FASTER_WHISPER_MODEL = "large-v3-turbo"
+DEFAULT_FASTER_WHISPER_DEVICE = "auto"  # CUDA 可用则用 GPU，否则 CPU
+DEFAULT_FASTER_WHISPER_COMPUTE_TYPE = "int8"  # CPU / CUDA 通用，内存占用小（legacy 参考实现同款）
+DEFAULT_FASTER_WHISPER_CPU_THREADS = max(1, os.cpu_count() or 4)
+
+
+@dataclass(frozen=True)
+class FasterWhisperOptions:
+    model: str
+    device: str
+    compute_type: str
+    cpu_threads: int
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"{name} 必须是整数，收到 {raw!r}") from None
+    if value < 0:
+        raise ValueError(f"{name} 不能为负数")
+    return value
+
+
+def faster_whisper_options() -> FasterWhisperOptions:
+    """Faster-Whisper 运行参数：内建默认值，仅可用环境变量逐项覆盖。"""
+    return FasterWhisperOptions(
+        model=os.environ.get("READ_PODCAST_TRANSCRIPTION_MODEL", "").strip() or DEFAULT_FASTER_WHISPER_MODEL,
+        device=os.environ.get("READ_PODCAST_TRANSCRIPTION_DEVICE", "").strip() or DEFAULT_FASTER_WHISPER_DEVICE,
+        compute_type=os.environ.get("READ_PODCAST_TRANSCRIPTION_COMPUTE_TYPE", "").strip() or DEFAULT_FASTER_WHISPER_COMPUTE_TYPE,
+        cpu_threads=_env_int("READ_PODCAST_TRANSCRIPTION_CPU_THREADS", DEFAULT_FASTER_WHISPER_CPU_THREADS),
+    )
