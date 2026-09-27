@@ -32,25 +32,37 @@
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (templates) {
           _promptTemplates = Array.isArray(templates) ? templates : [];
-          var select = byId('prompt-template-select');
-          while (select.options.length > 1) select.remove(1);
-          _promptTemplates.forEach(function (template) {
-            var option = document.createElement('option');
-            option.value = String(template.content || '');
-            option.textContent = String(template.name || t('custom.untitled_template'));
-            select.appendChild(option);
-          });
-          if (_promptTemplates.length > 0) {
-            select.selectedIndex = 1;
-            applyPromptTemplate(_promptTemplates[0].content);
-          }
+          renderPromptTemplateOptions();
         })
         .catch(function () { addLog(t('custom.templates_load_failed'), 'warning'); });
     }
 
+    function renderPromptTemplateOptions() {
+      var select = byId('prompt-template-select');
+      if (!select) return;
+      var currentVal = select.value;
+      if (select.options.length > 0) {
+        select.options[0].textContent = t('custom.template_standard');
+      }
+      while (select.options.length > 1) select.remove(1);
+      _promptTemplates.forEach(function (template) {
+        var option = document.createElement('option');
+        option.value = String(template.content || '');
+        var labelKey = 'template.' + template.id + '.name';
+        var translated = t(labelKey);
+        option.textContent = translated !== labelKey ? translated : String(template.name || t('custom.untitled_template'));
+        var descKey = 'template.' + template.id + '.desc';
+        var localizedDesc = t(descKey);
+        option.title = localizedDesc !== descKey ? localizedDesc : String(template.description || '');
+        select.appendChild(option);
+      });
+      if (currentVal) {
+        select.value = currentVal;
+      }
+    }
+
     function applyPromptTemplate(content) {
-      if (!content) return;
-      byId('custom-prompt').value = content;
+      byId('custom-prompt').value = content || '';
     }
 
     function handleAudioDrop(event) {

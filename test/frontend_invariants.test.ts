@@ -696,5 +696,193 @@ title: 袁长庚×胡安焉
       expect(/[\u4e00-\u9fa5]/.test(items[0]?.textContent || "")).toBe(false);
       expect(/[\u4e00-\u9fa5]/.test(items[1]?.textContent || "")).toBe(false);
     });
+
+    it("renders Settings in English mode with real backend payload without leaking Chinese", () => {
+      const settingsPayload = {
+        writable: true,
+        groups: [
+          {
+            key: "refiner",
+            title: "文字整理",
+            fields: [
+              {
+                key: "refiner.model",
+                label: "模型",
+                type: "text",
+                placeholder: "服务商提供的模型 ID",
+                value: "gpt-4o",
+              },
+              {
+                key: "refiner.api_base",
+                label: "服务地址",
+                type: "text",
+                placeholder: "https://api.example.com/v1",
+                value: "https://api.openai.com/v1",
+              },
+              {
+                key: "refiner.temperature",
+                label: "创作温度",
+                type: "text",
+                placeholder: "0.3",
+                value: "0.3",
+              },
+              {
+                key: "refiner.max_tokens",
+                label: "最大输出",
+                type: "text",
+                placeholder: "65536",
+                value: "65536",
+              },
+            ],
+          },
+          {
+            key: "quality",
+            title: "完整度保护",
+            description: "成稿明显过短时不会发布。",
+            fields: [
+              {
+                key: "refiner.min_output_ratio",
+                label: "完整度保护",
+                type: "text",
+                placeholder: "0.7",
+                value: "0.7",
+                hint: "这是发布硬下限；默认 Prompt 的编辑目标约为原始转录的 80%。",
+              },
+            ],
+          },
+        ],
+      };
+
+      const dom = new JSDOM(HTML, {
+        runScripts: "dangerously",
+        url: "http://localhost:8787/manage",
+      });
+      const script = dom.window.document.createElement("script");
+      script.textContent = BUNDLE;
+      dom.window.document.body.appendChild(script);
+
+      const win = dom.window as unknown as {
+        applyLocale: (loc: string) => void;
+        renderSettings: (data: unknown) => void;
+      };
+
+      win.applyLocale("en");
+      win.renderSettings(settingsPayload);
+
+      const settingsBody = dom.window.document.getElementById("settings-body");
+      expect(settingsBody).not.toBeNull();
+
+      // Check all field labels, placeholders, hints and group headings in refiner & quality sections
+      const labels = Array.from(settingsBody!.querySelectorAll(".settings-field .form-label")).map(el => el.textContent);
+      const placeholders = Array.from(settingsBody!.querySelectorAll<HTMLInputElement>(".settings-field input")).map(el => el.placeholder);
+      const hints = Array.from(settingsBody!.querySelectorAll(".settings-field-hint, .settings-group-desc")).map(el => el.textContent);
+
+      // Verify no Chinese characters leak in refiner & quality settings
+      for (const text of [...labels, ...placeholders, ...hints]) {
+        expect(/[\u4e00-\u9fa5]/.test(text || "")).toBe(false);
+      }
+
+      // Check specific English labels
+      expect(labels).toContain("Model");
+      expect(labels).toContain("Endpoint URL");
+      expect(labels).toContain("Temperature");
+      expect(labels).toContain("Max Tokens");
+      expect(labels).toContain("Length Quality Gate");
+    });
+
+    it("renders prompt templates with localized names and does not force Chinese prompt by default", () => {
+      const templatesPayload = [
+        { id: "magazine", name: "默认杂志精修", description: "杂志级访谈文稿...", content: "杂志级模板内容..." },
+        { id: "clean_verbatim", name: "清洁逐字稿", description: "高保真逐字稿...", content: "清洁逐字稿内容..." },
+        { id: "structured_interview", name: "结构化访谈", description: "重点突出问答结构...", content: "结构化访谈内容..." },
+      ];
+
+      const dom = new JSDOM(HTML, {
+        runScripts: "dangerously",
+        url: "http://localhost:8787/manage",
+      });
+      const script = dom.window.document.createElement("script");
+      script.textContent = BUNDLE;
+      dom.window.document.body.appendChild(script);
+
+      const win = dom.window as unknown as {
+        applyLocale: (loc: string) => void;
+        _promptTemplates: unknown[];
+        renderPromptTemplateOptions: () => void;
+      };
+
+      win.applyLocale("en");
+      win._promptTemplates = templatesPayload;
+      win.renderPromptTemplateOptions();
+
+      const select = dom.window.document.getElementById("prompt-template-select") as unknown as HTMLSelectElement;
+      expect(select).not.toBeNull();
+      expect(select.options.length).toBe(4); // 1 default standard + 3 templates
+      expect(select.options[0].textContent).toBe("Standard Refinement");
+      expect(select.options[0].value).toBe("");
+      expect(select.options[1].textContent).toBe("Magazine Refinement");
+      expect(select.options[2].textContent).toBe("Clean Verbatim");
+      expect(select.options[3].textContent).toBe("Structured Interview");
+
+      // Verify no Chinese in template option names in English mode
+      for (let i = 0; i < select.options.length; i++) {
+        expect(/[\u4e00-\u9fa5]/.test(select.options[i].textContent || "")).toBe(false);
+      }
+
+      // Default selection must stay standard edit (index 0, empty value), not template 1
+      expect(select.selectedIndex).toBe(0);
+      const customPromptArea = dom.window.document.getElementById("custom-prompt") as unknown as HTMLTextAreaElement;
+      expect(customPromptArea.value).toBe("");
+    });
+
+    it("calculates reader stats based on manuscript content language rather than UI locale", () => {
+      const dom = new JSDOM(HTML, {
+        runScripts: "dangerously",
+        url: "http://localhost:8787/manage",
+      });
+      const script = dom.window.document.createElement("script");
+      script.textContent = BUNDLE;
+      dom.window.document.body.appendChild(script);
+
+      const win = dom.window as unknown as {
+        applyLocale: (loc: string) => void;
+        updateReaderStats: (text: string) => void;
+      };
+
+      const chineseManuscript = `---
+title: 测试中文单集
+---
+这是一篇中文播客的长篇精修访谈文稿。今天我们探讨分布式计算、边缘架构以及大规模语言模型在语音处理领域的最新进展。`.repeat(50); // ~4000 CJK chars
+
+      const englishManuscript = `---
+title: Test English Episode
+---
+This is an English podcast transcript discussing distributed systems, edge computing, and large language models for audio processing and refinement.`.repeat(50); // ~1000 English words
+
+      const statsEl = dom.window.document.getElementById("reader-meta-stats");
+
+      // Case A: English UI + Chinese manuscript
+      win.applyLocale("en");
+      win.updateReaderStats(chineseManuscript);
+      expect(statsEl?.textContent).toBeTruthy();
+      // Should calculate character count (~3600), not ~15 words!
+      const matchEn = statsEl?.textContent?.match(/(\d+)\s+words\s+·\s+~(\d+)\s+min/);
+      expect(matchEn).not.toBeNull();
+      const countEn = parseInt(matchEn![1], 10);
+      expect(countEn).toBeGreaterThan(2000);
+
+      // Case B: English UI + English manuscript
+      win.updateReaderStats(englishManuscript);
+      const matchEn2 = statsEl?.textContent?.match(/(\d+)\s+words\s+·\s+~(\d+)\s+min/);
+      expect(matchEn2).not.toBeNull();
+      const countEn2 = parseInt(matchEn2![1], 10);
+      expect(countEn2).toBeGreaterThan(500);
+
+      // Case C: Chinese UI + Chinese manuscript
+      win.applyLocale("zh");
+      win.updateReaderStats(chineseManuscript);
+      expect(statsEl?.textContent).toContain("字 · 约");
+      expect(statsEl?.textContent).toContain("分钟");
+    });
   });
 });

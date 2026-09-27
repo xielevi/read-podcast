@@ -1,18 +1,36 @@
+    var _lastReaderText = '';
+
     function updateReaderStats(rawText) {
-      var withoutFrontmatter = String(rawText || '').replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n*/, '');
-      var cleanText = withoutFrontmatter.replace(/\s+/g, '');
-      var count = cleanText.length;
+      if (rawText !== undefined) _lastReaderText = rawText;
+      var textToUse = rawText !== undefined ? rawText : _lastReaderText;
+      var withoutFrontmatter = String(textToUse || '').replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n*/, '');
       var statsEl = byId('reader-meta-stats');
       if (!statsEl) return;
-      if (!count) { statsEl.textContent = ''; return; }
-      if (getLocale() === 'en') {
-        var words = withoutFrontmatter.trim().split(/\s+/).filter(Boolean).length;
-        var minutes = Math.max(1, Math.round(words / 220));
-        statsEl.textContent = words ? (t('reader.words', words) + ' · ' + t('reader.est_time', minutes)) : '';
+      var clean = withoutFrontmatter.trim();
+      if (!clean) { statsEl.textContent = ''; return; }
+
+      // 按稿件内容本身判定中文字符计数还是西文词数，而非按 UI 语言
+      var sample = clean.slice(0, 20000);
+      var cjkMatches = sample.match(/[\u4e00-\u9fa5\u3400-\u4dbf\uf900-\ufaff]/g);
+      var cjkCount = cjkMatches ? cjkMatches.length : 0;
+      var latinMatches = sample.match(/[a-zA-Z]/g);
+      var latinCount = latinMatches ? latinMatches.length : 0;
+      var isCJK = cjkCount >= 20 || (cjkCount > 0 && cjkCount >= latinCount * 0.1);
+
+      if (isCJK) {
+        var charCount = clean.replace(/\s+/g, '').length;
+        var minutes = Math.max(1, Math.round(charCount / 750));
+        var countStr = (getLocale() === 'en')
+          ? (charCount >= 10000 ? t('reader.words_wan', (charCount / 1000).toFixed(1)) : t('reader.words', charCount))
+          : (charCount >= 10000 ? t('reader.words_wan', (charCount / 10000).toFixed(1)) : t('reader.words', charCount));
+        statsEl.textContent = charCount ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       } else {
-        var minutes = Math.max(1, Math.round(count / 750));
-        var countStr = count >= 10000 ? t('reader.words_wan', (count / 10000).toFixed(1)) : t('reader.words', count);
-        statsEl.textContent = count ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
+        var words = clean.split(/\s+/).filter(Boolean).length;
+        var minutes = Math.max(1, Math.round(words / 220));
+        var countStr = (getLocale() === 'en')
+          ? (words >= 10000 ? t('reader.words_wan', (words / 1000).toFixed(1)) : t('reader.words', words))
+          : (words >= 10000 ? t('reader.words_wan', (words / 10000).toFixed(1)) : t('reader.words', words));
+        statsEl.textContent = words ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       }
     }
 

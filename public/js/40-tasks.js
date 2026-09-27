@@ -47,16 +47,17 @@
       var prompt = byId('custom-prompt').value.trim();
       var title = _uploadedAudioTitle || t('custom.custom_audio');
       if (!uploadId) { setHidden(byId('task-card'), false); setTaskStatus(t('tasks.need_audio_file'), 0); setTaskBadge('error', t('tasks.step_missing_badge')); return; }
-      if (!prompt) { setHidden(byId('task-card'), false); setTaskStatus(t('tasks.need_prompt'), 0); setTaskBadge('error', t('tasks.step_missing_badge')); return; }
       var button = byId('custom-submit-btn');
       button.disabled = true; button.textContent = t('custom.generating');
       setHidden(byId('download-result-wrap'), true);
       setHidden(byId('task-card'), false);
       setTaskStatus(t('inspector.generating_head'), 0);
+      var payload = { upload_id: uploadId, title: title };
+      if (prompt) payload.custom_prompt = prompt;
       fetch(appUrl('/api/control/tasks/custom'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upload_id: uploadId, title: title, custom_prompt: prompt })
+        body: JSON.stringify(payload)
       })
         .then(readApiResponse)
         .then(function (data) { watchTask(data.task_id, title, t('custom.local_audio')); })

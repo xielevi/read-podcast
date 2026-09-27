@@ -336,7 +336,6 @@
         'tasks.failed_retry_msg': '这次没有生成成功，请稍后再试。',
         'tasks.failed_badge': '未成功',
         'tasks.need_audio_file': '请先选择音频文件。',
-        'tasks.need_prompt': '请选择一种文字样式。',
         'tasks.step_missing_badge': '还差一步',
         'tasks.failed_prefix': '这次没有生成成功：',
         'tasks.retry_hint': '请稍后再试',
@@ -360,6 +359,23 @@
         'settings.test': '测试',
         'settings.advanced': '高级设置',
         'settings.quality_hint': '成稿明显过短时不会发布。',
+        'setting.refiner.model.label': '模型',
+        'setting.refiner.model.placeholder': '服务商提供的模型 ID',
+        'setting.refiner.api_base.label': '服务地址',
+        'setting.refiner.api_base.placeholder': 'https://api.example.com/v1',
+        'setting.refiner.temperature.label': '创作温度',
+        'setting.refiner.temperature.placeholder': '0.3',
+        'setting.refiner.max_tokens.label': '最大输出',
+        'setting.refiner.max_tokens.placeholder': '65536',
+        'setting.refiner.min_output_ratio.label': '完整度保护',
+        'setting.refiner.min_output_ratio.placeholder': '0.7',
+        'setting.refiner.min_output_ratio.hint': '这是发布硬下限；默认 Prompt 的编辑目标约为原始转录的 80%。',
+        'template.magazine.name': '默认杂志精修',
+        'template.magazine.desc': '杂志级访谈文稿，保留全部实质对话与语气细节，按话题优雅分段，附大纲与时间线。',
+        'template.clean_verbatim.name': '清洁逐字稿',
+        'template.clean_verbatim.desc': '高保真逐字稿，仅剔除纯卡顿与错别字，严格保留全部原文说话顺序与完整表述。',
+        'template.structured_interview.name': '结构化访谈',
+        'template.structured_interview.desc': '重点突出问答结构与关键论据，按深度话题划分层次，完整呈现对话脉络。',
         'appearance.summary_title': '外观：{0}',
         'appearance.summary_aria': '选择外观，当前 {0}'
       },
@@ -657,7 +673,6 @@
         'tasks.failed_retry_msg': 'Generation failed. Please try again later.',
         'tasks.failed_badge': 'Failed',
         'tasks.need_audio_file': 'Please choose an audio file first.',
-        'tasks.need_prompt': 'Please choose an editorial style.',
         'tasks.step_missing_badge': 'Action required',
         'tasks.failed_prefix': 'Generation failed: ',
         'tasks.retry_hint': 'please try again later',
@@ -681,6 +696,23 @@
         'settings.test': 'Test',
         'settings.advanced': 'Advanced',
         'settings.quality_hint': 'Manuscripts that are significantly too short will not be published.',
+        'setting.refiner.model.label': 'Model',
+        'setting.refiner.model.placeholder': 'Model ID provided by service provider',
+        'setting.refiner.api_base.label': 'Endpoint URL',
+        'setting.refiner.api_base.placeholder': 'https://api.example.com/v1',
+        'setting.refiner.temperature.label': 'Temperature',
+        'setting.refiner.temperature.placeholder': '0.3',
+        'setting.refiner.max_tokens.label': 'Max Tokens',
+        'setting.refiner.max_tokens.placeholder': '65536',
+        'setting.refiner.min_output_ratio.label': 'Length Quality Gate',
+        'setting.refiner.min_output_ratio.placeholder': '0.7',
+        'setting.refiner.min_output_ratio.hint': 'Hard lower bound for publishing. Default prompt targets ~75–85% of transcript length.',
+        'template.magazine.name': 'Magazine Refinement',
+        'template.magazine.desc': 'Magazine-style interview transcript preserving all substantive dialogue and nuances, sectioned by topic with outline and timeline.',
+        'template.clean_verbatim.name': 'Clean Verbatim',
+        'template.clean_verbatim.desc': 'High-fidelity verbatim transcript, removing filler words while strictly preserving speech order and complete statements.',
+        'template.structured_interview.name': 'Structured Interview',
+        'template.structured_interview.desc': 'Emphasizes Q&A structure and key arguments, organized by in-depth topics.',
         'appearance.summary_title': 'Appearance: {0}',
         'appearance.summary_aria': 'Select appearance, current {0}'
       }
@@ -756,6 +788,9 @@
       if (typeof renderLibrary === 'function' && typeof _libraryArticles !== 'undefined') renderLibrary(_libraryArticles);
       if (typeof selectedEpisode !== 'undefined' && selectedEpisode && typeof renderEpisodeInspector === 'function') renderEpisodeInspector(selectedEpisode);
       if (typeof reloadReaderConcepts === 'function') reloadReaderConcepts();
+      if (typeof renderPromptTemplateOptions === 'function') renderPromptTemplateOptions();
+      if (typeof _lastSettingsData !== 'undefined' && _lastSettingsData && typeof renderSettings === 'function') renderSettings(_lastSettingsData);
+      if (typeof updateReaderStats === 'function') updateReaderStats();
     }
 
     function setLocale(locale, persist) {
@@ -1121,25 +1156,37 @@
         .then(function (response) { if (!response.ok) throw new Error('HTTP ' + response.status); return response.json(); })
         .then(function (templates) {
           _promptTemplates = Array.isArray(templates) ? templates : [];
-          var select = byId('prompt-template-select');
-          while (select.options.length > 1) select.remove(1);
-          _promptTemplates.forEach(function (template) {
-            var option = document.createElement('option');
-            option.value = String(template.content || '');
-            option.textContent = String(template.name || t('custom.untitled_template'));
-            select.appendChild(option);
-          });
-          if (_promptTemplates.length > 0) {
-            select.selectedIndex = 1;
-            applyPromptTemplate(_promptTemplates[0].content);
-          }
+          renderPromptTemplateOptions();
         })
         .catch(function () { addLog(t('custom.templates_load_failed'), 'warning'); });
     }
 
+    function renderPromptTemplateOptions() {
+      var select = byId('prompt-template-select');
+      if (!select) return;
+      var currentVal = select.value;
+      if (select.options.length > 0) {
+        select.options[0].textContent = t('custom.template_standard');
+      }
+      while (select.options.length > 1) select.remove(1);
+      _promptTemplates.forEach(function (template) {
+        var option = document.createElement('option');
+        option.value = String(template.content || '');
+        var labelKey = 'template.' + template.id + '.name';
+        var translated = t(labelKey);
+        option.textContent = translated !== labelKey ? translated : String(template.name || t('custom.untitled_template'));
+        var descKey = 'template.' + template.id + '.desc';
+        var localizedDesc = t(descKey);
+        option.title = localizedDesc !== descKey ? localizedDesc : String(template.description || '');
+        select.appendChild(option);
+      });
+      if (currentVal) {
+        select.value = currentVal;
+      }
+    }
+
     function applyPromptTemplate(content) {
-      if (!content) return;
-      byId('custom-prompt').value = content;
+      byId('custom-prompt').value = content || '';
     }
 
     function handleAudioDrop(event) {
@@ -2020,16 +2067,17 @@
       var prompt = byId('custom-prompt').value.trim();
       var title = _uploadedAudioTitle || t('custom.custom_audio');
       if (!uploadId) { setHidden(byId('task-card'), false); setTaskStatus(t('tasks.need_audio_file'), 0); setTaskBadge('error', t('tasks.step_missing_badge')); return; }
-      if (!prompt) { setHidden(byId('task-card'), false); setTaskStatus(t('tasks.need_prompt'), 0); setTaskBadge('error', t('tasks.step_missing_badge')); return; }
       var button = byId('custom-submit-btn');
       button.disabled = true; button.textContent = t('custom.generating');
       setHidden(byId('download-result-wrap'), true);
       setHidden(byId('task-card'), false);
       setTaskStatus(t('inspector.generating_head'), 0);
+      var payload = { upload_id: uploadId, title: title };
+      if (prompt) payload.custom_prompt = prompt;
       fetch(appUrl('/api/control/tasks/custom'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ upload_id: uploadId, title: title, custom_prompt: prompt })
+        body: JSON.stringify(payload)
       })
         .then(readApiResponse)
         .then(function (data) { watchTask(data.task_id, title, t('custom.local_audio')); })
@@ -2588,21 +2636,39 @@
     }
 
     var _tocObserver = null;
+    var _lastReaderText = '';
+
     function updateReaderStats(rawText) {
-      var withoutFrontmatter = String(rawText || '').replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n*/, '');
-      var cleanText = withoutFrontmatter.replace(/\s+/g, '');
-      var count = cleanText.length;
+      if (rawText !== undefined) _lastReaderText = rawText;
+      var textToUse = rawText !== undefined ? rawText : _lastReaderText;
+      var withoutFrontmatter = String(textToUse || '').replace(/^\s*---\s*\n[\s\S]*?\n---\s*\n*/, '');
       var statsEl = byId('reader-meta-stats');
       if (!statsEl) return;
-      if (!count) { statsEl.textContent = ''; return; }
-      if (getLocale() === 'en') {
-        var words = withoutFrontmatter.trim().split(/\s+/).filter(Boolean).length;
-        var minutes = Math.max(1, Math.round(words / 220));
-        statsEl.textContent = words ? (t('reader.words', words) + ' · ' + t('reader.est_time', minutes)) : '';
+      var clean = withoutFrontmatter.trim();
+      if (!clean) { statsEl.textContent = ''; return; }
+
+      // 按稿件内容本身判定中文字符计数还是西文词数，而非按 UI 语言
+      var sample = clean.slice(0, 20000);
+      var cjkMatches = sample.match(/[\u4e00-\u9fa5\u3400-\u4dbf\uf900-\ufaff]/g);
+      var cjkCount = cjkMatches ? cjkMatches.length : 0;
+      var latinMatches = sample.match(/[a-zA-Z]/g);
+      var latinCount = latinMatches ? latinMatches.length : 0;
+      var isCJK = cjkCount >= 20 || (cjkCount > 0 && cjkCount >= latinCount * 0.1);
+
+      if (isCJK) {
+        var charCount = clean.replace(/\s+/g, '').length;
+        var minutes = Math.max(1, Math.round(charCount / 750));
+        var countStr = (getLocale() === 'en')
+          ? (charCount >= 10000 ? t('reader.words_wan', (charCount / 1000).toFixed(1)) : t('reader.words', charCount))
+          : (charCount >= 10000 ? t('reader.words_wan', (charCount / 10000).toFixed(1)) : t('reader.words', charCount));
+        statsEl.textContent = charCount ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       } else {
-        var minutes = Math.max(1, Math.round(count / 750));
-        var countStr = count >= 10000 ? t('reader.words_wan', (count / 10000).toFixed(1)) : t('reader.words', count);
-        statsEl.textContent = count ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
+        var words = clean.split(/\s+/).filter(Boolean).length;
+        var minutes = Math.max(1, Math.round(words / 220));
+        var countStr = (getLocale() === 'en')
+          ? (words >= 10000 ? t('reader.words_wan', (words / 1000).toFixed(1)) : t('reader.words', words))
+          : (words >= 10000 ? t('reader.words_wan', (words / 10000).toFixed(1)) : t('reader.words', words));
+        statsEl.textContent = words ? (countStr + ' · ' + t('reader.est_time', minutes)) : '';
       }
     }
 
@@ -3456,6 +3522,7 @@
     // ── 个人配置面板（服务商地址、模型、密钥与文件位置）────────
     var _settingsEntries = [];
     var _settingsBusy = false;
+    var _lastSettingsData = null;
 
     // ── 外观（应用主题：浅色 / 深色 / 自动）────────────────
     var _appearanceMedia = null;
@@ -3607,21 +3674,30 @@
       body.appendChild(state);
       fetch(appUrl('/api/control/settings'))
         .then(readApiResponse)
-        .then(function (data) { renderSettings(data); })
+        .then(function (data) {
+          _lastSettingsData = data;
+          renderSettings(data);
+        })
         .catch(function (error) { state.textContent = t('settings.read_failed') + errorMessage(error); });
     }
 
     function buildSettingsField(field) {
       var wrap = document.createElement('div');
       wrap.className = 'settings-field';
-      var inputId = 'setting-' + String(field.key || '').replace(/[^a-zA-Z0-9]+/g, '-');
+      var fieldKey = String(field.key || '');
+      var inputId = 'setting-' + fieldKey.replace(/[^a-zA-Z0-9]+/g, '-');
       var isSecret = field.type === 'secret';
+
+      var labelKey = 'setting.' + fieldKey + '.label';
+      var phKey = 'setting.' + fieldKey + '.placeholder';
+      var hintKey = 'setting.' + fieldKey + '.hint';
 
       var label = document.createElement('label');
       label.className = 'form-label';
       label.setAttribute('for', inputId);
       var labelText = document.createElement('span');
-      labelText.textContent = String(field.label || field.key || '');
+      var localizedLabel = t(labelKey);
+      labelText.textContent = localizedLabel !== labelKey ? localizedLabel : String(field.label || fieldKey || '');
       label.appendChild(labelText);
       if (isSecret) {
         var badge = document.createElement('span');
@@ -3631,13 +3707,14 @@
       }
       wrap.appendChild(label);
 
-      var entry = { key: String(field.key || ''), type: field.type, locked: !!field.locked || isSecret };
+      var entry = { key: fieldKey, type: field.type, locked: !!field.locked || isSecret };
 
       if (isSecret) {
         // 不可编辑项不展示输入框。
         var hintP = document.createElement('p');
         hintP.className = 'settings-field-hint settings-field-locked';
-        hintP.textContent = String(field.hint || t('settings.not_editable'));
+        var secretHint = t(hintKey);
+        hintP.textContent = secretHint !== hintKey ? secretHint : String(field.hint || t('settings.not_editable'));
         wrap.appendChild(hintP);
         _settingsEntries.push(entry);
         return wrap;
@@ -3649,7 +3726,9 @@
         (field.options || []).forEach(function (option) {
           var node = document.createElement('option');
           node.value = String(option.value == null ? '' : option.value);
-          node.textContent = String(option.label || option.value || '');
+          var optKey = 'setting.' + fieldKey + '.option.' + option.value;
+          var localizedOpt = t(optKey);
+          node.textContent = localizedOpt !== optKey ? localizedOpt : String(option.label || option.value || '');
           control.appendChild(node);
         });
         control.value = String(field.value == null ? '' : field.value);
@@ -3658,7 +3737,8 @@
         control.type = 'text';
         control.autocomplete = 'off';
         control.spellcheck = false;
-        control.placeholder = String(field.placeholder || '');
+        var localizedPh = t(phKey);
+        control.placeholder = localizedPh !== phKey ? localizedPh : String(field.placeholder || '');
         control.value = String(field.value == null ? '' : field.value);
       }
       control.className = 'form-input';
@@ -3670,8 +3750,17 @@
       wrap.appendChild(control);
 
       var hints = [];
-      if (field.locked && field.locked_reason) hints.push(String(field.locked_reason));
-      if (field.hint) hints.push(String(field.hint));
+      if (field.locked && field.locked_reason) {
+        var lockedKey = 'setting.' + fieldKey + '.locked';
+        var localizedLocked = t(lockedKey);
+        hints.push(localizedLocked !== lockedKey ? localizedLocked : String(field.locked_reason));
+      }
+      var localizedHint = t(hintKey);
+      if (localizedHint !== hintKey) {
+        hints.push(localizedHint);
+      } else if (field.hint) {
+        hints.push(String(field.hint));
+      }
       if (hints.length) {
         var hint = document.createElement('p');
         hint.className = 'settings-field-hint' + (field.locked ? ' settings-field-locked' : '');
@@ -3687,6 +3776,7 @@
       var body = byId('settings-body');
       body.replaceChildren();
       _settingsEntries = [];
+      _lastSettingsData = data;
       body.appendChild(buildLanguageGroup());
       body.appendChild(buildAppearanceGroup());
       var groups = data && Array.isArray(data.groups) ? data.groups : [];

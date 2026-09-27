@@ -1,6 +1,7 @@
     // ── 个人配置面板（服务商地址、模型、密钥与文件位置）────────
     var _settingsEntries = [];
     var _settingsBusy = false;
+    var _lastSettingsData = null;
 
     // ── 外观（应用主题：浅色 / 深色 / 自动）────────────────
     var _appearanceMedia = null;
@@ -152,21 +153,30 @@
       body.appendChild(state);
       fetch(appUrl('/api/control/settings'))
         .then(readApiResponse)
-        .then(function (data) { renderSettings(data); })
+        .then(function (data) {
+          _lastSettingsData = data;
+          renderSettings(data);
+        })
         .catch(function (error) { state.textContent = t('settings.read_failed') + errorMessage(error); });
     }
 
     function buildSettingsField(field) {
       var wrap = document.createElement('div');
       wrap.className = 'settings-field';
-      var inputId = 'setting-' + String(field.key || '').replace(/[^a-zA-Z0-9]+/g, '-');
+      var fieldKey = String(field.key || '');
+      var inputId = 'setting-' + fieldKey.replace(/[^a-zA-Z0-9]+/g, '-');
       var isSecret = field.type === 'secret';
+
+      var labelKey = 'setting.' + fieldKey + '.label';
+      var phKey = 'setting.' + fieldKey + '.placeholder';
+      var hintKey = 'setting.' + fieldKey + '.hint';
 
       var label = document.createElement('label');
       label.className = 'form-label';
       label.setAttribute('for', inputId);
       var labelText = document.createElement('span');
-      labelText.textContent = String(field.label || field.key || '');
+      var localizedLabel = t(labelKey);
+      labelText.textContent = localizedLabel !== labelKey ? localizedLabel : String(field.label || fieldKey || '');
       label.appendChild(labelText);
       if (isSecret) {
         var badge = document.createElement('span');
@@ -176,13 +186,14 @@
       }
       wrap.appendChild(label);
 
-      var entry = { key: String(field.key || ''), type: field.type, locked: !!field.locked || isSecret };
+      var entry = { key: fieldKey, type: field.type, locked: !!field.locked || isSecret };
 
       if (isSecret) {
         // 不可编辑项不展示输入框。
         var hintP = document.createElement('p');
         hintP.className = 'settings-field-hint settings-field-locked';
-        hintP.textContent = String(field.hint || t('settings.not_editable'));
+        var secretHint = t(hintKey);
+        hintP.textContent = secretHint !== hintKey ? secretHint : String(field.hint || t('settings.not_editable'));
         wrap.appendChild(hintP);
         _settingsEntries.push(entry);
         return wrap;
@@ -194,7 +205,9 @@
         (field.options || []).forEach(function (option) {
           var node = document.createElement('option');
           node.value = String(option.value == null ? '' : option.value);
-          node.textContent = String(option.label || option.value || '');
+          var optKey = 'setting.' + fieldKey + '.option.' + option.value;
+          var localizedOpt = t(optKey);
+          node.textContent = localizedOpt !== optKey ? localizedOpt : String(option.label || option.value || '');
           control.appendChild(node);
         });
         control.value = String(field.value == null ? '' : field.value);
@@ -203,7 +216,8 @@
         control.type = 'text';
         control.autocomplete = 'off';
         control.spellcheck = false;
-        control.placeholder = String(field.placeholder || '');
+        var localizedPh = t(phKey);
+        control.placeholder = localizedPh !== phKey ? localizedPh : String(field.placeholder || '');
         control.value = String(field.value == null ? '' : field.value);
       }
       control.className = 'form-input';
@@ -215,8 +229,17 @@
       wrap.appendChild(control);
 
       var hints = [];
-      if (field.locked && field.locked_reason) hints.push(String(field.locked_reason));
-      if (field.hint) hints.push(String(field.hint));
+      if (field.locked && field.locked_reason) {
+        var lockedKey = 'setting.' + fieldKey + '.locked';
+        var localizedLocked = t(lockedKey);
+        hints.push(localizedLocked !== lockedKey ? localizedLocked : String(field.locked_reason));
+      }
+      var localizedHint = t(hintKey);
+      if (localizedHint !== hintKey) {
+        hints.push(localizedHint);
+      } else if (field.hint) {
+        hints.push(String(field.hint));
+      }
       if (hints.length) {
         var hint = document.createElement('p');
         hint.className = 'settings-field-hint' + (field.locked ? ' settings-field-locked' : '');
@@ -232,6 +255,7 @@
       var body = byId('settings-body');
       body.replaceChildren();
       _settingsEntries = [];
+      _lastSettingsData = data;
       body.appendChild(buildLanguageGroup());
       body.appendChild(buildAppearanceGroup());
       var groups = data && Array.isArray(data.groups) ? data.groups : [];

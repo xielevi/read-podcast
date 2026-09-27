@@ -146,7 +146,7 @@ export async function createCustomTask(request: Request, env: Env, _ctx: Executi
   const originalFilename = parts.length >= 3 ? parts.slice(2).join("/") : "audio.mp3";
   const rawTitle = (body.title || "").trim();
   const title = (rawTitle || originalFilename).replace(/\.(mp3|m4a|wav|flac|ogg|aac|opus|wma|webm|mp4)$/i, "").trim() || "未命名音频";
-  const customPrompt = (body.custom_prompt || "").trim();
+  const customPrompt = (body.custom_prompt || "").trim() || null;
 
   const id = crypto.randomUUID();
   const attemptId = crypto.randomUUID();

@@ -296,7 +296,6 @@
         'tasks.failed_retry_msg': '这次没有生成成功，请稍后再试。',
         'tasks.failed_badge': '未成功',
         'tasks.need_audio_file': '请先选择音频文件。',
-        'tasks.need_prompt': '请选择一种文字样式。',
         'tasks.step_missing_badge': '还差一步',
         'tasks.failed_prefix': '这次没有生成成功：',
         'tasks.retry_hint': '请稍后再试',
@@ -320,6 +319,23 @@
         'settings.test': '测试',
         'settings.advanced': '高级设置',
         'settings.quality_hint': '成稿明显过短时不会发布。',
+        'setting.refiner.model.label': '模型',
+        'setting.refiner.model.placeholder': '服务商提供的模型 ID',
+        'setting.refiner.api_base.label': '服务地址',
+        'setting.refiner.api_base.placeholder': 'https://api.example.com/v1',
+        'setting.refiner.temperature.label': '创作温度',
+        'setting.refiner.temperature.placeholder': '0.3',
+        'setting.refiner.max_tokens.label': '最大输出',
+        'setting.refiner.max_tokens.placeholder': '65536',
+        'setting.refiner.min_output_ratio.label': '完整度保护',
+        'setting.refiner.min_output_ratio.placeholder': '0.7',
+        'setting.refiner.min_output_ratio.hint': '这是发布硬下限；默认 Prompt 的编辑目标约为原始转录的 80%。',
+        'template.magazine.name': '默认杂志精修',
+        'template.magazine.desc': '杂志级访谈文稿，保留全部实质对话与语气细节，按话题优雅分段，附大纲与时间线。',
+        'template.clean_verbatim.name': '清洁逐字稿',
+        'template.clean_verbatim.desc': '高保真逐字稿，仅剔除纯卡顿与错别字，严格保留全部原文说话顺序与完整表述。',
+        'template.structured_interview.name': '结构化访谈',
+        'template.structured_interview.desc': '重点突出问答结构与关键论据，按深度话题划分层次，完整呈现对话脉络。',
         'appearance.summary_title': '外观：{0}',
         'appearance.summary_aria': '选择外观，当前 {0}'
       },
@@ -617,7 +633,6 @@
         'tasks.failed_retry_msg': 'Generation failed. Please try again later.',
         'tasks.failed_badge': 'Failed',
         'tasks.need_audio_file': 'Please choose an audio file first.',
-        'tasks.need_prompt': 'Please choose an editorial style.',
         'tasks.step_missing_badge': 'Action required',
         'tasks.failed_prefix': 'Generation failed: ',
         'tasks.retry_hint': 'please try again later',
@@ -641,6 +656,23 @@
         'settings.test': 'Test',
         'settings.advanced': 'Advanced',
         'settings.quality_hint': 'Manuscripts that are significantly too short will not be published.',
+        'setting.refiner.model.label': 'Model',
+        'setting.refiner.model.placeholder': 'Model ID provided by service provider',
+        'setting.refiner.api_base.label': 'Endpoint URL',
+        'setting.refiner.api_base.placeholder': 'https://api.example.com/v1',
+        'setting.refiner.temperature.label': 'Temperature',
+        'setting.refiner.temperature.placeholder': '0.3',
+        'setting.refiner.max_tokens.label': 'Max Tokens',
+        'setting.refiner.max_tokens.placeholder': '65536',
+        'setting.refiner.min_output_ratio.label': 'Length Quality Gate',
+        'setting.refiner.min_output_ratio.placeholder': '0.7',
+        'setting.refiner.min_output_ratio.hint': 'Hard lower bound for publishing. Default prompt targets ~75–85% of transcript length.',
+        'template.magazine.name': 'Magazine Refinement',
+        'template.magazine.desc': 'Magazine-style interview transcript preserving all substantive dialogue and nuances, sectioned by topic with outline and timeline.',
+        'template.clean_verbatim.name': 'Clean Verbatim',
+        'template.clean_verbatim.desc': 'High-fidelity verbatim transcript, removing filler words while strictly preserving speech order and complete statements.',
+        'template.structured_interview.name': 'Structured Interview',
+        'template.structured_interview.desc': 'Emphasizes Q&A structure and key arguments, organized by in-depth topics.',
         'appearance.summary_title': 'Appearance: {0}',
         'appearance.summary_aria': 'Select appearance, current {0}'
       }
@@ -716,6 +748,9 @@
       if (typeof renderLibrary === 'function' && typeof _libraryArticles !== 'undefined') renderLibrary(_libraryArticles);
       if (typeof selectedEpisode !== 'undefined' && selectedEpisode && typeof renderEpisodeInspector === 'function') renderEpisodeInspector(selectedEpisode);
       if (typeof reloadReaderConcepts === 'function') reloadReaderConcepts();
+      if (typeof renderPromptTemplateOptions === 'function') renderPromptTemplateOptions();
+      if (typeof _lastSettingsData !== 'undefined' && _lastSettingsData && typeof renderSettings === 'function') renderSettings(_lastSettingsData);
+      if (typeof updateReaderStats === 'function') updateReaderStats();
     }
 
     function setLocale(locale, persist) {
