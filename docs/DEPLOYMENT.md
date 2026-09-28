@@ -1,8 +1,9 @@
 # Deployment
 
-The reference deployment: the Cloudflare application, the Transcription Service on a
-macOS host (local MLX Whisper), and a GitHub repository as the Canonical Manuscript Store.
-Architecture is described in [ARCHITECTURE.md](ARCHITECTURE.md).
+Choose Cloudflare for an edge-hosted reading site with a GitHub manuscript repository,
+or [Docker](#7-local-docker-deployment) for a single-host installation with local manuscripts.
+This guide uses a macOS host running MLX Whisper as the Cloudflare transcription example.
+For the component boundaries, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
 When you are done you will have two hostnames:
 
@@ -19,8 +20,8 @@ When you are done you will have two hostnames:
 - A Cloudflare account with your domain on Cloudflare DNS, R2 enabled, and a Zero Trust
   organization (for Access and Tunnel). Workers, D1, Workflows and one Cron Trigger are used.
   The maintainer's production deployment uses Workers Free. Large feeds and long
-  episodes have been exercised; remaining release boundary checks are tracked
-  under [Free-plan boundary checks](#resource-names-and-free-plan-boundary-checks).
+  episodes have been exercised, but capacity is workload-dependent; see
+  [Free-plan boundary checks](#resource-names-and-free-plan-boundary-checks).
 - A Transcription Service host (reference: Apple Silicon Mac, macOS 14+, Xcode Command Line
   Tools, `uv`, `cloudflared`).
 - A private GitHub repository for manuscripts, and a fine-grained token with

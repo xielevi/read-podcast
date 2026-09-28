@@ -2,10 +2,11 @@ name: App image
 
 # Read Podcast Web 应用与执行器的容器镜像（基于 Node.js 22 alpine，见 Dockerfile）。
 # - PR：只构建验证（amd64 + arm64），不登录、不推送；
-# - push 到 main：发布到 GHCR（ghcr.io/<owner>/read-podcast:latest）。
+# - push 到 main：发布 latest；v* tag：发布对应 semver tag，不覆盖 latest。
 on:
   push:
     branches: [main]
+    tags: ["v*"]
     paths:
       - "src/**"
       - "public/**"
@@ -61,6 +62,7 @@ jobs:
           images: ghcr.io/${{ github.repository_owner }}/read-podcast
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
             type=sha
 
       - name: Build and push
