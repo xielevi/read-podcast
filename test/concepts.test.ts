@@ -307,6 +307,7 @@ describe("taskConcepts endpoint", () => {
         list: vi.fn(async () => []),
       },
       GITHUB_TOKEN: "ghp-test",
+      CONTROL_AUTH_MODE: "access",
       GITHUB_OWNER: "test-owner",
       GITHUB_REPO: "writing",
       GITHUB_BRANCH: "main",

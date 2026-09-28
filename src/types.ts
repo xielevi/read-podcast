@@ -39,6 +39,10 @@ export interface Env {
   // 生产路径必填；endpoint 指向本机（本地开发）时可以不配置。
   CF_ACCESS_CLIENT_ID?: string;
   CF_ACCESS_CLIENT_SECRET?: string;
+  // 控制面访问认证（Basic Auth）：保护 /manage* 与 /api/control/*，workers.dev 部署时必需。
+  CONTROL_AUTH_USER?: string;
+  CONTROL_AUTH_PASSWORD?: string;
+  CONTROL_AUTH_MODE?: "access" | "local";
   // 本地 / 容器内网部署：受信任的内网转录端点（如 Docker compose 网络），允许在无 Cloudflare Access 凭据时调用
   TRUSTED_INTERNAL_TRANSCRIPTION?: string | boolean;
 }

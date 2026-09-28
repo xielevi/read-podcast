@@ -436,7 +436,7 @@ Parts the script cannot do (finish these by hand, see docs/DEPLOYMENT.md):
    cloudflared connector running on the transcription host.
 4. Transcription Service on that host: git clone this repository, then run
    deploy/macos/install.sh (zero configuration, no credentials stored).
-5. Deploy: npm run deploy -- --dry-run, then npm run deploy.
+5. Deploy: npm run deploy:production -- --dry-run, then npm run deploy:production.
 6. Before your first generation: open /manage, sign in through Access, and point
    the Refinement Provider in Settings at your own API.
 7. Optional: CI deployment via GitHub Actions repository variables and a

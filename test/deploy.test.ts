@@ -5,6 +5,8 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
+// @ts-expect-error 无类型声明
+import { buildCommunityDeploySteps, communityConfigFrom } from "../scripts/deploy_community.mjs";
 
 const ROOT = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, ROOT), "utf-8");
@@ -33,6 +35,7 @@ describe("scripts/deploy.mjs", () => {
     expect(JSON.parse(result.stdout)).toEqual([
       "deploy",
       "--domain", "podcast.mydomain.net",
+      "--var", "CONTROL_AUTH_MODE:access",
       "--var", "TRANSCRIPTION_SERVICE_URL:https://transcribe.mydomain.net",
       "--var", "GITHUB_OWNER:someone",
       "--var", "GITHUB_REPO:notes",
@@ -118,7 +121,7 @@ describe("仓库不含部署者自己的值", () => {
     }
     expect(ci).toContain("vars.READ_PODCAST_DEPLOY == 'true'");
     expect(ci).toContain('base="https://${READ_PODCAST_DOMAIN}"');
-    expect(ci).toContain("run: npm run deploy");
+    expect(ci).toContain("run: npm run deploy:production");
   });
 
   it("冒烟测试不在公开日志里输出跳转地址（含 Zero Trust 团队域名）", () => {
@@ -142,9 +145,45 @@ describe("仓库不含部署者自己的值", () => {
     expect(curlLine).toContain("2>/dev/null");
   });
 
-  it("npm run deploy 走 scripts/deploy.mjs", () => {
+  it("npm run deploy:production 走 scripts/deploy.mjs，通用 deploy 走 scripts/deploy_community.mjs", () => {
     const pkg = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
-    expect(pkg.scripts.deploy).toBe("node scripts/deploy.mjs");
+    expect(pkg.scripts["deploy:production"]).toBe("node scripts/deploy.mjs");
+    expect(pkg.scripts.deploy).toBe("node scripts/deploy_community.mjs");
     expect(execFileSync("git", ["check-ignore", ".deploy.env"], { cwd: fileURLToPath(ROOT), encoding: "utf-8" }).trim()).toBe(".deploy.env");
+  });
+});
+
+describe("scripts/deploy_community.mjs", () => {
+  it("opens workers.dev only in the temporary community config", () => {
+    const source = read("wrangler.jsonc");
+    const community = communityConfigFrom(source);
+    expect(source).toContain('"workers_dev": false');
+    expect(community).toContain('"workers_dev": true');
+    expect(community).toContain('"preview_urls": false');
+    expect(community).toContain('"/manage*"');
+    expect(() => communityConfigFrom(community)).toThrow();
+  });
+  it("常规部署先执行 D1 remote migration 再执行 wrangler deploy", () => {
+    const steps = buildCommunityDeploySteps([]);
+    expect(steps).toEqual([
+      { name: "migrate", command: "wrangler", args: ["d1", "migrations", "apply", "DB", "--remote"] },
+      { name: "deploy", command: "wrangler", args: ["deploy"] },
+    ]);
+  });
+
+  it("传入 --dry-run 时跳过 D1 remote migration，仅执行 wrangler deploy --dry-run", () => {
+    const steps = buildCommunityDeploySteps(["--dry-run"]);
+    expect(steps).toEqual([
+      { name: "deploy", command: "wrangler", args: ["deploy", "--dry-run"] },
+    ]);
+  });
+
+  it("子进程 --print-args 返回正确 JSON 执行计划", () => {
+    const script = fileURLToPath(new URL("scripts/deploy_community.mjs", ROOT));
+    const result = spawnSync(process.execPath, [script, "--print-args", "--dry-run"], { encoding: "utf-8" });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual([
+      { name: "deploy", command: "wrangler", args: ["deploy", "--dry-run"] },
+    ]);
   });
 });

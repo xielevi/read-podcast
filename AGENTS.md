@@ -34,11 +34,14 @@ publication.
   upstream transcription API key in its process environment only — never returned, never logged
   (see `docs/ARCHITECTURE.md`, Credentials in `openai-proxy`).
 - Recovery is Cloudflare-owned (cron); `GET /tasks` is a pure read.
-- Read / browse is public, mutations and execution are private, authentication belongs to
-  Cloudflare Access. `/` + `/api/public/*` is Public Browse Mode of the same workspace: GET-only,
-  side-effect free (episodes are the D1 snapshot, never an RSS refresh), no reader state or task
-  status. Actions are classified by side effect; anonymous clicks on them navigate to `/manage`. Everything else is under `/manage*` + `/api/control/*`, protected by Access
-  by path; no other API prefix may exist. No users, sessions, JWTs, OAuth or account tables.
+- Read / browse is public, mutations and execution are private. `/` + `/api/public/*`
+  is Public Browse Mode of the same workspace: GET-only, side-effect free (episodes
+  are the D1 snapshot, never an RSS refresh), no reader state or task status. Actions
+  are classified by side effect; anonymous clicks navigate to `/manage`. Everything
+  else is under `/manage*` + `/api/control/*`: production custom domains require
+  path-scoped Cloudflare Access, while community workers.dev deployments use Basic Auth
+  and deny access when credentials are missing. No other API prefix may exist. No users,
+  sessions, JWTs, OAuth or account tables.
 - Readers reach articles only through the Cloudflare application; the Canonical Manuscript
   Store is never a browser-facing entry point. One store per manuscript; exports are secondary.
 - No cloud-drive export, OAuth connectors or conversational assistant — removed by design.
@@ -51,7 +54,9 @@ publication.
   `podcasts/transcripts`), never personal domains, repositories or paths.
 - Deployment-specific values (custom domain, D1 database id, transcription URL, Store repository)
   never live in the repository: `wrangler.jsonc` stays deployment-neutral and `scripts/deploy.mjs`
-  (`npm run deploy`, also used by CI) injects them from `.deploy.env` or environment variables.
+  (`npm run deploy:production`, also used by CI) injects them from `.deploy.env` or environment variables.
+  `npm run deploy` is the community Workers Builds path; it applies D1 migrations and deploys
+  from a temporary workers.dev-enabled config, leaving the checked-in production config unchanged.
 
 ## Concept versus implementation
 
