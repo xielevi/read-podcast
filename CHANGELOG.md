@@ -7,22 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased] — planned as 1.0.0
+## [1.0.0] - 2026-09-28
 
-> Release is pending the real-provider evaluation (#31), remaining Cloudflare Free
-> boundary checks (GitHub publication, multi-task cron recovery and resource-limit
-> evidence), and a Docker end-to-end run with a real LLM provider in #30.
-> Large feeds and long episodes have already been exercised. The import wrap-up
-> (#47) is complete; an isolated Docker run with Faster-Whisper and a local
-> test refiner verified storage and restart recovery but does not prove the
-> external LLM path. Do not tag 1.0.0 until the remaining checks have evidence;
-> the package version remains 0.1.0 meanwhile.
+> Cloudflare production runs on Workers Free, but spare CPU/subrequest capacity
+> is workload-dependent. A local Docker run with Faster-Whisper and a test
+> refiner exercised storage and restart recovery; it is not a blanket guarantee
+> for every external LLM provider. See [deployment](docs/DEPLOYMENT.md).
 
 ### Overview
 
-Read Podcast 1.0.0 will be the first major release of the personal podcast reading system. It turns selected podcast episodes into complete, readable long-form manuscripts—not compressed summaries—that you can read on any device and preserve as plain Markdown in a store you own. The same code supports Cloudflare (Workers / D1 / Workflows / R2, publishing to GitHub) and single-host Docker / Node (SQLite, local storage and local manuscripts by default).
+Read Podcast 1.0.0 is the first major release of the personal podcast reading system. It turns selected podcast episodes into complete, readable long-form manuscripts—not compressed summaries—that you can read on any device and preserve as plain Markdown in a store you own. The same code supports Cloudflare (Workers / D1 / Workflows / R2, publishing to GitHub) and single-host Docker / Node (SQLite, local storage and local manuscripts by default).
 
-The Cloudflare application is designed for the **Cloudflare Workers Free plan**. Large feeds and long episodes have been exercised in production; multi-task recovery and CPU/subrequest headroom still need a documented boundary check. Transcription compute and the LLM refinement API may be billed separately by their providers.
+The maintainer runs the Cloudflare application on **Cloudflare Workers Free**. Large feeds and long episodes have been exercised in production; this does not quantify CPU/subrequest headroom for other workloads. Transcription compute and the LLM refinement API may be billed separately by their providers.
 
 ### Relation to v0.x (Python / macOS App)
 
@@ -31,7 +27,7 @@ The Cloudflare application is designed for the **Cloudflare Workers Free plan**.
 
 ### Supported Transcription Backends
 
-v1.0 implements flexible transcription compute backends conforming to the stateless [Transcription Service Contract](docs/ARCHITECTURE.md#transcription-service-contract). The DashScope production recommendation remains pending #31:
+v1.0 implements flexible transcription compute backends conforming to the stateless [Transcription Service Contract](docs/ARCHITECTURE.md#transcription-service-contract). Provider availability depends on your own configuration; see the [real-provider evaluation](https://github.com/xielevi/read-podcast/issues/31):
 
 1. **Local Apple Silicon Mac (Reference Service)**:
    - Local MLX Whisper running natively on Apple Silicon (`transcription_service/`).
@@ -42,7 +38,7 @@ v1.0 implements flexible transcription compute backends conforming to the statel
    - Containerized deployment ready for homelabs and remote servers.
 3. **Cloud Transcription (Alibaba Cloud Model Studio / 百炼 DashScope Paraformer)**:
    - Built-in cloud transcription adapter (`READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope`).
-   - Direct Worker-to-cloud invocation passing audio URLs (including presigned R2 URLs for manual audio uploads), eliminating the need for a self-hosted transcription machine. Implemented but not yet recommended pending real-provider tests (#31).
+   - Direct Worker-to-cloud invocation passing audio URLs (including presigned R2 URLs for manual audio uploads), eliminating the need for a self-hosted transcription machine. Check provider-specific limits before use.
 4. **OpenAI-compatible upload proxy (`READ_PODCAST_TRANSCRIPTION_ENGINE=openai-proxy`)**:
    - The Transcription Service proxies any OpenAI-compatible `/audio/transcriptions` API (OpenAI, Groq, SiliconFlow), transcoding with ffmpeg and splitting on silence to stay under upload limits.
 
@@ -58,7 +54,7 @@ v1.0 implements flexible transcription compute backends conforming to the statel
 - **Bring-Your-Own Compute & Storage**:
   - **Refinement Provider**: Works with any OpenAI-compatible LLM API (e.g. DeepSeek, OpenCode Go, OpenAI, Qwen, etc.).
   - **Canonical Manuscript Store**: Published articles are saved as Markdown with YAML front matter in a GitHub repository (Cloudflare) or a local directory with version snapshots (Docker). D1 or SQLite maintains the index; the chosen store holds the durable manuscript.
-  - **Wikipedia-Verified Key Concepts**: Automatically nominates key entities and verifies them against Chinese Wikipedia articles, providing instant encyclopedic context for readers.
+  - **Localized Wikipedia-Verified Key Concepts**: Nominates key entities and verifies them against Chinese or English Wikipedia according to the UI language.
 - **Cloudflare Setup (`npm run setup`)**:
   - Idempotent CLI provisions D1, applies migrations, creates R2 lifecycle rules and prompts for secrets without echoing or writing them to disk.
   - Automated smoke test (`npm run setup -- --smoke`) validating the Cloudflare Access security boundary.

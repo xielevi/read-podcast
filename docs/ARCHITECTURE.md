@@ -1,11 +1,9 @@
 # Architecture
 
-Read Podcast is a cloud-first personal podcast reading system: it turns episodes the owner
-chooses into complete long-form manuscripts, publishes them to a store the owner controls, and
-serves them through one workspace that is publicly readable and privately controlled. The
-product story is in the [README](../README.md). This document keeps only the long-lived
-architectural facts; behavior at the level of endpoints and functions lives in the code and its
-tests.
+Read Podcast turns selected podcast episodes into long-form Markdown manuscripts. The
+[README](../README.md) covers the reading experience; this document describes ownership
+of state, execution and storage across Cloudflare and Docker. Endpoint behavior belongs
+in the code and tests.
 
 ## Topology
 

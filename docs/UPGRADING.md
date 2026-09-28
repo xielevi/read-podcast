@@ -1,7 +1,8 @@
 # Upgrade Guide
 
-This guide describes how to upgrade a production Read Podcast deployment, how database migrations
-work, and how breaking changes must be documented in release notes.
+Back up your manuscripts and application state before upgrading. Cloudflare deployments
+apply D1 migrations explicitly before deploying the new Worker; Docker applies SQLite
+migrations at startup. Follow the path for your installation below.
 
 Architecture invariants are documented in [ARCHITECTURE.md](ARCHITECTURE.md); operational and setup
 steps are in [DEPLOYMENT.md](DEPLOYMENT.md).
@@ -65,7 +66,9 @@ npm run db:migrate:local
 ```
 
 Wrangler automatically checks which migrations have already been applied and executes only new
-`migrations/*.sql` files in numerical order.
+`migrations/*.sql` files in numerical order. In particular, v1.0's bilingual UI needs
+`0022_i18n_support.sql`: confirm it appears in the remote migration history before
+deploying code that reads `ui_preferences.locale`. A Worker deploy does not apply D1 migrations.
 
 ### 3. Verify Storage and R2 Lifecycle Rules
 
