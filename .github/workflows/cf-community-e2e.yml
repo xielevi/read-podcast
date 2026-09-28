@@ -15,7 +15,7 @@ jobs:
   e2e:
     name: Isolated Cloudflare community deploy
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     environment: production
     concurrency:
       group: cf-community-e2e-${{ github.ref }}
@@ -102,7 +102,7 @@ jobs:
           set -euo pipefail
           npm run deploy 2>&1 | tee /tmp/community-deploy.log
 
-      - name: Verify migrations and deployed resources
+      - name: Verify migrations, Workflow, Cron, and bindings
         shell: bash
         run: |
           set -euo pipefail
@@ -159,7 +159,16 @@ jobs:
           probe() {
             local path="$1"
             shift
-            curl -sS --max-time 30 -o /tmp/body -w '%{http_code}' "$@" "$BASE$path"
+            local code
+            for i in $(seq 1 20); do
+              code="$(curl -sS --max-time 30 -o /tmp/body -w '%{http_code}' "$@" "$BASE$path" || true)"
+              if [ "$code" != "000" ] && [ -n "$code" ]; then
+                echo "$code"
+                return 0
+              fi
+              sleep 2
+            done
+            echo "000"
           }
 
           test "$(probe /)" = "200"
@@ -193,7 +202,7 @@ jobs:
         shell: bash
         run: |
           set +e
-          curl -sS -X DELETE             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$E2E_WORKER" >/tmp/delete-worker.json
+          npx wrangler delete --name "$E2E_WORKER"
           npx wrangler workflows delete "$E2E_WORKFLOW" --json
           npx wrangler r2 bucket delete "$E2E_R2"
           npx wrangler d1 delete "$E2E_DB" --skip-confirmation
