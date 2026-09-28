@@ -31,7 +31,7 @@ Cloudflare 部署把已发布稿件放进你的 GitHub 仓库；Docker 默认保
 | 转写 | 自建服务或配置云端后端 | Compose 内含 Faster-Whisper |
 | 管理权限 | Cloudflare Access | 默认只监听本机，可启用 Basic Auth |
 
-参考转写服务在 Apple Silicon 上运行 MLX Whisper；项目还实现了 Faster-Whisper、可选的 OpenAI 兼容上传代理，以及 Worker 端的百炼 DashScope 适配。第三方服务的可用性和费用取决于你自己的配置与账户，详见[部署指南](docs/DEPLOYMENT.md)及[真实服务商验证记录](https://github.com/xielevi/read-podcast/issues/31)。稿件整理需要 OpenAI 兼容的 LLM API。
+参考转写服务在 Apple Silicon 上运行 MLX Whisper；项目还实现了 Faster-Whisper、可选的 OpenAI 兼容上传代理，以及 Worker 端的百炼 DashScope 适配。第三方服务的可用性和费用取决于你自己的配置与账户，详见[部署指南](docs/DEPLOYMENT.md)。稿件整理需要 OpenAI 兼容的 LLM API。
 
 维护者在 Workers Free 上运行 Cloudflare 版，但这不能证明所有工作负载都有充足的 CPU、子请求或 Workflow 余量。请按自己的用量核对[部署限制](docs/DEPLOYMENT.md#resource-names-and-free-plan-boundary-checks)；LLM 和云端转写可能另行计费。
 

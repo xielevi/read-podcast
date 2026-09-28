@@ -27,7 +27,7 @@ The maintainer runs the Cloudflare application on **Cloudflare Workers Free**. L
 
 ### Supported Transcription Backends
 
-v1.0 implements flexible transcription compute backends conforming to the stateless [Transcription Service Contract](docs/ARCHITECTURE.md#transcription-service-contract). Provider availability depends on your own configuration; see the [real-provider evaluation](https://github.com/xielevi/read-podcast/issues/31):
+v1.0 implements transcription backends conforming to the stateless [Transcription Service Contract](docs/ARCHITECTURE.md#transcription-service-contract). Provider availability depends on your own configuration; see [deployment](docs/DEPLOYMENT.md):
 
 1. **Local Apple Silicon Mac (Reference Service)**:
    - Local MLX Whisper running natively on Apple Silicon (`transcription_service/`).
