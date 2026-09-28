@@ -1,9 +1,9 @@
 name: CF community deploy E2E
 
 on:
-  push:
+  pull_request:
     branches:
-      - feat/issue-64-deploy-button
+      - main
     paths:
       - ".github/workflows/cf-community-e2e.yml"
   workflow_dispatch:
