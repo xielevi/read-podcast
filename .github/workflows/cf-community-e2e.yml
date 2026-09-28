@@ -1,0 +1,200 @@
+name: CF community deploy E2E
+
+on:
+  push:
+    branches:
+      - feat/issue-64-deploy-button
+    paths:
+      - ".github/workflows/cf-community-e2e.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: Isolated Cloudflare community deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    concurrency:
+      group: cf-community-e2e-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      E2E_WORKER: rp-e2e-${{ github.run_id }}
+      E2E_DB: rp-e2e-${{ github.run_id }}
+      E2E_R2: rp-e2e-${{ github.run_id }}-raw
+      E2E_WORKFLOW: rp-e2e-${{ github.run_id }}-processing
+
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - uses: actions/setup-node@1d0ff469b7ec7b3cb9d8673fde0c81c44821de2a # v4.2.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify Cloudflare credentials are available
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${CLOUDFLARE_API_TOKEN:-}" || { echo "CLOUDFLARE_API_TOKEN is unavailable"; exit 1; }
+          test -n "${CLOUDFLARE_ACCOUNT_ID:-}" || { echo "CLOUDFLARE_ACCOUNT_ID is unavailable"; exit 1; }
+          npx wrangler whoami >/dev/null
+
+      - name: Rewrite local checkout to isolated resource names
+        shell: bash
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          import fs from "node:fs";
+          let s = fs.readFileSync("wrangler.jsonc", "utf8");
+          const worker = process.env.E2E_WORKER;
+          const db = process.env.E2E_DB;
+          const r2 = process.env.E2E_R2;
+          const wf = process.env.E2E_WORKFLOW;
+
+          const replaceOne = (re, value, label) => {
+            if (!re.test(s)) throw new Error(`missing expected ${label} in wrangler.jsonc`);
+            s = s.replace(re, value);
+          };
+
+          replaceOne(/"name"\s*:\s*"read-podcast-edge"/, `"name": "${worker}"`, "worker name");
+          replaceOne(/"database_name"\s*:\s*"read-podcast-edge"/, `"database_name": "${db}"`, "D1 name");
+          replaceOne(/"bucket_name"\s*:\s*"read-podcast-edge-raw"/, `"bucket_name": "${r2}"`, "R2 name");
+          replaceOne(/"name"\s*:\s*"read-podcast-processing"/, `"name": "${wf}"`, "Workflow name");
+          replaceOne(/"R2_BUCKET_NAME"\s*:\s*"read-podcast-edge-raw"/, `"R2_BUCKET_NAME": "${r2}"`, "R2 runtime var");
+
+          fs.writeFileSync("wrangler.jsonc", s);
+          NODE
+
+      - name: Pre-provision isolated D1 and R2
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler d1 create "$E2E_DB" >/tmp/d1-create.log
+          npx wrangler d1 list --json >/tmp/d1-list.json
+          D1_ID="$(jq -r --arg name "$E2E_DB" '.[] | select(.name == $name) | (.uuid // .id)' /tmp/d1-list.json | head -1)"
+          test -n "$D1_ID" && test "$D1_ID" != "null"
+          export D1_ID
+
+          node <<'NODE'
+          import fs from "node:fs";
+          let s = fs.readFileSync("wrangler.jsonc", "utf8");
+          const db = process.env.E2E_DB;
+          const id = process.env.D1_ID;
+          const needle = `"database_name": "${db}",`;
+          if (!s.includes(needle)) throw new Error("isolated database_name not found");
+          s = s.replace(needle, `${needle}\n      "database_id": "${id}",`);
+          fs.writeFileSync("wrangler.jsonc", s);
+          NODE
+
+          npx wrangler r2 bucket create "$E2E_R2"
+
+      - name: Run community deploy path
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run deploy 2>&1 | tee /tmp/community-deploy.log
+
+      - name: Verify migrations, Workflow, Cron, and bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          npx wrangler d1 execute "$E2E_DB" --remote --command             "SELECT name FROM sqlite_master WHERE type='table' AND name IN ('tasks','articles','ui_preferences') ORDER BY name"             --json >/tmp/d1-readback.json
+          jq -e '.[0].results | map(.name) | sort == ["articles","tasks","ui_preferences"]' /tmp/d1-readback.json
+
+          npx wrangler workflows describe "$E2E_WORKFLOW" --json >/tmp/workflow.json
+          jq -e '.' /tmp/workflow.json >/dev/null
+
+          curl -fsS             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$E2E_WORKER/schedules"             >/tmp/schedules.json
+          jq -e '.success == true and (.result.schedules | map(.cron) | index("*/5 * * * *") != null)' /tmp/schedules.json
+
+          curl -fsS             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$E2E_WORKER/settings"             >/tmp/settings.json
+          jq -e '.success == true' /tmp/settings.json
+          jq -e '.result.bindings | any(.name == "DB")' /tmp/settings.json
+          jq -e '.result.bindings | any(.name == "RAW_BUCKET")' /tmp/settings.json
+          jq -e '.result.bindings | any(.name == "PROCESSING_WORKFLOW")' /tmp/settings.json
+
+      - name: Configure and verify R2 lifecycle rules
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx wrangler r2 bucket lifecycle add "$E2E_R2" raw-7d raw/ --expire-days 7
+          npx wrangler r2 bucket lifecycle add "$E2E_R2" refined-7d refined/ --expire-days 7
+          npx wrangler r2 bucket lifecycle add "$E2E_R2" uploads-1d uploads/ --expire-days 1 --abort-multipart-days 1
+          npx wrangler r2 bucket lifecycle list "$E2E_R2" | tee /tmp/lifecycle.txt
+          grep -q "raw-7d" /tmp/lifecycle.txt
+          grep -q "refined-7d" /tmp/lifecycle.txt
+          grep -q "uploads-1d" /tmp/lifecycle.txt
+
+      - name: Set isolated Basic Auth secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          AUTH_USER="e2e"
+          AUTH_PASSWORD="$(openssl rand -hex 24)"
+          printf '%s' "$AUTH_USER" | npx wrangler secret put CONTROL_AUTH_USER --name "$E2E_WORKER"
+          printf '%s' "$AUTH_PASSWORD" | npx wrangler secret put CONTROL_AUTH_PASSWORD --name "$E2E_WORKER"
+          {
+            echo "E2E_AUTH_USER=$AUTH_USER"
+            echo "E2E_AUTH_PASSWORD=$AUTH_PASSWORD"
+          } >> "$GITHUB_ENV"
+
+      - name: Verify workers.dev public/private boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsS             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"             >/tmp/subdomain.json
+          SUBDOMAIN="$(jq -r '.result.subdomain' /tmp/subdomain.json)"
+          test -n "$SUBDOMAIN" && test "$SUBDOMAIN" != "null"
+          BASE="https://$E2E_WORKER.$SUBDOMAIN.workers.dev"
+
+          probe() {
+            local path="$1"
+            shift
+            curl -sS --max-time 30 -o /tmp/body -w '%{http_code}' "$@" "$BASE$path"
+          }
+
+          test "$(probe /)" = "200"
+          test "$(probe /api/public/health)" = "200"
+          test "$(probe /api/public/subscriptions)" = "200"
+          test "$(probe /manage)" = "401"
+          test "$(probe /api/control/tasks)" = "401"
+          test "$(probe /manage -u "$E2E_AUTH_USER:$E2E_AUTH_PASSWORD")" = "200"
+          test "$(probe /api/control/tasks -u "$E2E_AUTH_USER:$E2E_AUTH_PASSWORD")" = "200"
+
+      - name: Redeploy and confirm resource reuse + secret persistence
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run deploy >/tmp/redeploy.log 2>&1
+
+          curl -fsS             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/subdomain"             >/tmp/subdomain-2.json
+          SUBDOMAIN="$(jq -r '.result.subdomain' /tmp/subdomain-2.json)"
+          BASE="https://$E2E_WORKER.$SUBDOMAIN.workers.dev"
+
+          test "$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' "$BASE/api/public/health")" = "200"
+          test "$(curl -sS --max-time 30 -o /dev/null -w '%{http_code}' "$BASE/manage")" = "401"
+          test "$(curl -sS --max-time 30 -u "$E2E_AUTH_USER:$E2E_AUTH_PASSWORD" -o /dev/null -w '%{http_code}' "$BASE/manage")" = "200"
+
+          npx wrangler d1 list --json >/tmp/d1-list-2.json
+          test "$(jq --arg name "$E2E_DB" '[.[] | select(.name == $name)] | length' /tmp/d1-list-2.json)" = "1"
+          npx wrangler workflows describe "$E2E_WORKFLOW" --json >/dev/null
+
+      - name: Cleanup isolated Cloudflare resources
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          curl -sS -X DELETE             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN"             "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/$E2E_WORKER" >/tmp/delete-worker.json
+          npx wrangler workflows delete "$E2E_WORKFLOW" --json
+          npx wrangler r2 bucket delete "$E2E_R2"
+          npx wrangler d1 delete "$E2E_DB" --skip-confirmation
+          exit 0
