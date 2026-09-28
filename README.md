@@ -31,7 +31,7 @@ Published manuscripts live in your own GitHub repository on Cloudflare, or in a 
 | Transcription | Your own service or configured cloud backend | Compose includes Faster-Whisper |
 | Owner access | Cloudflare Access | Localhost by default; optional Basic Auth |
 
-The reference local transcription service runs MLX Whisper on Apple Silicon. The service also implements Faster-Whisper and an opt-in OpenAI-compatible upload proxy; the Cloudflare Worker has a DashScope adapter. Availability and cost of external providers depend on your own configuration and account; see [deployment](docs/DEPLOYMENT.md) and the [real-provider validation](https://github.com/xielevi/read-podcast/issues/31). Refinement requires an OpenAI-compatible LLM API.
+The reference local transcription service runs MLX Whisper on Apple Silicon. The service also implements Faster-Whisper and an opt-in OpenAI-compatible upload proxy; the Cloudflare Worker has a DashScope adapter. Availability and cost of external providers depend on your own configuration and account; see [deployment](docs/DEPLOYMENT.md). Refinement requires an OpenAI-compatible LLM API.
 
 The maintainer runs the Cloudflare application on Workers Free, but that does not establish spare CPU, subrequest or Workflow capacity for every workload. Check [deployment limits](docs/DEPLOYMENT.md#resource-names-and-free-plan-boundary-checks) against your usage. LLM and cloud transcription providers may charge separately.
 
