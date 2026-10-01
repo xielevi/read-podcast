@@ -168,55 +168,14 @@
     function clearPolling(taskId) {
       _taskPoller.unwatch(taskId);
     }
-    function closeActiveStream() {
-      clearPolling();
-    }
-    function taskElapsed(startedAt) {
-      var seconds = Math.max(0, Math.floor((Date.now() - (startedAt || Date.now())) / 1000));
-      return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
-    }
+    var FAILURE_KEY_BY_STAGE = { downloading: 'fail.audio', queued: 'fail.audio', resolving: 'fail.audio', transcribing: 'fail.transcribe', refining: 'fail.refine', finalizing: 'fail.finalize' };
+    // 中文界面优先显示服务端的公开错误消息（服务端消息是中文，英文界面不显示）；否则按阶段给本地化文案。
     function resolveTaskFailureMessage(task) {
       if (!task) return t('fail.default');
-      var stage = String(task.stage || '');
-      if (getLocale() === 'en') {
-        if (stage === 'downloading' || stage === 'queued' || stage === 'resolving') {
-          return t('fail.audio');
-        }
-        if (stage === 'transcribing') {
-          return t('fail.transcribe');
-        }
-        if (stage === 'refining') {
-          return t('fail.refine');
-        }
-        if (stage === 'finalizing') {
-          return t('fail.finalize');
-        }
-        if (task.status === 'cancelled') {
-          return t('fail.cancelled');
-        }
-        return t('fail.default');
-      }
       var msg = String(task.message || '').trim();
-      var isChinese = /[\u4e00-\u9fa5]/.test(msg);
-      if (msg && !/^([a-z0-9_]+|error|\[object.*\])$/i.test(msg) && (getLocale() !== 'en' || !isChinese)) {
-        return msg;
-      }
-      if (stage === 'downloading' || stage === 'queued' || stage === 'resolving') {
-        return t('fail.audio');
-      }
-      if (stage === 'transcribing') {
-        return t('fail.transcribe');
-      }
-      if (stage === 'refining') {
-        return t('fail.refine');
-      }
-      if (stage === 'finalizing') {
-        return t('fail.finalize');
-      }
-      if (task.status === 'cancelled') {
-        return t('fail.cancelled');
-      }
-      return t('fail.default');
+      if (getLocale() !== 'en' && msg && !/^([a-z0-9_]+|error|\[object.*\])$/i.test(msg)) return msg;
+      var key = FAILURE_KEY_BY_STAGE[String(task.stage || '')];
+      return t(key || (task.status === 'cancelled' ? 'fail.cancelled' : 'fail.default'));
     }
 
     function renderTaskQueue() {

@@ -20,11 +20,9 @@ jobs:
       - run: npm run check
       # 杜绝 Git 冲突标记残存
       - run: "! git grep -nE '^(<<<<<<< .+|=======|>>>>>>> .+)$' -- ."
-      # 前端语法校验（打包物与各分片逐一校验）
-      - run: node --check public/app.js
+      # 前端语法校验：生成 bundle 并校验，各分片也逐一校验。
+      - run: npm run check:frontend
       - run: for f in public/js/*.js; do node --check "$f"; done
-      # 前端分片与 app.js 不得漂移（无构建工具的经典脚本，纯字节拼接）。
-      - run: python3 scripts/build_frontend.py --check
 
   transcription-service:
     # 服务与 macOS 无关：Linux 即可完整验证 Cloudflare-facing 协议与全部单元测试。
@@ -58,6 +56,8 @@ jobs:
             sleep 1
           done
           curl -s -f http://127.0.0.1:3000/api/public/health | grep '"status":"ok"'
+          # public/app.js 不入库，镜像构建时生成。
+          curl -s -f http://127.0.0.1:3000/app.js | head -c 14 | grep -q "'use strict';"
           # docker compose creates a missing bind-mount directory as root on Linux. The
           # entrypoint must make the default manuscript mount writable by the node process.
           docker exec -u node test-app sh -c 'touch /data/manuscripts/.write-test && rm /data/manuscripts/.write-test'

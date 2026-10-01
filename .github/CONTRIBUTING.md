@@ -75,7 +75,7 @@ UV_CACHE_DIR=/tmp/read-podcast-edge-uv-cache uv run --directory transcription_se
 npx wrangler deploy --dry-run
 ```
 
-如果修改了 `public/js/` 下的前端分片文件，请运行 `python3 scripts/build_frontend.py` 重新生成 `public/app.js`，并通过 `npm run check:frontend` 验证无漂移。
+`public/app.js` 是 `public/js/` 分片的生成物，不入库；`npm run check:frontend`、`wrangler dev/deploy` 与 Docker 构建都会自动重新生成。
 
 ---
 

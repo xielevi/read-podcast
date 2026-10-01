@@ -8,13 +8,15 @@
  */
 import { readFileSync } from "node:fs";
 import { JSDOM, VirtualConsole } from "jsdom";
+// @ts-expect-error 无类型声明
+import { assembleFrontend } from "../scripts/build_frontend.mjs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { makeCloud } from "./helpers/cloud";
 import { stateSnapshot } from "./helpers/snapshot";
 
 const HTML = readFileSync(new URL("../public/index.html", import.meta.url), "utf-8");
-const BUNDLE = readFileSync(new URL("../public/app.js", import.meta.url), "utf-8");
+const BUNDLE: string = assembleFrontend();
 
 const PUBLISHED = "11111111-1111-1111-1111-111111111111";
 const CONTENT_PATH = "podcasts/transcripts/474.md";

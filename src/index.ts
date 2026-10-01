@@ -91,8 +91,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   if (!path.startsWith(`${API}/`)) {
     if (path.startsWith("/api/")) return error(404, "not_found", "API route not found");
-    const assets = env.assets ?? (env as any).ASSETS;
-    if (assets) return assets.fetch(request);
+    if (env.assets) return env.assets.fetch(request);
     return error(404, "not_found", "Asset handler not found");
   }
 

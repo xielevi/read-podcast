@@ -8,6 +8,8 @@
   // 本仓库不写任何部署者自己的值：custom domain 与下方 vars 中的部署值由 scripts/deploy.mjs
   // （npm run deploy:production）在部署时以 --domain / --var 注入；社区 npm run deploy 见 scripts/deploy_community.mjs。
   "workers_dev": false,
+  // public/app.js 是 public/js/ 分片的拼接生成物（不入库）：deploy / dev / dry-run 前先生成。
+  "build": { "command": "node scripts/build_frontend.mjs", "watch_dir": "public/js" },
   "preview_urls": false,
   "observability": { "enabled": true },
   "assets": {

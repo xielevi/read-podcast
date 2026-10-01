@@ -1,6 +1,6 @@
     // ── 图标体系（SF Symbols 风格自绘 stroke 图标）────────────
     // 只经 uiIcon() 输出；aria-hidden 由函数统一注入。
-    // 注意：分片中不得出现 'use strict'，由 scripts/build_frontend.py 统一写在 bundle 第一行。
+    // 注意：分片中不得出现 'use strict'，由 scripts/build_frontend.mjs 统一写在 bundle 第一行。
 
     var UI_ICONS = {
       logo: '<path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/>',

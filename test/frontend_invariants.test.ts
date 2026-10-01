@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 import { JSDOM, VirtualConsole } from "jsdom";
+// @ts-expect-error 无类型声明
+import { assembleFrontend } from "../scripts/build_frontend.mjs";
 
 const ROOT = resolve(__dirname, "..");
 const HTML = readFileSync(resolve(ROOT, "public/index.html"), "utf-8");
@@ -10,7 +12,7 @@ const JS_I18N = readFileSync(resolve(ROOT, "public/js/08-i18n.js"), "utf-8");
 const JS_EPISODES = readFileSync(resolve(ROOT, "public/js/30-episodes.js"), "utf-8");
 const JS_SUBSCRIPTIONS = readFileSync(resolve(ROOT, "public/js/20-subscriptions.js"), "utf-8");
 const JS_TASKS = readFileSync(resolve(ROOT, "public/js/40-tasks.js"), "utf-8");
-const BUNDLE = readFileSync(resolve(ROOT, "public/app.js"), "utf-8");
+const BUNDLE: string = assembleFrontend();
 const SETTINGS_TS = readFileSync(resolve(ROOT, "src/settings.ts"), "utf-8");
 const JS_CORE = readFileSync(resolve(ROOT, "public/js/10-core.js"), "utf-8");
 const JS_READER = readFileSync(resolve(ROOT, "public/js/60-reader.js"), "utf-8");
@@ -25,26 +27,6 @@ describe("Frontend Invariants & Correctness Blockers", () => {
       expect(JS_EPISODES).toContain("function hasPersistentInspector()");
       expect(JS_EPISODES).toContain("if (!hasPersistentInspector()) openEpisodeSummary();");
       expect(BUNDLE).toContain("hasPersistentInspector");
-    });
-
-    it("evaluates hasPersistentInspector logic correctly across viewport widths", () => {
-      function simulateHasPersistentInspector(width: number, railDisplay: string) {
-        if (railDisplay === "none") return false;
-        return width > 1180;
-      }
-
-      // Large desktop: inspector persistent
-      expect(simulateHasPersistentInspector(1440, "block")).toBe(true);
-      expect(simulateHasPersistentInspector(1200, "block")).toBe(true);
-
-      // Medium screen (781-1180px): rail hidden, drawer must open
-      expect(simulateHasPersistentInspector(1180, "none")).toBe(false);
-      expect(simulateHasPersistentInspector(1024, "none")).toBe(false);
-      expect(simulateHasPersistentInspector(800, "none")).toBe(false);
-
-      // Small screen (<=780px): rail hidden, drawer must open
-      expect(simulateHasPersistentInspector(780, "none")).toBe(false);
-      expect(simulateHasPersistentInspector(375, "none")).toBe(false);
     });
 
     it("ensures CSS responsive tiers hide right-rail and display drawer on <=1180px", () => {
@@ -70,39 +52,6 @@ describe("Frontend Invariants & Correctness Blockers", () => {
   });
 
   describe("Blocker 3: Task queue trigger reachability for failed/cancelled tasks", () => {
-    function computeTriggerState(tasks: Array<{ status: string }>) {
-      const runningCount = tasks.filter(t => t.status === "running" || t.status === "pending" || t.status === "processing").length;
-      const attentionCount = tasks.filter(t => t.status === "failed" || t.status === "cancelled").length;
-      const isVisible = runningCount > 0 || attentionCount > 0;
-      let label = "";
-      if (runningCount > 0) {
-        label = `处理中 ${runningCount}`;
-      } else if (attentionCount > 0) {
-        label = `${attentionCount} 个任务需要处理`;
-      }
-      return { isVisible, label };
-    }
-
-    it("displays '处理中 N' when running tasks exist", () => {
-      const state = computeTriggerState([{ status: "running" }, { status: "failed" }]);
-      expect(state.isVisible).toBe(true);
-      expect(state.label).toBe("处理中 1");
-    });
-
-    it("displays 'N 个任务需要处理' when only failed/cancelled tasks exist", () => {
-      const state = computeTriggerState([{ status: "failed" }, { status: "cancelled" }]);
-      expect(state.isVisible).toBe(true);
-      expect(state.label).toBe("2 个任务需要处理");
-    });
-
-    it("hides trigger only when queue is completely empty or all tasks succeeded", () => {
-      const emptyState = computeTriggerState([]);
-      expect(emptyState.isVisible).toBe(false);
-
-      const successState = computeTriggerState([{ status: "success" }]);
-      expect(successState.isVisible).toBe(false);
-    });
-
     it("implements attention count and label in 40-tasks.js", () => {
       expect(JS_TASKS).toContain("attentionCount");
       expect(JS_TASKS).toContain("t('tasks.attention_count', attentionCount)");
@@ -131,44 +80,26 @@ describe("Frontend Invariants & Correctness Blockers", () => {
   });
 
   describe("Blocker 5: Accurate failure stage messages", () => {
-    function resolveTaskFailureMessage(task: { message?: string; stage?: string }) {
-      if (!task) return "这次没有生成成功，请稍后再试。";
-      const msg = String(task.message || "").trim();
-      if (msg && !/^([a-z0-9_]+|error|\[object.*\])$/i.test(msg) && msg !== "AI 整理暂时没有完成。") {
-        return msg;
-      }
-      const stage = String(task.stage || "");
-      if (stage === "downloading" || stage === "queued" || stage === "resolving") {
-        return "无法获取音频，请稍后重试。";
-      }
-      if (stage === "transcribing") {
-        return "这次没有完成转写，请重试。";
-      }
-      if (stage === "refining") {
-        return "文字整理暂时没有完成，请重试。";
-      }
-      if (stage === "finalizing") {
-        return "稿件保存失败，请重试。";
-      }
-      return "这次没有生成成功，请稍后再试。";
-    }
+    // 执行 40-tasks.js 里真实的 resolveTaskFailureMessage（t 返回 key，便于断言）。
+    const start = JS_TASKS.indexOf("    var FAILURE_KEY_BY_STAGE");
+    const source = JS_TASKS.slice(start, JS_TASKS.indexOf("\n    }\n", JS_TASKS.indexOf("function resolveTaskFailureMessage", start)) + 6);
+    const resolve = (locale: string) =>
+      new Function("t", "getLocale", `${source}; return resolveTaskFailureMessage;`)((key: string) => key, () => locale) as (task: unknown) => string;
 
-    it("preserves specific backend public error messages", () => {
-      expect(resolveTaskFailureMessage({ message: "音频文件不存在 (404)" })).toBe("音频文件不存在 (404)");
-      expect(resolveTaskFailureMessage({ message: "转写服务配额不足" })).toBe("转写服务配额不足");
+    it("中文界面保留服务端公开错误消息，代码式消息回落到阶段文案", () => {
+      expect(resolve("zh")({ message: "音频文件不存在 (404)", stage: "downloading" })).toBe("音频文件不存在 (404)");
+      expect(resolve("zh")({ message: "already_processed", stage: "transcribing" })).toBe("fail.transcribe");
     });
 
-    it("does not blanket overwrite with 'AI 整理暂时没有完成。'", () => {
-      expect(resolveTaskFailureMessage({ stage: "downloading", message: "AI 整理暂时没有完成。" })).toBe("无法获取音频，请稍后重试。");
-      expect(resolveTaskFailureMessage({ stage: "transcribing", message: "AI 整理暂时没有完成。" })).toBe("这次没有完成转写，请重试。");
-      expect(resolveTaskFailureMessage({ stage: "finalizing", message: "AI 整理暂时没有完成。" })).toBe("稿件保存失败，请重试。");
-    });
-
-    it("maps stage-based fallbacks accurately", () => {
-      expect(resolveTaskFailureMessage({ stage: "queued" })).toBe("无法获取音频，请稍后重试。");
-      expect(resolveTaskFailureMessage({ stage: "transcribing" })).toBe("这次没有完成转写，请重试。");
-      expect(resolveTaskFailureMessage({ stage: "refining" })).toBe("文字整理暂时没有完成，请重试。");
-      expect(resolveTaskFailureMessage({ stage: "finalizing" })).toBe("稿件保存失败，请重试。");
+    it("英文界面不显示中文服务端消息，按阶段 / 取消 / 默认给本地化文案", () => {
+      const en = resolve("en");
+      expect(en({ message: "音频下载失败 (404)", stage: "downloading" })).toBe("fail.audio");
+      for (const [stage, key] of [["queued", "fail.audio"], ["resolving", "fail.audio"], ["refining", "fail.refine"], ["finalizing", "fail.finalize"]]) {
+        expect(en({ stage })).toBe(key);
+      }
+      expect(en({ status: "cancelled" })).toBe("fail.cancelled");
+      expect(en({})).toBe("fail.default");
+      expect(en(null)).toBe("fail.default");
     });
   });
 

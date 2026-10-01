@@ -228,8 +228,6 @@
 
     /* ── 4. 左栏：来源与订阅 ───────────────────────────── */
 
-    .section-label { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; color: var(--text-tertiary); font-size: 12px; font-weight: 700; letter-spacing: .12em; }
-    .section-label::after { flex: 1; height: 1px; background: currentColor; opacity: .25; content: ""; }
 
     /* iOS 分段控件 */
     .nav-tabs { display: flex; gap: 4px; margin-bottom: 14px; padding: 4px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-weak); }
@@ -624,8 +622,6 @@
     .progress-inner { position: relative; width: 0; height: 100%; border-radius: 999px; background: var(--accent); transition: width .55s var(--ease); }
     .progress-inner::after { position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, .45), transparent); content: ""; animation: progress-glint 1.8s infinite; }
 
-    .about-note { margin-top: 18px; padding: 14px 0 0; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
-    .about-note strong { color: var(--text-primary); }
 
     /* ── 7. 右栏：简介 / 任务 / 历史 ───────────────────── */
 

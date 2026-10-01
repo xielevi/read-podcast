@@ -1,5 +1,5 @@
     // ── 国际化与双语界面（中文 / 英文）───────────────────────────
-    // 注意：分片中不得出现 'use strict'，由 scripts/build_frontend.py 统一写在 bundle 第一行。
+    // 注意：分片中不得出现 'use strict'，由 scripts/build_frontend.mjs 统一写在 bundle 第一行。
 
         var TRANSLATIONS = {
       zh: {

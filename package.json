@@ -6,14 +6,14 @@
   "type": "module",
   "scripts": {
     "check": "tsc --noEmit && vitest run",
-    "check:frontend": "node --check public/app.js && python3 scripts/build_frontend.py --check",
+    "check:frontend": "node scripts/build_frontend.mjs && node --check public/app.js",
     "dev": "wrangler dev",
     "deploy": "node scripts/deploy_community.mjs",
     "deploy:production": "node scripts/deploy.mjs",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "setup": "node scripts/setup.mjs",
-    "build:server": "node scripts/build_server.mjs",
+    "build:server": "node scripts/build_frontend.mjs && node scripts/build_server.mjs",
     "start": "node dist/server.js"
   },
   "cloudflare": {
