@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// 生产部署入口（npm run deploy）：把部署者自己的值注入 wrangler deploy。
+// 维护者生产部署入口（npm run deploy:production）：把部署者自己的值注入 wrangler deploy。
 //
 // wrangler.jsonc 只保存与部署者无关的结构；域名、转录服务地址与稿件仓库这类
 // 每个部署各不相同的值，从环境变量或仓库根目录下不提交的 .deploy.env 读取
 // （环境变量优先；READ_PODCAST_DEPLOY_ENV 可指定其他文件），再以 --domain / --var 传给 wrangler。
 // 见 docs/DEPLOYMENT.md。
 //
-//   npm run deploy                     部署
-//   npm run deploy -- --dry-run        只打包校验，不上线（其余参数原样传给 wrangler deploy）
-//   node scripts/deploy.mjs --print-args   打印将执行的 wrangler 参数（JSON）后退出
+//   npm run deploy:production                     部署
+//   npm run deploy:production -- --dry-run        只打包校验，不上线（其余参数原样传给 wrangler deploy）
+//   node scripts/deploy.mjs --print-args          打印将执行的 wrangler 参数（JSON）后退出
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -81,7 +81,7 @@ export function buildDeployArgs(input, passthrough = []) {
   }
   if (errors.length) throw new Error(`Deployment values are incomplete:\n  - ${errors.join("\n  - ")}\nSee docs/DEPLOYMENT.md (Deployment values).`);
 
-  const args = ["deploy", "--domain", domain];
+  const args = ["deploy", "--domain", domain, "--var", "CONTROL_AUTH_MODE:access"];
   for (const [key, varName] of Object.entries({ ...REQUIRED, ...OPTIONAL })) {
     if (!varName || !value(key)) continue;
     args.push("--var", `${varName}:${value(key)}`);

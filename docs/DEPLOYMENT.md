@@ -38,7 +38,7 @@ resources are detected and skipped, so it is safe to rerun at any time and after
 checks `wrangler` authentication, creates the D1 database (by the `wrangler.jsonc` `database_name`)
 and applies remote migrations, creates the R2 bucket with the three lifecycle rules and verifies
 them, prompts for every secret (input hidden, never written to any file), generates `.deploy.env`
-with the same validation as `npm run deploy` (documentation placeholders are refused), and prints
+with the same validation as `npm run deploy:production` (documentation placeholders are refused), and prints
 the manual checklist below. Steps can also be run individually, for example
 `npm run setup -- --step d1`. With `READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope` already in `.deploy.env`
 (see Cloud transcription below) the script keeps it and does not require a transcription URL.
@@ -49,30 +49,30 @@ The script cannot do these parts; finish them by hand using the matching section
 - The Access service token policy on the transcription hostname (Secrets, below).
 - The Cloudflare Tunnel and its connector on the transcription host (section 3).
 - The Transcription Service installation (`deploy/macos/install.sh`, section 3).
-- Deploying with `npm run deploy` (below) and pointing the Refinement Provider at your API.
+- Deploying with `npm run deploy:production` (below) and pointing the Refinement Provider at your API.
 - Optional CI deployment variables (Continuous deployment, below).
 
 After deploying, `npm run setup -- --smoke` runs the Access-boundary smoke test (section 4) against
 your domain. The subsections below document the same steps without the script.
 
-### Evaluation: Why not a "Deploy to Cloudflare" one-click button?
+### Deploy to Cloudflare template (One-click deployment)
 
-A [Deploy to Cloudflare button](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
-can provision the D1 database and R2 bucket, run `wrangler d1 migrations apply DB --remote` as part
-of the `deploy` script, and prompt for secrets listed in `.dev.vars.example`. It still cannot finish
-a working Read Podcast deployment, so the button is not offered:
+The [Deploy to Cloudflare flow](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
+(and plain `npm run deploy` from a checkout) runs `scripts/deploy_community.mjs`. It deploys from a
+temporary copy of `wrangler.jsonc` with `workers_dev: true`; the checked-in config stays
+`workers_dev: false` for the custom-domain production pipeline. In order it:
 
-1. **R2 lifecycle rules**: the button creates the bucket but not its lifecycle rules (`raw-7d`,
-   `refined-7d`, `uploads-1d`). Without them temporary uploads and transcripts are never expired.
-2. **Cloudflare Access and Tunnel**: the Access application for `/manage*` and `/api/control/*`, the
-   service token and the Tunnel live in the Zero Trust dashboard, outside any Worker deploy flow.
-   A Worker deployed without the Access application exposes the control plane.
-3. **Deployment values**: the custom domain, transcription URL and manuscript repository are
-   injected by `scripts/deploy.mjs` (`npm run deploy`), which refuses documentation placeholders;
-   `wrangler.jsonc` deliberately stays deployment-neutral.
+1. deploys the Worker, Workflow (`<worker-name>-processing`), recovery cron and static assets — Wrangler
+   creates the D1 database and R2 bucket on first deploy;
+2. applies remote D1 migrations by the `DB` binding (before the deploy once the database exists);
+3. adds any missing R2 lifecycle rules (`raw-7d`, `refined-7d`, `uploads-1d`; warns instead of failing).
 
-`npm run setup` is therefore the supported setup path: it automates every step that the Cloudflare
-API allows, idempotently, and prints a checklist for the Zero Trust steps.
+The deploy page collects the secrets listed in `.dev.vars.example` (descriptions in
+`package.json.cloudflare.bindings`); store and transcription settings are secrets in this path, so they
+are removed from the temporary config's `vars`, and `keep_vars` preserves variables set in the
+dashboard (for example `TRANSCRIPTION_PROVIDER=dashscope` plus the `DASHSCOPE_API_KEY` secret).
+`CONTROL_AUTH_USER` / `CONTROL_AUTH_PASSWORD` protect `/manage*` and `/api/control/*` with Basic Auth;
+without them the control plane answers 401. workers.dev never falls back to Access mode.
 
 ### D1
 
@@ -110,7 +110,7 @@ it where allowed and retry the task after upgrading (a new attempt uses the new 
 ### Deployment values
 
 The repository contains no deployment-specific values: `wrangler.jsonc` has no custom domain,
-no database id and empty store settings. `npm run deploy` runs `scripts/deploy.mjs`, which reads
+no database id and empty store settings. `npm run deploy:production` runs `scripts/deploy.mjs`, which reads
 your values, refuses to deploy while one is missing or still a documentation placeholder, and
 passes them to `wrangler deploy` as `--domain` and `--var`. Put them in a `.deploy.env` file at
 the repository root (git-ignored; start from `.deploy.env.example`) or export them as
@@ -242,8 +242,8 @@ flowchart TD
 
 ```bash
 npm run check && npm run check:frontend
-npm run deploy -- --dry-run   # validate deployment values and bundle, without going live
-npm run deploy                # Worker, custom domain, ProcessingWorkflow (read-podcast-processing), recovery cron
+npm run deploy:production -- --dry-run   # validate deployment values and bundle, without going live
+npm run deploy:production                # Worker, custom domain, ProcessingWorkflow (read-podcast-processing), recovery cron
 ```
 
 Then open `https://your-domain.example/manage`, sign in through Access, and in Settings point
@@ -256,7 +256,7 @@ the provider from Cloudflare. The completeness guard hard floor (default `0.7`) 
 ### Continuous deployment
 
 `.github/workflows/ci.yml` runs the checks on every push and pull request. On a push to `main`
-its `deploy-production` job runs the same `npm run deploy` and then the Access-boundary smoke
+its `deploy-production` job runs `npm run deploy:production` and then the Access-boundary smoke
 test below against `READ_PODCAST_DOMAIN`. For public repositories, deployment-specific values
 must be GitHub Actions **production environment secrets** (Settings → Environments → production →
 Environment secrets), not repository variables: Wrangler prints configuration in deployment logs,
@@ -478,7 +478,7 @@ To switch this deployment to the cloud provider:
 READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope
 # READ_PODCAST_TRANSCRIPTION_URL becomes optional in this mode (no transcription host exists)
 npx wrangler secret put DASHSCOPE_API_KEY      # from the Alibaba Cloud Model Studio console
-npm run deploy
+npm run deploy:production
 ```
 
 What changes and what does not:

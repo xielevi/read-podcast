@@ -1,4 +1,3 @@
-import { timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve } from "node:path";
@@ -48,8 +47,6 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
 
   const host = options.host || process.env.HOST || "127.0.0.1";
   const port = options.port || Number(process.env.PORT) || 3000;
-  const authUser = options.authUsername || process.env.CONTROL_AUTH_USER || process.env.BASIC_AUTH_USER;
-  const authPass = options.authPassword || process.env.CONTROL_AUTH_PASSWORD || process.env.BASIC_AUTH_PASSWORD;
   const storageDir = options.storageDir || process.env.STORAGE_PATH || "./data/storage";
 
   let actualPort = port;
@@ -59,6 +56,9 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     signingSecret: options.signingSecret || process.env.INTERNAL_SIGNING_SECRET,
     storageDir,
   });
+  // 控制面 Basic Auth 由共享 Worker 路由守卫执行（src/auth.ts）。
+  if (options.authUsername) runtime.env.CONTROL_AUTH_USER = options.authUsername;
+  if (options.authPassword) runtime.env.CONTROL_AUTH_PASSWORD = options.authPassword;
   const signingSecret = runtime.signingSecret;
 
   // 恢复未完成的工作流
@@ -166,44 +166,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         return;
       }
 
-      // 2. 控制面访问认证（Basic Auth）：保护 /manage* 与 /api/control/*，公共面保持公开
-      if (authUser && authPass) {
-        const isControlPath = url.pathname.startsWith("/manage") || url.pathname.startsWith("/api/control/");
-        if (isControlPath) {
-          const authHeader = req.headers.authorization;
-          let authorized = false;
-          if (authHeader && authHeader.startsWith("Basic ")) {
-            const credentials = Buffer.from(authHeader.slice(6), "base64").toString("utf-8");
-            const colonIndex = credentials.indexOf(":");
-            if (colonIndex !== -1) {
-              const u = credentials.slice(0, colonIndex);
-              const p = credentials.slice(colonIndex + 1);
-              const uBuf = Buffer.from(u);
-              const expUBuf = Buffer.from(authUser);
-              const pBuf = Buffer.from(p);
-              const expPBuf = Buffer.from(authPass);
-              if (
-                uBuf.length === expUBuf.length &&
-                pBuf.length === expPBuf.length &&
-                timingSafeEqual(uBuf, expUBuf) &&
-                timingSafeEqual(pBuf, expPBuf)
-              ) {
-                authorized = true;
-              }
-            }
-          }
-
-          if (!authorized) {
-            res.statusCode = 401;
-            res.setHeader("www-authenticate", 'Basic realm="Read Podcast Control"');
-            res.setHeader("content-type", "application/json");
-            res.end(JSON.stringify({ error: { code: "unauthorized", message: "Authentication required" } }));
-            return;
-          }
-        }
-      }
-
-      // 3. 构造 Web 标准 Request 并委托给通用 Worker 处理
+      // 2. 构造 Web 标准 Request 并委托给通用 Worker 处理
       const headers = new Headers();
       for (const [headerName, headerVal] of Object.entries(req.headers)) {
         if (headerVal === undefined) continue;

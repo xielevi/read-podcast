@@ -1,4 +1,5 @@
 import { HttpError, error, json } from "./http";
+import { controlAuthFailure } from "./auth";
 import { createSubscription, deleteSubscription } from "./subscriptions";
 import {
   artwork,
@@ -84,6 +85,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (method !== "GET" && method !== "HEAD") return error(405, "method_not_allowed", "Public API is read-only");
     return routePublic(path, url, env);
   }
+
+  const denied = controlAuthFailure(request, env);
+  if (denied) return denied;
+
   if (!path.startsWith(`${API}/`)) {
     if (path.startsWith("/api/")) return error(404, "not_found", "API route not found");
     const assets = env.assets ?? (env as any).ASSETS;

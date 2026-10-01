@@ -89,6 +89,7 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
     APP_ENV: rawEnv.APP_ENV || "production",
     TRANSCRIPTION_SERVICE_URL: rawEnv.TRANSCRIPTION_SERVICE_URL || "http://127.0.0.1:28100",
     TRANSCRIPTION_PROVIDER: rawEnv.TRANSCRIPTION_PROVIDER || "self-hosted",
+    CONTROL_AUTH_MODE: "local",
     TRANSCRIPTION_LANGUAGE: rawEnv.TRANSCRIPTION_LANGUAGE || "",
     REFINER_API_KEY: rawEnv.REFINER_API_KEY || "",
     GITHUB_TOKEN: rawEnv.GITHUB_TOKEN || "",
@@ -101,6 +102,8 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
     DASHSCOPE_API_KEY: rawEnv.DASHSCOPE_API_KEY,
     CF_ACCESS_CLIENT_ID: rawEnv.CF_ACCESS_CLIENT_ID,
     CF_ACCESS_CLIENT_SECRET: rawEnv.CF_ACCESS_CLIENT_SECRET,
+    CONTROL_AUTH_USER: rawEnv.CONTROL_AUTH_USER,
+    CONTROL_AUTH_PASSWORD: rawEnv.CONTROL_AUTH_PASSWORD,
     TRUSTED_INTERNAL_TRANSCRIPTION: rawEnv.TRUSTED_INTERNAL_TRANSCRIPTION ?? "true",
   } as unknown as Env;
 

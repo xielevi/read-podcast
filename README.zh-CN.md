@@ -35,7 +35,18 @@ Cloudflare 部署把已发布稿件放进你的 GitHub 仓库；Docker 默认保
 
 维护者在 Workers Free 上运行 Cloudflare 版，但这不能证明所有工作负载都有充足的 CPU、子请求或 Workflow 余量。请按自己的用量核对[部署限制](docs/DEPLOYMENT.md#resource-names-and-free-plan-boundary-checks)；LLM 和云端转写可能另行计费。
 
-这是单主人工作区。`/` 默认公开，访客能看到订阅和已发布稿件；如果这些也要保密，请保护整个域名。Cloudflare 上线前**必须**用 Access 保护 `/manage*` 和 `/api/control/*`；Docker 默认只绑定本机。稿件由你逐集手动生成。
+这是单主人工作区。`/` 默认公开，访客能看到订阅和已发布稿件；如果这些也要保密，请保护整个域名。Cloudflare 自定义域名部署必须用 Access 保护 `/manage*` 和 `/api/control/*`；workers.dev 路径用 Basic Auth。Docker 默认只绑定本机。稿件由你逐集手动生成。
+
+## 部署途径
+
+1. **Deploy to Cloudflare** *(一键部署模板，草案 / 待实测验证)*：
+   正式按钮须在独立账号完成首次部署验证后才会放到 README。
+   > [!NOTE]
+   > 一键部署模板已完成代码与配置准备，当前处于草案阶段，等待在全新 Cloudflare 账号中完成全流程实测验证后再正式对外推荐。测试时请务必填写 `CONTROL_AUTH_USER` 与 `CONTROL_AUTH_PASSWORD` 以保护控制面。
+2. **`npm run setup`** *(推荐生产使用：自定义域名、Cloudflare Access 与 Tunnel)*：
+   交互式幂等初始化脚本，自动创建资源并打印 Zero Trust 配置清单。详见[部署指南](docs/DEPLOYMENT.md#2-cloudflare-application)。
+3. **Docker**：
+   完全本地路径，使用本机算力与本地文件存储。详见 [Docker 路径](docs/DEPLOYMENT.md#7-local-docker-deployment)。
 
 ## 本地试用
 

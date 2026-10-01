@@ -98,10 +98,10 @@ Run local validation and deploy the updated Worker bundle:
 npm run check && npm run check:frontend
 
 # 2. Dry run: validate bundle and deployment variables without deploying
-npm run deploy -- --dry-run
+npm run deploy:production -- --dry-run
 
 # 3. Deploy live Worker, Workflows, and cron triggers
-npm run deploy
+npm run deploy:production
 ```
 
 If the release introduces new environment variables or Wrangler secrets, set them prior to deploying:

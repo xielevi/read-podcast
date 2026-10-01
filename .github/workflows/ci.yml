@@ -101,13 +101,13 @@ jobs:
       # 1) 部署使用 package-lock.json 锁定的 wrangler 版本，与本地一致；
       # 2) Worker 入口依赖 fast-xml-parser，需要 node_modules 才能被 wrangler 打包。
       - run: npm ci
-      # 与本地相同的部署入口：scripts/deploy.mjs 校验上面的部署值，并以 --domain / --var 注入 wrangler deploy。
+      # 与本地相同的生产部署入口：scripts/deploy.mjs 校验上面的部署值，并以 --domain / --var 注入 wrangler deploy。
       - name: Deploy to Cloudflare Workers
         id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npm run deploy
+        run: npm run deploy:production
       # 记录本次上线的 Version / Deployment（wrangler 部署输出本身也会保留在日志里）。
       - name: Record deployment
         env:

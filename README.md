@@ -35,7 +35,16 @@ The reference local transcription service runs MLX Whisper on Apple Silicon. The
 
 The maintainer runs the Cloudflare application on Workers Free, but that does not establish spare CPU, subrequest or Workflow capacity for every workload. Check [deployment limits](docs/DEPLOYMENT.md#resource-names-and-free-plan-boundary-checks) against your usage. LLM and cloud transcription providers may charge separately.
 
-This is a single-owner workspace. Reading at `/` is public by default: visitors can browse subscriptions and published manuscripts. Protect the whole hostname if those should be private. On Cloudflare, `/manage*` and `/api/control/*` **must** be protected by Access before exposing the site; Docker binds to localhost by default. Generation is manual per episode.
+This is a single-owner workspace. Reading at `/` is public by default: visitors can browse subscriptions and published manuscripts. Protect the whole hostname if those should be private. On Cloudflare, `/manage*` and `/api/control/*` **must** be protected by Access on a custom domain or Basic Auth on workers.dev; Docker binds to localhost by default. Generation is manual per episode.
+
+## Deployment options
+
+1. **Deploy to Cloudflare** *(preview, pending independent-account validation)*:
+   The template implementation is in review; the official button will be added here only after a fresh deployment has been verified. See the [deployment guide](docs/DEPLOYMENT.md#deploy-to-cloudflare-template-one-click-deployment) for the remaining checks.
+2. **`npm run setup`** *(Recommended for production with custom domain, Cloudflare Access, and Tunnel)*:
+   Interactive, idempotent setup script that provisions resources and guides Zero Trust configuration. See [Cloudflare deployment](docs/DEPLOYMENT.md#2-cloudflare-application).
+3. **Docker**:
+   Single-host installation running entirely on local compute and local storage. See [Docker guide](docs/DEPLOYMENT.md#7-local-docker-deployment).
 
 ## Try it locally
 

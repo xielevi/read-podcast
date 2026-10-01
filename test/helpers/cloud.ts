@@ -574,6 +574,7 @@ export function makeCloud(): Cloud {
     PROCESSING_WORKFLOW: workflow,
     ASSETS: { fetch: async () => new Response("asset") },
     APP_ENV: "test",
+    CONTROL_AUTH_MODE: "access",
     TRANSCRIPTION_SERVICE_URL: SERVICE_URL,
     CF_ACCESS_CLIENT_ID: ACCESS_CLIENT_ID,
     CF_ACCESS_CLIENT_SECRET: ACCESS_CLIENT_SECRET,

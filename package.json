@@ -8,12 +8,74 @@
     "check": "tsc --noEmit && vitest run",
     "check:frontend": "node --check public/app.js && python3 scripts/build_frontend.py --check",
     "dev": "wrangler dev",
-    "deploy": "node scripts/deploy.mjs",
+    "deploy": "node scripts/deploy_community.mjs",
+    "deploy:production": "node scripts/deploy.mjs",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
     "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
     "setup": "node scripts/setup.mjs",
     "build:server": "node scripts/build_server.mjs",
     "start": "node dist/server.js"
+  },
+  "cloudflare": {
+    "bindings": {
+      "DB": {
+        "description": "Cloudflare D1 database for task state, subscriptions, and articles."
+      },
+      "RAW_BUCKET": {
+        "description": "Cloudflare R2 bucket for raw/refined transcript checkpoints and uploaded audio."
+      },
+      "PROCESSING_WORKFLOW": {
+        "description": "Cloudflare Workflows durable execution engine for the transcription and refinement pipeline."
+      },
+      "CONTROL_AUTH_USER": {
+        "description": "Username for Basic Auth protecting the /manage control plane and control APIs (required for workers.dev or without Access)."
+      },
+      "CONTROL_AUTH_PASSWORD": {
+        "description": "Password for Basic Auth protecting the /manage control plane and control APIs."
+      },
+      "REFINER_API_KEY": {
+        "description": "API key for your OpenAI-compatible Refinement Provider (OpenAI, DeepSeek, OpenRouter, Qwen, etc.)."
+      },
+      "GITHUB_TOKEN": {
+        "description": "GitHub Personal Access Token with Contents: Read and write permissions on your manuscript repository."
+      },
+      "GITHUB_OWNER": {
+        "description": "GitHub username or organization owning the manuscript repository."
+      },
+      "GITHUB_REPO": {
+        "description": "GitHub manuscript repository name."
+      },
+      "GITHUB_BRANCH": {
+        "description": "Branch in the manuscript repository (default: main)."
+      },
+      "GITHUB_PODCAST_PATH": {
+        "description": "Directory path for manuscript Markdown files in the repository (default: podcasts/transcripts)."
+      },
+      "TRANSCRIPTION_PROVIDER": {
+        "description": "Transcription backend: 'self-hosted' (default) or 'dashscope' (Alibaba Cloud Paraformer)."
+      },
+      "TRANSCRIPTION_SERVICE_URL": {
+        "description": "Endpoint URL for self-hosted Transcription Service (required if TRANSCRIPTION_PROVIDER is self-hosted)."
+      },
+      "CF_ACCESS_CLIENT_ID": {
+        "description": "Cloudflare Access Service Token Client ID for the transcription service hostname."
+      },
+      "CF_ACCESS_CLIENT_SECRET": {
+        "description": "Cloudflare Access Service Token Client Secret for the transcription service hostname."
+      },
+      "DASHSCOPE_API_KEY": {
+        "description": "Alibaba Cloud DashScope API key (required if TRANSCRIPTION_PROVIDER is dashscope)."
+      },
+      "R2_ACCOUNT_ID": {
+        "description": "Cloudflare account ID for presigning custom audio upload URLs (optional)."
+      },
+      "R2_ACCESS_KEY_ID": {
+        "description": "R2 Access Key ID for presigning custom audio upload URLs (optional)."
+      },
+      "R2_SECRET_ACCESS_KEY": {
+        "description": "R2 Secret Access Key for presigning custom audio upload URLs (optional)."
+      }
+    }
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260918.1",

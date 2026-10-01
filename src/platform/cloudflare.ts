@@ -49,6 +49,9 @@ export interface CloudflareEnv {
   GITHUB_API_BASE?: string;
   CF_ACCESS_CLIENT_ID?: string;
   CF_ACCESS_CLIENT_SECRET?: string;
+  CONTROL_AUTH_USER?: string;
+  CONTROL_AUTH_PASSWORD?: string;
+  CONTROL_AUTH_MODE?: "access" | "local";
   [key: string]: unknown;
 }
 

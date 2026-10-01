@@ -6,7 +6,7 @@
   // 只经 custom domain 暴露：Cloudflare Access 在该域名上按路径保护 /manage* 与 /api/control/*，
   // workers.dev / preview URL 不受 Access 保护，必须保持关闭（见 docs/DEPLOYMENT.md）。
   // 本仓库不写任何部署者自己的值：custom domain 与下方 vars 中的部署值由 scripts/deploy.mjs
-  // （npm run deploy）在部署时以 --domain / --var 注入。
+  // （npm run deploy:production）在部署时以 --domain / --var 注入；社区 npm run deploy 见 scripts/deploy_community.mjs。
   "workers_dev": false,
   "preview_urls": false,
   "observability": { "enabled": true },
@@ -14,7 +14,7 @@
     "directory": "./public",
     "binding": "ASSETS",
     "not_found_handling": "single-page-application",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/manage*"]
   },
   "d1_databases": [
     {
@@ -62,6 +62,8 @@
     // 自定义上传音频的 presigned GET 目标桶（与上面 r2_buckets[].bucket_name 同一个值，不是机密）。
     "R2_BUCKET_NAME": "read-podcast-edge-raw",
     // ── 必须单独注入的 secret（刻意不写进仓库）──
+    //   CONTROL_AUTH_USER            Basic Auth 用户名（保护 /manage* 与 /api/control/*，workers.dev 必需）
+    //   CONTROL_AUTH_PASSWORD        Basic Auth 密码（同上）
     //   CF_ACCESS_CLIENT_ID          Cloudflare Access service token（转录服务入口）
     //   CF_ACCESS_CLIENT_SECRET      ── 同上
     //   R2_ACCOUNT_ID                签发 presigned GET 用的最小权限 R2 凭据（account id）
