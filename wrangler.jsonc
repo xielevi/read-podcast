@@ -6,7 +6,7 @@
   // 只经 custom domain 暴露：Cloudflare Access 在该域名上按路径保护 /manage* 与 /api/control/*，
   // workers.dev / preview URL 不受 Access 保护，必须保持关闭（见 docs/DEPLOYMENT.md）。
   // 本仓库不写任何部署者自己的值：custom domain 与下方 vars 中的部署值由 scripts/deploy.mjs
-  // （npm run deploy）在部署时以 --domain / --var 注入。
+  // （npm run deploy:production）在部署时以 --domain / --var 注入；社区 npm run deploy 见 scripts/deploy_community.mjs。
   "workers_dev": false,
   "preview_urls": false,
   "observability": { "enabled": true },
