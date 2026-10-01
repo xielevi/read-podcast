@@ -1,5 +1,5 @@
 import { HttpError, error, json } from "./http";
-import { checkControlAuth } from "./auth";
+import { controlAuthFailure } from "./auth";
 import { createSubscription, deleteSubscription } from "./subscriptions";
 import {
   artwork,
@@ -86,11 +86,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     return routePublic(path, url, env);
   }
 
-  // 控制面认证守卫：保护 /manage* 与 /api/control/*（Basic Auth / 缺失凭据 fail closed）
-  const auth = checkControlAuth(request, env);
-  if (!auth.authorized) {
-    return auth.response!;
-  }
+  const denied = controlAuthFailure(request, env);
+  if (denied) return denied;
 
   if (!path.startsWith(`${API}/`)) {
     if (path.startsWith("/api/")) return error(404, "not_found", "API route not found");

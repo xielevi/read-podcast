@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error 无类型声明
-import { buildCommunityDeploySteps, communityConfigFrom } from "../scripts/deploy_community.mjs";
+import { communityConfig, communityDeploySteps } from "../scripts/deploy_community.mjs";
 
 const ROOT = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, ROOT), "utf-8");
@@ -154,36 +154,32 @@ describe("仓库不含部署者自己的值", () => {
 });
 
 describe("scripts/deploy_community.mjs", () => {
-  it("opens workers.dev only in the temporary community config", () => {
+  it("只在临时配置中开放 workers.dev，并按实例名隔离 Workflow 与 R2 变量", () => {
     const source = read("wrangler.jsonc");
-    const community = communityConfigFrom(source);
+    const config = communityConfig(source.replace('"name": "read-podcast-edge"', '"name": "my-podcast"').replaceAll("read-podcast-edge-raw", "my-raw"));
     expect(source).toContain('"workers_dev": false');
-    expect(community).toContain('"workers_dev": true');
-    expect(community).toContain('"preview_urls": false');
-    expect(community).toContain('"/manage*"');
-    expect(() => communityConfigFrom(community)).toThrow();
-  });
-  it("常规部署先执行 D1 remote migration 再执行 wrangler deploy", () => {
-    const steps = buildCommunityDeploySteps([]);
-    expect(steps).toEqual([
-      { name: "migrate", command: "wrangler", args: ["d1", "migrations", "apply", "DB", "--remote"] },
-      { name: "deploy", command: "wrangler", args: ["deploy"] },
-    ]);
+    expect(config).toMatchObject({ workers_dev: true, preview_urls: false, keep_vars: true });
+    expect(config.assets.run_worker_first).toContain("/manage*");
+    expect(config.workflows[0].name).toBe("my-podcast-processing");
+    expect(config.vars.R2_BUCKET_NAME).toBe("my-raw");
+    // 部署页以 secret 收集的值不能再以同名 plain var 出现（Cloudflare 拒绝同名 binding）。
+    for (const name of ["TRANSCRIPTION_SERVICE_URL", "TRANSCRIPTION_PROVIDER", "GITHUB_OWNER", "GITHUB_REPO"]) {
+      expect(config.vars).not.toHaveProperty(name);
+      expect(read(".dev.vars.example")).toMatch(new RegExp(`^#? ?${name}=`, "m"));
+    }
   });
 
-  it("传入 --dry-run 时跳过 D1 remote migration，仅执行 wrangler deploy --dry-run", () => {
-    const steps = buildCommunityDeploySteps(["--dry-run"]);
-    expect(steps).toEqual([
-      { name: "deploy", command: "wrangler", args: ["deploy", "--dry-run"] },
-    ]);
+  it("库已存在先迁移再部署；首次部署由 wrangler 自动创建资源后再迁移；dry-run 不碰远端", () => {
+    const migrate = ["d1", "migrations", "apply", "DB", "--remote"];
+    expect(communityDeploySteps([])).toEqual([migrate, ["deploy"]]);
+    expect(communityDeploySteps([], false)).toEqual([["deploy"], migrate]);
+    expect(communityDeploySteps(["--dry-run"], false)).toEqual([["deploy", "--dry-run"]]);
   });
 
-  it("子进程 --print-args 返回正确 JSON 执行计划", () => {
+  it("子进程 --print-args 返回执行计划", () => {
     const script = fileURLToPath(new URL("scripts/deploy_community.mjs", ROOT));
     const result = spawnSync(process.execPath, [script, "--print-args", "--dry-run"], { encoding: "utf-8" });
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual([
-      { name: "deploy", command: "wrangler", args: ["deploy", "--dry-run"] },
-    ]);
+    expect(JSON.parse(result.stdout)).toEqual([["deploy", "--dry-run"]]);
   });
 });

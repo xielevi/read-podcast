@@ -53,16 +53,10 @@ const VALID_ENV = {
   READ_PODCAST_GITHUB_REPO: "notes",
 };
 
-const FULL_LIFECYCLE_TABLE = [
-  "┌─────────────┬─────────┬──────────┬────────────────────────────────┐",
-  "│ name        │ enabled │ prefix   │ action                         │",
-  "├─────────────┼─────────┼──────────┼────────────────────────────────┤",
-  "│ raw-7d      │ Yes     │ raw/     │ Expire objects after 7 days    │",
-  "│ refined-7d  │ Yes     │ refined/ │ Expire objects after 7 days    │",
-  "│ uploads-1d  │ Yes     │ uploads/ │ Expire objects after 1 days,   │",
-  "│             │         │          │ Abort incomplete multipart     │",
-  "└─────────────┴─────────┴──────────┴────────────────────────────────┘",
-].join("\n");
+// wrangler 4.x `r2 bucket lifecycle list` 的真实输出形态（含 Cloudflare 默认规则）。
+const FULL_LIFECYCLE_TABLE = ["Default Multipart Abort Rule", "raw-7d", "refined-7d", "uploads-1d"]
+  .map(name => `name:     ${name}\nenabled:  Yes\nprefix:   x/\naction:   Expire objects after 7 days\n`)
+  .join("\n");
 
 /** 按 args 前缀分发的 fake wrangler：记录全部调用，绝不真正 spawn。 */
 function fakeWrangler(handlers: [string, (args: string[]) => WranglerResult][], calls: { args: string[]; input?: string }[]) {
@@ -162,9 +156,9 @@ describe("wrangler.jsonc 与配置解析", () => {
 });
 
 describe("生命周期规则", () => {
-  it("从 lifecycle list 表格（含 ANSI 转义）取规则 id，忽略表头与边框", () => {
+  it("从 lifecycle list 输出（含 ANSI 转义）取规则 id", () => {
     const ansi = `\x1b[1m${FULL_LIFECYCLE_TABLE}\x1b[0m`;
-    expect(setup.parseLifecycleRuleIds(ansi)).toEqual(["raw-7d", "refined-7d", "uploads-1d"]);
+    expect(setup.parseLifecycleRuleIds(ansi)).toEqual(["Default Multipart Abort Rule", "raw-7d", "refined-7d", "uploads-1d"]);
     expect(setup.parseLifecycleRuleIds("There are no lifecycle rules for bucket 'x'.")).toEqual([]);
   });
 

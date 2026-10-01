@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import worker from "../src/index";
-import { checkControlAuth, isControlPath, parseBasicAuthHeader, timingSafeEqualString } from "../src/auth";
+import { controlAuthFailure, isControlPath, parseBasicAuthHeader, timingSafeEqualString } from "../src/auth";
 import { makeCloud } from "./helpers/cloud";
 
 const ROOT = new URL("../", import.meta.url);
@@ -72,74 +72,41 @@ describe("Basic Auth 解析与常量时间比对", () => {
 });
 
 describe("控制面认证守卫与 fail closed 机制", () => {
+  const basic = (cred: string) => ({ headers: { authorization: `Basic ${btoa(cred)}` } });
+  const status = (url: string, env: Parameters<typeof controlAuthFailure>[1], init?: RequestInit) =>
+    controlAuthFailure(new Request(url, init), env)?.status ?? 200;
+
   it("非控制面路径无需认证放行", () => {
-    const req = new Request("https://edge.test/api/public/health");
-    const result = checkControlAuth(req, { CONTROL_AUTH_USER: "admin", CONTROL_AUTH_PASSWORD: "password" });
-    expect(result.authorized).toBe(true);
-    expect(result.response).toBeUndefined();
+    expect(controlAuthFailure(new Request("https://edge.test/api/public/health"), {})).toBeNull();
   });
 
-  it("凭据配置不全时 fail closed（返回 401）", async () => {
-    const req = new Request("https://edge.test/manage");
-
-    // 只有 user 没有 password
-    const resUserOnly = checkControlAuth(req, { CONTROL_AUTH_USER: "admin", CONTROL_AUTH_PASSWORD: "" });
-    expect(resUserOnly.authorized).toBe(false);
-    expect(resUserOnly.response?.status).toBe(401);
-    expect(resUserOnly.response?.headers.get("www-authenticate")).toContain("Basic");
-    const jsonUser = (await resUserOnly.response?.json()) as { error: { code: string } };
-    expect(jsonUser.error.code).toBe("unauthorized");
-
-    // 只有 password 没有 user
-    const resPassOnly = checkControlAuth(req, { CONTROL_AUTH_USER: "", CONTROL_AUTH_PASSWORD: "secret" });
-    expect(resPassOnly.authorized).toBe(false);
-    expect(resPassOnly.response?.status).toBe(401);
+  it("凭据配置不全时 fail closed（401 + Basic challenge）", async () => {
+    const res = controlAuthFailure(new Request("https://edge.test/manage"), { CONTROL_AUTH_USER: "admin", CONTROL_AUTH_PASSWORD: "" });
+    expect(res?.status).toBe(401);
+    expect(res?.headers.get("www-authenticate")).toContain("Basic");
+    expect(((await res?.json()) as { error: { code: string } }).error.code).toBe("unauthorized");
+    expect(status("https://edge.test/manage", { CONTROL_AUTH_USER: "", CONTROL_AUTH_PASSWORD: "secret" })).toBe(401);
   });
 
-  it("workers.dev 上未配置凭据时必须 fail closed（返回 401），绝不匿名 200", async () => {
-    const reqManage = new Request("https://podcast.user.workers.dev/manage");
-    const resManage = checkControlAuth(reqManage, {});
-    expect(resManage.authorized).toBe(false);
-    expect(resManage.response?.status).toBe(401);
-    expect(resManage.response?.headers.get("www-authenticate")).toContain("Basic");
-
-    const reqApi = new Request("https://podcast.user.workers.dev/api/control/tasks");
-    const resApi = checkControlAuth(reqApi, {});
-    expect(resApi.authorized).toBe(false);
-    expect(resApi.response?.status).toBe(401);
-    expect(checkControlAuth(reqManage, { CONTROL_AUTH_MODE: "access" }).response?.status).toBe(401);
+  it("workers.dev 未配置凭据时 fail closed，即使声明 Access 模式", () => {
+    for (const path of ["/manage", "/api/control/tasks"]) {
+      expect(status(`https://podcast.user.workers.dev${path}`, {})).toBe(401);
+      expect(status(`https://podcast.user.workers.dev${path}`, { CONTROL_AUTH_MODE: "access" })).toBe(401);
+    }
   });
 
-  it("custom domain without explicit Access mode also fails closed", () => {
-    const req = new Request("https://podcast.example.org/manage");
-    expect(checkControlAuth(req, {}).response?.status).toBe(401);
-    expect(checkControlAuth(req, { CONTROL_AUTH_MODE: "access" }).authorized).toBe(true);
+  it("custom domain 只有显式 Access / local 模式才委托外部认证", () => {
+    expect(status("https://podcast.example.org/manage", {})).toBe(401);
+    expect(status("https://podcast.example.org/manage", { CONTROL_AUTH_MODE: "access" })).toBe(200);
+    expect(status("http://127.0.0.1:3000/manage", { CONTROL_AUTH_MODE: "local" })).toBe(200);
   });
 
-  it("配置了凭据时，未携带或携带错误凭据均被拒绝（401）", () => {
+  it("配置了凭据时只放行正确的用户名与密码", () => {
     const env = { CONTROL_AUTH_USER: "admin", CONTROL_AUTH_PASSWORD: "correct-password" };
-
-    // 无头
-    const reqNoHeader = new Request("https://edge.test/manage");
-    expect(checkControlAuth(reqNoHeader, env).authorized).toBe(false);
-
-    // 错误密码
-    const reqWrongPass = new Request("https://edge.test/manage", {
-      headers: { authorization: `Basic ${btoa("admin:wrong")}` },
-    });
-    expect(checkControlAuth(reqWrongPass, env).authorized).toBe(false);
-
-    // 错误用户名
-    const reqWrongUser = new Request("https://edge.test/manage", {
-      headers: { authorization: `Basic ${btoa("user:correct-password")}` },
-    });
-    expect(checkControlAuth(reqWrongUser, env).authorized).toBe(false);
-
-    // 正确凭据
-    const reqOk = new Request("https://edge.test/manage", {
-      headers: { authorization: `Basic ${btoa("admin:correct-password")}` },
-    });
-    expect(checkControlAuth(reqOk, env).authorized).toBe(true);
+    expect(status("https://edge.test/manage", env)).toBe(401);
+    expect(status("https://edge.test/manage", env, basic("admin:wrong"))).toBe(401);
+    expect(status("https://edge.test/manage", env, basic("user:correct-password"))).toBe(401);
+    expect(status("https://edge.test/manage", env, basic("admin:correct-password"))).toBe(200);
   });
 });
 

@@ -163,16 +163,9 @@ export function resourcesFromConfig(config) {
   };
 }
 
-/** `wrangler r2 bucket lifecycle list` 只输出表格：取每行第一个非空列作为规则 id。 */
+/** `wrangler r2 bucket lifecycle list` 每条规则输出一行 `name: <id>`。 */
 export function parseLifecycleRuleIds(text) {
-  const ids = [];
-  for (const rawLine of text.replace(/\x1b\[[0-9;]*m/g, "").split(/\r?\n/)) {
-    const first = (rawLine.split(/[│|]/).find(cell => cell.trim()) ?? "").trim();
-    // 规则 id 是简单名字：排除表头 "name" 与 ┌─┬┐ 边框、说明文字等非 id 行
-    if (!first || !/^[a-z0-9._-]+$/i.test(first) || /^name$/i.test(first)) continue;
-    if (!ids.includes(first)) ids.push(first);
-  }
-  return ids;
+  return [...text.replace(/\x1b\[[0-9;]*m/g, "").matchAll(/^name:\s*(.+?)\s*$/gm)].map(match => match[1]);
 }
 
 export function missingLifecycleRules(existingIds, rules = LIFECYCLE_RULES) {

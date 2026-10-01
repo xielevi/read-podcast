@@ -57,29 +57,22 @@ your domain. The subsections below document the same steps without the script.
 
 ### Deploy to Cloudflare template (One-click deployment)
 
-The [Deploy to Cloudflare flow](https://developers.cloudflare.com/workers/platform/deploy-buttons/) is
-prepared for review, **not yet verified on a fresh account**. The button is intentionally absent from
-the READMEs until the first independent deployment passes. Its build command uses `npm run deploy`,
-which copies the deployment-neutral Wrangler config into a temporary file with `workers_dev: true`,
-applies remote D1 migrations by the `DB` binding, then deploys. The checked-in config remains
-`workers_dev: false` for the existing custom-domain production pipeline. The intended first deploy
-provisions D1 and R2; Workflow, Cron, static assets and Workers Builds must still be confirmed live.
-Binding descriptions are in `package.json.cloudflare.bindings`.
+The [Deploy to Cloudflare flow](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
+(and plain `npm run deploy` from a checkout) runs `scripts/deploy_community.mjs`. It deploys from a
+temporary copy of `wrangler.jsonc` with `workers_dev: true`; the checked-in config stays
+`workers_dev: false` for the custom-domain production pipeline. In order it:
 
-To ensure safe deployment on `workers.dev` without requiring an upfront custom domain and Cloudflare Access setup:
-1. **Control plane authentication**: The Worker enforces HTTP Basic Auth (`CONTROL_AUTH_USER` and `CONTROL_AUTH_PASSWORD`)
-   on `/manage*` and `/api/control/*`. Missing credentials fail closed (401 Unauthorized) by default;
-   the maintainer's custom-domain production deploy explicitly selects Access mode, but a workers.dev
-   request is still rejected without Basic Auth credentials.
-2. **D1 migrations**: Executed automatically during deployment using the `DB` binding via `npm run deploy` (`scripts/deploy_community.mjs`).
-3. **R2 lifecycle rules**: Cloudflare Deploy Button / Workers Builds does not configure bucket lifecycle rules.
-   Configure `raw-7d`, `refined-7d` and `uploads-1d` with the Wrangler commands below after provisioning;
-   otherwise temporary audio and transcripts will not expire.
+1. deploys the Worker, Workflow (`<worker-name>-processing`), recovery cron and static assets — Wrangler
+   creates the D1 database and R2 bucket on first deploy;
+2. applies remote D1 migrations by the `DB` binding (before the deploy once the database exists);
+3. adds any missing R2 lifecycle rules (`raw-7d`, `refined-7d`, `uploads-1d`; warns instead of failing).
 
-> [!NOTE]
-> The Deploy to Cloudflare flow is currently prepared as a draft template pending end-to-end verification
-> on a fresh Cloudflare account before GA. For production environments with custom domain, Access, and Tunnel,
-> `npm run setup` + `npm run deploy:production` remains the recommended maintainer path.
+The deploy page collects the secrets listed in `.dev.vars.example` (descriptions in
+`package.json.cloudflare.bindings`); store and transcription settings are secrets in this path, so they
+are removed from the temporary config's `vars`, and `keep_vars` preserves variables set in the
+dashboard (for example `TRANSCRIPTION_PROVIDER=dashscope` plus the `DASHSCOPE_API_KEY` secret).
+`CONTROL_AUTH_USER` / `CONTROL_AUTH_PASSWORD` protect `/manage*` and `/api/control/*` with Basic Auth;
+without them the control plane answers 401. workers.dev never falls back to Access mode.
 
 ### D1
 
