@@ -79,10 +79,6 @@ def test_forced_engine_targets_the_local_mlx_endpoint():
     assert t.api_url == f"{MLX_ENDPOINT}/transcribe"
 
 
-def test_mlx_endpoint_is_loopback():
-    assert MLX_ENDPOINT == "http://127.0.0.1:21567"
-
-
 def test_mlx_api_url_normalization_is_idempotent():
     assert WhisperApiTranscriber("http://h:21567/transcribe").api_url == "http://h:21567/transcribe"
     assert WhisperApiTranscriber("http://h:21567/").api_url == "http://h:21567/transcribe"

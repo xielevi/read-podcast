@@ -14,7 +14,7 @@ import { spawnSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { buildDeployArgs, parseDeployEnv } from "./deploy.mjs";
+import { OPTIONAL, REQUIRED, buildDeployArgs, parseDeployEnv } from "./deploy.mjs";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
@@ -39,21 +39,8 @@ export const SECRET_PROMPTS = [
   { name: "DASHSCOPE_API_KEY", hint: "only for READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope; press Enter to skip otherwise" },
 ];
 
-const REQUIRED_DEPLOY_KEYS = [
-  "READ_PODCAST_DOMAIN",
-  "READ_PODCAST_TRANSCRIPTION_URL",
-  "READ_PODCAST_GITHUB_OWNER",
-  "READ_PODCAST_GITHUB_REPO",
-];
-const OPTIONAL_DEPLOY_KEYS = [
-  "READ_PODCAST_GITHUB_BRANCH",
-  "READ_PODCAST_GITHUB_PATH",
-  "READ_PODCAST_TRANSCRIPTION_LANGUAGE",
-  "READ_PODCAST_TRANSCRIPTION_PROVIDER",
-  "READ_PODCAST_TIME_ZONE",
-];
-
-const DOMAIN_RE = /^(?=.{1,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+const REQUIRED_DEPLOY_KEYS = Object.keys(REQUIRED);
+const OPTIONAL_DEPLOY_KEYS = Object.keys(OPTIONAL);
 
 const USAGE = `Usage: npm run setup [-- --step <name>]... [--smoke] [--help]
 
@@ -218,43 +205,20 @@ const DEPLOY_PROMPTS = {
   READ_PODCAST_GITHUB_REPO: "manuscript repository name (your-manuscript-repository)",
 };
 
-/** 单项校验，返回错误消息或 null；总闸由 scripts/deploy.mjs 的 buildDeployArgs 把守。 */
-function fieldError(key, text, provider) {
-  // dashscope 由 Worker 直连服务商，没有转录主机：转录地址可以留空（与 deploy.mjs 同一规则）。
-  if (!text && key === "READ_PODCAST_TRANSCRIPTION_URL" && provider === "dashscope") return null;
-  if (!text) return `${key} is required`;
-  if (key === "READ_PODCAST_DOMAIN" && !DOMAIN_RE.test(text)) {
-    return `${key} must be a bare hostname without scheme or path (got ${text})`;
-  }
-  if (key === "READ_PODCAST_TRANSCRIPTION_URL" && !/^https:\/\/[^\s/]+/i.test(text)) {
-    return `${key} must be an https:// URL (got ${text})`;
-  }
-  return null;
-}
-
-/** 交互式收集部署值：当前值作为默认，逐项校验，最后用 buildDeployArgs 总闸把关。 */
+/** 交互式收集部署值：当前值作为默认，由 scripts/deploy.mjs 的 buildDeployArgs 统一校验。 */
 async function collectDeployValues(deps, current) {
-  const provider = (current.READ_PODCAST_TRANSCRIPTION_PROVIDER ?? "").trim().toLowerCase() || "self-hosted";
   for (let round = 0; round < 3; round++) {
     const values = {};
-    let fieldProblem = null;
     for (const key of REQUIRED_DEPLOY_KEYS) {
       const existing = (current[key] ?? "").trim();
       const answer = (await deps.prompt(`${DEPLOY_PROMPTS[key]}\n  ${key}${existing ? ` [${existing}]` : ""}: `, existing)) ?? existing;
-      const text = answer.trim() || existing;
-      fieldProblem = fieldError(key, text, provider);
-      if (fieldProblem) break;
-      values[key] = text;
+      values[key] = answer.trim() || existing;
     }
-    if (!fieldProblem) {
-      try {
-        buildDeployArgs({ ...values, ...Object.fromEntries(OPTIONAL_DEPLOY_KEYS.map(key => [key, current[key] ?? ""])) }, []);
-        return values;
-      } catch (error) {
-        deps.error(String(error instanceof Error ? error.message : error));
-      }
-    } else {
-      deps.error(`✘ ${fieldProblem}`);
+    try {
+      buildDeployArgs({ ...values, ...Object.fromEntries(OPTIONAL_DEPLOY_KEYS.map(key => [key, current[key] ?? ""])) }, []);
+      return Object.fromEntries(Object.entries(values).filter(([, text]) => text));
+    } catch (error) {
+      deps.error(String(error instanceof Error ? error.message : error));
     }
     if (!deps.isInteractive || round === 2) {
       deps.error("Edit .deploy.env by hand, then rerun `npm run setup -- --step env`.");

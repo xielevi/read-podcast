@@ -72,22 +72,14 @@ deploying code that reads `ui_preferences.locale`. A Worker deploy does not appl
 
 ### 3. Verify Storage and R2 Lifecycle Rules
 
-If the upgrade introduces new storage prefixes or changes retention policies (e.g. the addition of
-the `refined/` checkpoint prefix in migration `0015`), ensure R2 bucket lifecycle rules match the current
-requirements:
+If the upgrade introduces new storage prefixes or retention policies (for example the `refined/`
+checkpoint prefix in migration `0015`), add any missing lifecycle rules and verify them:
 
 ```bash
-# List existing lifecycle rules
-npx wrangler r2 bucket lifecycle list read-podcast-edge-raw
-
-# Add required rules if missing:
-# 1. Raw transcripts: retain 7 days
-npx wrangler r2 bucket lifecycle add read-podcast-edge-raw raw-7d raw/ --expire-days 7
-# 2. Refined text checkpoints: retain 7 days
-npx wrangler r2 bucket lifecycle add read-podcast-edge-raw refined-7d refined/ --expire-days 7
-# 3. Audio uploads: retain 1 day
-npx wrangler r2 bucket lifecycle add read-podcast-edge-raw uploads-1d uploads/ --expire-days 1 --abort-multipart-days 1
+npm run setup -- --step r2
 ```
+
+The rules themselves are listed in [R2 and lifecycle rules](DEPLOYMENT.md#r2-and-lifecycle-rules).
 
 ### 4. Deploy Updated Cloudflare Application
 
@@ -118,12 +110,8 @@ On your macOS transcription host machine, update the service using the provided 
 deploy/macos/update.sh
 ```
 
-`deploy/macos/update.sh` executes the complete upgrade flow safely:
-1. Verifies that the local checkout has no uncommitted changes (`git status`).
-2. Pulls upstream changes with fast-forward only (`git pull --ff-only`).
-3. Syncs Python dependencies strictly according to `uv.lock` (`uv sync --locked`).
-4. Executes the service test suite (`pytest -q`).
-5. Restarts the LaunchAgent background services (`com.readpodcast.transcription` and `com.readpodcast.mlx`).
+It refuses a dirty checkout, fast-forwards, syncs `uv.lock`, runs the service tests and restarts
+both LaunchAgents.
 
 ### 6. Post-Upgrade Verification (Smoke Test)
 

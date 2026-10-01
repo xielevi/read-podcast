@@ -240,9 +240,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
     host,
     close: async () => {
       clearInterval(maintenanceTimer);
-      if (typeof (server as any).closeAllConnections === "function") {
-        (server as any).closeAllConnections();
-      }
+      server.closeAllConnections();
       await new Promise<void>((res, rej) => {
         server.close(err => (err ? rej(err) : res()));
       });
