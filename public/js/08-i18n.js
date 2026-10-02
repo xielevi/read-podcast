@@ -15,6 +15,7 @@
         'appearance.group': '应用外观',
         'appearance.desc': '选择界面外观；「自动」跟随系统深浅色。',
         'masthead.manage': '登录管理',
+        'masthead.github_label': '在 GitHub 上查看源码',
         'masthead.settings': '设置',
         'masthead.settings_open': '打开设置',
 
@@ -356,6 +357,7 @@
         'appearance.group': 'App appearance',
         'appearance.desc': 'Choose app appearance; "Auto" follows system settings.',
         'masthead.manage': 'Manage',
+        'masthead.github_label': 'View source on GitHub',
         'masthead.settings': 'Settings',
         'masthead.settings_open': 'Open settings',
 

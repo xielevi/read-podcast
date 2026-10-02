@@ -1726,6 +1726,9 @@
     html[data-surface="public"] .owner-state-only { display: none !important; }
     html:not([data-surface="public"]) .public-only { display: none !important; }
     .manage-link { min-height: 38px; padding: 7px 14px; text-decoration: none; white-space: nowrap; }
+    /* 源码入口：所有访客可见，新标签页打开。 */
+    .github-link { min-height: 38px; padding: 7px 11px; text-decoration: none; white-space: nowrap; }
+    .github-link svg { width: 15px; height: 15px; flex: none; }
 
     @media (max-width: 780px) {
       /* 公开浏览的页头多了外观与「登录管理」：窄屏收起副标题、压缩按钮，保证不横向溢出。 */
@@ -1734,4 +1737,7 @@
       html[data-surface="public"] .manage-link { min-height: 36px; padding: 6px 10px; font-size: 12px; }
       html[data-surface="public"] .mast-actions .icon-btn { width: 38px; height: 38px; }
       html[data-surface="public"] .public-theme-summary { min-height: 36px; padding: 6px 9px; font-size: 12px; }
+      /* 窄屏只保留 GitHub 标志，文字靠 aria-label / title。 */
+      .github-link { min-height: 36px; padding: 6px 9px; }
+      .github-link-text { display: none; }
     }
