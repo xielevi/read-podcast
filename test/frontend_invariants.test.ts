@@ -401,11 +401,16 @@ title: 袁长庚×胡安焉
     });
 
     it("desktop appearance menu is not constrained by header overflow and stacks above reader-layout", () => {
-      // .reader-head 必须允许 popover 向下延伸 (overflow: visible) 且显式高于 reader-layout (z-index: 20 vs 1)
+      // 桌面基础规则：.reader-head 必须允许 popover 向下延伸 (overflow: visible)
+      // 且显式高于 reader-layout (z-index: 20 vs 1)。
+      // 移动端媒体查询内的 .reader-head 覆盖为 overflow: hidden 是有意为之：
+      // 移动端外观菜单是 position: fixed 底抽屉，不依赖头部溢出，而折叠动画需要裁切。
       expect(CSS).toMatch(/\.reader-head\s*\{[^}]*position:\s*relative;/);
       expect(CSS).toMatch(/\.reader-head\s*\{[^}]*z-index:\s*20;/);
-      expect(CSS).toMatch(/\.reader-head\s*\{[^}]*overflow:\s*visible;/);
-      expect(CSS).not.toMatch(/\.reader-head\s*\{[^}]*overflow:\s*hidden;/);
+      const desktopHeadRule = CSS.match(/\.reader-head\s*\{[^}]*position:\s*relative;[^}]*\}/);
+      expect(desktopHeadRule).not.toBeNull();
+      expect(desktopHeadRule![0]).toMatch(/overflow:\s*visible;/);
+      expect(desktopHeadRule![0]).not.toMatch(/overflow:\s*hidden;/);
 
       // .reader-layout 建立独立的较低层叠上下文
       expect(CSS).toMatch(/\.reader-layout\s*\{[^}]*position:\s*relative;/);

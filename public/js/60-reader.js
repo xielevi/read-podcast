@@ -342,7 +342,10 @@
       var source = task || article;
       _currentReadingRef = episode ? episodeReadRef(episode) : { episode_id: source && source.episode_id ? String(source.episode_id) : null, task_id: cleanId };
       var title = (task && task.episode_title) || (article && article.title) || '';
-      byId('reader-title').textContent = title ? String(title) : t('reader.title');
+      var titleEl = byId('reader-title');
+      titleEl.textContent = title ? String(title) : t('reader.title');
+      titleEl.setAttribute('title', titleEl.textContent);
+      titleEl.classList.remove('reader-title-expanded');
       byId('reader-download').href = articleUrl(cleanId, '/download');
       updateReaderReadState();
       
@@ -383,7 +386,11 @@
           });
         })
         .then(function (result) {
-          if (result.title) byId('reader-title').textContent = String(result.title);
+          if (result.title) {
+            var loadedTitleEl = byId('reader-title');
+            loadedTitleEl.textContent = String(result.title);
+            loadedTitleEl.setAttribute('title', loadedTitleEl.textContent);
+          }
           if (!result.content) { 
             byId('manuscript-body').innerHTML = '<div class="reader-state">' + escapeHtml(t('reader.empty_content')) + '</div>'; 
             updateReaderStats('');

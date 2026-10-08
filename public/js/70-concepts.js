@@ -250,6 +250,11 @@
       }
     });
 
+    // 移动端标题常态最多两行，点按展开/收起完整标题（桌面无截断，切换无副作用）
+    byId('reader-title').addEventListener('click', function () {
+      this.classList.toggle('reader-title-expanded');
+    });
+
     // Mobile bottom bar
     byId('reader-bar-toc-btn').addEventListener('click', function () {
       var toc = byId('reader-toc');
