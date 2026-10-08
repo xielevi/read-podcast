@@ -8,7 +8,7 @@ Pick a podcast episode you want to keep. Read Podcast turns it into a readable, 
   <img src="docs/assets/readme/library.webp" alt="Read Podcast subscriptions and manuscripts" width="920">
 </p>
 
-**[Live demo → read-podcast.piggys.us](https://read-podcast.piggys.us)** · [Try it locally](#try-it-locally) · [Deploy on Cloudflare](docs/DEPLOYMENT.md#2-cloudflare-application) · [Run with Docker](docs/DEPLOYMENT.md#7-local-docker-deployment)
+**[Live demo → read-podcast.xielevi.cc](https://read-podcast.xielevi.cc)** · [Try it locally](#try-it-locally) · [Deploy on Cloudflare](docs/DEPLOYMENT.md#2-cloudflare-application) · [Run with Docker](docs/DEPLOYMENT.md#7-local-docker-deployment)
 
 The live demo is the maintainer's own instance, open read-only to visitors: browse subscriptions and read published manuscripts. Generating new manuscripts requires deploying your own copy.
 

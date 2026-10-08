@@ -8,7 +8,7 @@
   <img src="docs/assets/readme/library.webp" alt="Read Podcast 的订阅与稿件工作区" width="920">
 </p>
 
-**[在线体验 → read-podcast.piggys.us](https://read-podcast.piggys.us)** · [本地试用](#本地试用) · [部署到 Cloudflare](docs/DEPLOYMENT.md#2-cloudflare-application) · [用 Docker 部署](docs/DEPLOYMENT.md#7-local-docker-deployment)
+**[在线体验 → read-podcast.xielevi.cc](https://read-podcast.xielevi.cc)** · [本地试用](#本地试用) · [部署到 Cloudflare](docs/DEPLOYMENT.md#2-cloudflare-application) · [用 Docker 部署](docs/DEPLOYMENT.md#7-local-docker-deployment)
 
 在线体验是维护者自己的实例，对访客只读开放：可以浏览订阅、阅读已发布的稿件。想生成新稿件，请部署你自己的一份。
 
