@@ -250,9 +250,14 @@
       }
     });
 
-    // 移动端标题常态最多两行，点按展开/收起完整标题（桌面无截断，切换无副作用）
-    byId('reader-title').addEventListener('click', function () {
-      this.classList.toggle('reader-title-expanded');
+    // 移动端标题常态最多两行；展开/收起为语义化按钮，键盘可达并暴露 aria-expanded，
+    // 展开时同步解除顶栏高度裁切。桌面标题始终完整显示，无需展开交互。
+    byId('reader-title-toggle').addEventListener('click', function () {
+      if (window.innerWidth > 780) return;
+      var willExpand = !byId('reader-title').classList.contains('reader-title-expanded');
+      byId('reader-title').classList.toggle('reader-title-expanded', willExpand);
+      document.querySelector('.reader-head').classList.toggle('reader-head-title-expanded', willExpand);
+      this.setAttribute('aria-expanded', String(willExpand));
     });
 
     // Mobile bottom bar

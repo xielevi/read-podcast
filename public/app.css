@@ -986,6 +986,9 @@
     .reader-sheet.reader-head-collapsed .reader-head { transform: translateY(-105%); opacity: 0; pointer-events: none; }
     .reader-head-info { min-width: 0; flex: 1; }
     .reader-title { margin: 2px 0 0; font-size: clamp(20px, 2.4vw, 28px); font-weight: 650; line-height: 1.2; }
+    /* 标题展开按钮：桌面呈现为纯文本（标题始终完整显示），移动端才出现 caret 与截断 */
+    .reader-title-toggle { display: block; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; font: inherit; color: inherit; text-align: left; cursor: default; }
+    .reader-title-caret { display: none; }
     .reader-meta-stats { margin-top: 4px; color: var(--reader-ink-soft); font-size: 12px; }
     .reader-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
     .control-btn {
@@ -1454,22 +1457,35 @@
         gap: 8px;
       }
       .reader-actions .close-btn { order: -1; margin-right: auto; }
-      /* 标题获得完整行宽：常态最多两行，点按展开完整标题 */
+      /* 标题获得完整行宽：常态最多两行，caret 提示可展开，按钮键盘可达 */
       .reader-head-info { flex: 1 1 100%; }
-      .reader-title {
-        font-size: 18px !important;
-        line-height: 1.35;
-        margin: 0;
+      .reader-title { font-size: 18px !important; line-height: 1.35; margin: 0; }
+      .reader-title-toggle { display: flex; align-items: flex-start; gap: 4px; cursor: pointer; }
+      .reader-title-text {
+        flex: 1;
+        min-width: 0;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
       }
-      .reader-title.reader-title-expanded {
+      .reader-title-caret {
+        display: block;
+        flex: none;
+        width: 14px;
+        height: 14px;
+        margin-top: 5px;
+        color: var(--reader-ink-soft);
+        transition: transform .2s ease;
+      }
+      .reader-title.reader-title-expanded .reader-title-text {
         display: block;
         -webkit-line-clamp: unset;
         overflow: visible;
       }
+      .reader-title.reader-title-expanded .reader-title-caret { transform: rotate(180deg); }
+      /* 展开完整标题时解除 60vh 裁切：顶栏允许到 85vh 并独立滚动，折叠时仍按具体数值动画 */
+      .reader-head.reader-head-title-expanded { max-height: 85vh; overflow-y: auto; }
       .reader-meta-stats { margin-top: 6px; }
       .reader-toc-btn { display: none; }
       .reader-appearance { display: none; }

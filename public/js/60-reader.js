@@ -342,10 +342,12 @@
       var source = task || article;
       _currentReadingRef = episode ? episodeReadRef(episode) : { episode_id: source && source.episode_id ? String(source.episode_id) : null, task_id: cleanId };
       var title = (task && task.episode_title) || (article && article.title) || '';
-      var titleEl = byId('reader-title');
-      titleEl.textContent = title ? String(title) : t('reader.title');
-      titleEl.setAttribute('title', titleEl.textContent);
-      titleEl.classList.remove('reader-title-expanded');
+      var titleTextEl = byId('reader-title-text');
+      titleTextEl.textContent = title ? String(title) : t('reader.title');
+      byId('reader-title-toggle').setAttribute('title', titleTextEl.textContent);
+      byId('reader-title-toggle').setAttribute('aria-expanded', 'false');
+      byId('reader-title').classList.remove('reader-title-expanded');
+      document.querySelector('.reader-head').classList.remove('reader-head-title-expanded');
       byId('reader-download').href = articleUrl(cleanId, '/download');
       updateReaderReadState();
       
@@ -387,9 +389,9 @@
         })
         .then(function (result) {
           if (result.title) {
-            var loadedTitleEl = byId('reader-title');
+            var loadedTitleEl = byId('reader-title-text');
             loadedTitleEl.textContent = String(result.title);
-            loadedTitleEl.setAttribute('title', loadedTitleEl.textContent);
+            byId('reader-title-toggle').setAttribute('title', loadedTitleEl.textContent);
           }
           if (!result.content) { 
             byId('manuscript-body').innerHTML = '<div class="reader-state">' + escapeHtml(t('reader.empty_content')) + '</div>'; 
