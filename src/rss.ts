@@ -31,6 +31,8 @@ const parser = new XMLParser({
   cdataPropName: "__cdata",
   trimValues: false,
   parseTagValue: false,
+  // 数字字符引用（WordPress 等英文 feed 常见的 &#038; / &#8217;）也要解码，与 feedparser 一致。
+  htmlEntities: true,
 });
 
 const RE_BR = /<br\s*\/?>/gi;

@@ -87,7 +87,7 @@ describe("parseFeed (golden parity vs original feedparser)", () => {
 });
 
 describe("parseFeed XML parser compatibility", () => {
-  it("preserves v4 entity handling and numeric-looking identifiers", () => {
+  it("decodes named and numeric entities (as feedparser does) and keeps numeric-looking identifiers", () => {
     const feed = parseFeed(`<rss><channel>
       <title>News &amp; Culture &#x4E2D;</title>
       <itunes:image href="https://cdn.example.com/cover?a=1&amp;b=2"/>
@@ -101,12 +101,12 @@ describe("parseFeed XML parser compatibility", () => {
       </item>
     </channel></rss>`, "News");
 
-    // With the existing options, numeric character references remain literal in v4 and v5.
-    expect(feed.channelTitle).toBe("News & Culture &#x4E2D;");
+    // 数字字符引用同样解码：WordPress 等英文 feed 的标题常带 &#038; / &#8217;。
+    expect(feed.channelTitle).toBe("News & Culture 中");
     expect(feed.channelImage).toBe("https://cdn.example.com/cover?a=1&b=2");
     expect(feed.episodes).toHaveLength(1);
     expect(feed.episodes[0]).toMatchObject({
-      title: '"001" & &#20013;',
+      title: '"001" & 中',
       id: "00123",
       link: "https://example.com/episode?a=1&b=2",
       audio_url: "https://cdn.example.com/audio?a=1&b=2",
