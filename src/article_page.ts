@@ -13,6 +13,7 @@ import type { Env } from "./types";
 // 正文读取复用 publicArticleContent 的发布快照路径与边缘缓存（publishedMarkdown）。
 
 const SITE_NAME = "Read Podcast";
+const SITE_IMAGE = "/og.png";
 const DESCRIPTION_LENGTH = 160;
 const SITEMAP_LIMIT = 50000;
 const FEED_LIMIT = 30;
@@ -94,7 +95,8 @@ async function articlePage(rawId: string, url: URL, env: Env): Promise<Response>
   const canonical = `${url.origin}${articlePath(row.task_id)}`;
   const title = row.title.trim() || SITE_NAME;
   const description = articleDescription({ markdown, brief: parseStoredBrief(row.brief)?.tldr }) || [row.podcast_name, SITE_NAME].filter(Boolean).join(" · ");
-  const image = hasArtwork ? `${url.origin}/api/public/artwork?podcast=${encodeURIComponent(row.podcast_name)}` : "";
+  // 节目封面（方图，summary 卡片）优先；没有封面时用站点社交预览图（public/og.png，横图）。
+  const image = hasArtwork ? `${url.origin}/api/public/artwork?podcast=${encodeURIComponent(row.podcast_name)}` : `${url.origin}${SITE_IMAGE}`;
 
   const meta = [
     `<title>${escapeHtml(row.podcast_name ? `${title} · ${row.podcast_name}` : title)}</title>`,
@@ -106,13 +108,13 @@ async function articlePage(rawId: string, url: URL, env: Env): Promise<Response>
     `<meta property="og:title" content="${escapeHtml(title)}">`,
     `<meta property="og:description" content="${escapeHtml(description)}">`,
     `<meta property="og:url" content="${escapeHtml(canonical)}">`,
-    image ? `<meta property="og:image" content="${escapeHtml(image)}">` : "",
+    `<meta property="og:image" content="${escapeHtml(image)}">`,
     `<meta property="article:published_time" content="${escapeHtml(row.created_at)}">`,
     `<meta property="article:modified_time" content="${escapeHtml(row.updated_at)}">`,
-    `<meta name="twitter:card" content="summary">`,
+    `<meta name="twitter:card" content="${hasArtwork ? "summary" : "summary_large_image"}">`,
     `<meta name="twitter:title" content="${escapeHtml(title)}">`,
     `<meta name="twitter:description" content="${escapeHtml(description)}">`,
-    image ? `<meta name="twitter:image" content="${escapeHtml(image)}">` : "",
+    `<meta name="twitter:image" content="${escapeHtml(image)}">`,
   ].filter(Boolean).join("\n  ");
 
   const body = `<noscript><article class="seo-article">`

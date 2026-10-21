@@ -23,6 +23,10 @@ Read Podcast 留下的是对话本身。它转写你选中的单集，再像杂�
 
 ## 整理前后对比
 
+<p align="center">
+  <img src="docs/assets/readme/before-after.webp" alt="示意的语音识别原文与同一段落的整理稿对比" width="920">
+</p>
+
 语音识别直接给你的是这样的 *（示意——为本文编写的典型未经整理的 ASR 输出）*：
 
 ```text
