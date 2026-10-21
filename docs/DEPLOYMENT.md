@@ -634,7 +634,7 @@ multi-task cron recovery) need production evidence. Free tier quotas relevant to
 | **Worker CPU Time** | 10 ms per invocation | Lightweight routing & API parsing (I/O wait excluded) |
 | **External Subrequests** | 50 per invocation | Fetching RSS, calling GitHub API, polling transcription |
 | **Cloudflare Subrequests** | 1,000 per invocation | D1 database queries and R2 object operations |
-| **Workflow Step Quotas** | 3,000 steps / day | Multi-step execution per episode (`resolve-source` → `submit-transcription` → `poll-transcription-*` → `persist-raw` → `claim-refinement` → `refine` → `publish`; long episodes add poll steps) |
+| **Workflow Step Quotas** | 3,000 steps / day | Multi-step execution per episode (`resolve-source` → `submit-transcription` → `poll-transcription-*` → `persist-raw` → `claim-refinement` → `refine` → `generate-brief` → `publish`; long episodes add poll steps) |
 | **Cron Triggers** | 5 triggers / account | Exactly 1 trigger used (5-minute background recovery) |
 | **R2 Storage** | 10 GB storage free | Managed by 1-day (`uploads/`) and 7-day (`raw/`, `refined/`) lifecycle rules |
 
@@ -658,7 +658,7 @@ release verification scenarios:
    - *Verification*: Process an episode longer than 2 hours. Confirm the workflow completes without `exceededCpu` or step timeouts.
 3. **GitHub Manuscript Publication**:
    - *Boundary*: Writing markdown files and front matter via the GitHub REST API without exhausting subrequests or payload size limits.
-   - *Design guard*: R2 holds the finalized refined checkpoint so publication retries replay without re-generating text.
+   - *Design guard*: R2 holds the finalized refined checkpoint so publication retries replay without re-generating text. The best-effort `generate-brief` step adds one external subrequest per attempt (at most 3) and checkpoints its small JSON result, so publish retries never call the model again.
    - *Verification*: Inspect the publish step log; verify that the commit appears under `podcasts/transcripts/` in your repository.
 4. **Multi-Task Cron Recovery**:
    - *Boundary*: A scheduled cron trigger firing when multiple queued tasks or dead workflows need reconciliation simultaneously.
