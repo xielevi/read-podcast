@@ -12,7 +12,7 @@
 **[Live demo → read-podcast.xielevi.cc](https://read-podcast.xielevi.cc)** · [Sample manuscripts](#sample-manuscripts) · [Quick start](#quick-start) · [How it compares](#how-it-compares)
 
 <p align="center">
-  <img src="docs/assets/readme/reader.webp" alt="Manuscript reader with outline" width="920">
+  <img src="docs/assets/readme/flow.gif" alt="Opening an episode from the library: the three-minute brief comes first, then section summaries and the full text" width="920">
 </p>
 
 ## Why
@@ -49,6 +49,18 @@ What Read Podcast publishes *(real excerpt from the [live demo](https://read-pod
 *In English: “Every engineering mega-project depends on three preconditions — stable political commitment, secured funding, and clear intermediate goals.”*
 
 That 63-minute episode became a manuscript of about 17,000 characters: a timestamped outline, six titled sections and both speakers named. Length is checked, not hoped for: by default a draft shorter than 70% of the transcript fails the quality gate and is not published. The demo library is in Chinese; English episodes are edited with English prompts.
+
+## Brief first, full text when you want it
+
+Every manuscript opens with a three-minute brief: the main conclusion, key points, verbatim quotes and who should read on. Each section starts with a one-line summary, so you can skim the structure and dive into the parts that matter. On a phone it reads the same way.
+
+<p align="center">
+  <img src="docs/assets/readme/reader-brief.webp" alt="Reader with the three-minute brief above the full manuscript" width="920">
+</p>
+
+<p align="center">
+  <img src="docs/assets/readme/mobile.webp" alt="Phone reader: the brief card, and a section heading with its one-line summary" width="720">
+</p>
 
 ## Sample manuscripts
 
