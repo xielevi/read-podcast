@@ -28,6 +28,7 @@ import {
   publicArticleContent,
   publicArticleDownload,
   publicArtwork,
+  publicGetArticle,
   publicListArticles,
   publicListSubscriptions,
   publicSearchPodcast,
@@ -66,6 +67,8 @@ async function routePublic(path: string, url: URL, env: Env): Promise<Response> 
   if (path === `${PUBLIC_API}/artwork`) return publicArtwork(url, env);
   if (path === `${PUBLIC_API}/articles`) return publicListArticles(url, env);
   if (path === `${PUBLIC_API}/preferences`) return getPublicPreferences(env);
+  const articleMeta = path.match(/^\/api\/public\/articles\/([0-9a-f-]+)$/i);
+  if (articleMeta) return publicGetArticle(articleMeta[1], env);
   const match = path.match(/^\/api\/public\/articles\/([0-9a-f-]+)\/(content|download|concepts)$/i);
   if (match?.[2] === "content") return publicArticleContent(match[1], url, env);
   if (match?.[2] === "download") return publicArticleDownload(match[1], url, env);

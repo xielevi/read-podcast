@@ -376,16 +376,19 @@
       
       applyReaderPreferences();
 
-      fetch(articleUrl(cleanId, '/content'))
-        .then(function (response) {
+      // 正文与导读并行读取；导读失败恒为 null（旧稿件 / 网络），不影响正文。
+      Promise.all([fetch(articleUrl(cleanId, '/content')), loadArticleBrief(cleanId)])
+        .then(function (loaded) {
+          var response = loaded[0];
+          var brief = loaded[1];
           return response.text().then(function (raw) {
             if (!response.ok) { var detail = raw; try { detail = JSON.parse(raw).detail || detail; } catch (ignore) {} throw new Error(detail || 'HTTP ' + response.status); }
             var contentType = response.headers.get('content-type') || '';
             if (contentType.indexOf('application/json') >= 0) {
               var data = JSON.parse(raw);
-              return { content: data.content || data.markdown || data.text || '', title: data.title || '' };
+              return { content: data.content || data.markdown || data.text || '', title: data.title || '', brief: brief };
             }
-            return { content: raw, title: '' };
+            return { content: raw, title: '', brief: brief };
           });
         })
         .then(function (result) {
@@ -404,6 +407,7 @@
           updateReaderStats(presentationContent);
           var renderedHtml = renderBasicMarkdown(presentationContent);
           byId('manuscript-body').innerHTML = renderedHtml;
+          decorateManuscriptWithBrief(byId('manuscript-body'), result.brief);
           
           var headings = byId('manuscript-body').querySelectorAll('h1, h2, h3');
           var tocLinks = [];

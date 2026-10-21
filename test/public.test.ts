@@ -290,7 +290,6 @@ describe("公共面严格无副作用", () => {
     "/api/public/episodes/read",
     "/api/public/uploads",
     "/api/public/prompt-templates",
-    `/api/public/articles/${PUBLISHED}`,
   ])("GET %s → 404（控制面状态不经公共面暴露）", async path => {
     const before = snapshot();
     expect((await call(path)).status).toBe(404);

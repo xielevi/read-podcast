@@ -16,7 +16,7 @@ The live demo is the maintainer's own instance, open read-only to visitors: brow
 
 Add a podcast from Apple Podcasts or an RSS URL, or import an audio file (up to 200 MiB). Choose an episode and start generation; new episodes are **never processed automatically**. You can leave the browser while it fetches, transcribes, edits and saves the piece.
 
-The editor removes verbal repetition while keeping the conversation's arguments and examples. The result is a substantial article, with headings and speaker labels, rather than a short recap. Read it in the browser with an outline and reading settings, or download the Markdown. The interface is available in Chinese and English; editorial prompts follow the spoken language, while Wikipedia concept links follow the reader's UI language. Custom editorial instructions take precedence.
+The editor removes verbal repetition while keeping the conversation's arguments and examples. The result is a substantial article, with headings and speaker labels, rather than a short recap. Each manuscript also gets a best-effort three-minute brief (TL;DR, key points, verbatim quotes, who should read on) and one-line section summaries, so readers can decide before committing to the full text. Read it in the browser with an outline and reading settings, or download the Markdown. The interface is available in Chinese and English; editorial prompts follow the spoken language, while Wikipedia concept links follow the reader's UI language. Custom editorial instructions take precedence.
 
 <p align="center">
   <img src="docs/assets/readme/reader.webp" alt="Manuscript reader with outline" width="920">
