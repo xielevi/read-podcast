@@ -379,7 +379,7 @@
 
         'nav.aria_label': 'Main navigation',
         'nav.workspace': 'Workspace',
-        'nav.podcast': 'Subscriptions',
+        'nav.podcast': 'Podcasts',
         'nav.custom': 'Import',
         'nav.library': 'Articles',
         'nav.add_podcast': 'Add Subscription',
