@@ -56,8 +56,6 @@
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
     "APP_ENV": "production",
-    // 转录服务 endpoint：部署时由 READ_PODCAST_TRANSCRIPTION_URL 注入；本地开发在 .dev.vars 中设置。
-    "TRANSCRIPTION_SERVICE_URL": "",
     // 转录实现：self-hosted（默认，自托管 Transcription Service）| dashscope（百炼 Paraformer）。
     // 部署时由 READ_PODCAST_TRANSCRIPTION_PROVIDER 注入；dashscope 需另注入 secret DASHSCOPE_API_KEY。
     "TRANSCRIPTION_PROVIDER": "self-hosted",
@@ -73,9 +71,9 @@
     //   R2_SECRET_ACCESS_KEY         ── 同上（secret access key）
     //   GITHUB_TOKEN / REFINER_API_KEY
     // 注入方式见 docs/DEPLOYMENT.md：npx wrangler secret put <NAME>
-    // Canonical Manuscript Store：部署时由 READ_PODCAST_GITHUB_* 注入（branch / path 可选）。
-    "GITHUB_OWNER": "",
-    "GITHUB_REPO": "",
+    // Canonical Manuscript Store 的 branch / path（可选）。部署者自己的值刻意不放在这里：
+    // TRANSCRIPTION_SERVICE_URL / GITHUB_OWNER / GITHUB_REPO 在生产由 scripts/deploy.mjs 以 --var 注入，
+    // 在 Deploy to Cloudflare 部署页从 .dev.vars.example 收集（部署页把这里的每个 var 都设为必填，空值会挡住部署）。
     "GITHUB_BRANCH": "main",
     "GITHUB_PODCAST_PATH": "podcasts/transcripts"
   }

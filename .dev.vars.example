@@ -1,28 +1,34 @@
+# 本文件同时是 Deploy to Cloudflare 部署页的 secret 清单：未注释的每一行都会成为部署页上的必填项
+# （值作为预填）。可选项保持注释，部署后再用 npx wrangler secret put <NAME> 或 dashboard 补上。
+#
 # 控制面访问认证（Basic Auth）：保护 /manage* 与 /api/control/*（workers.dev / Deploy to Cloudflare 必需）。
 CONTROL_AUTH_USER=
 CONTROL_AUTH_PASSWORD=
-# Cloudflare Access service token：Cloudflare 调用转录服务（经 Tunnel 入口）时携带。
-# 生产路径必填；本地开发把 TRANSCRIPTION_SERVICE_URL 指向 http://127.0.0.1:28100 时可不配置。
-CF_ACCESS_CLIENT_ID=
-CF_ACCESS_CLIENT_SECRET=
-# 签发自定义上传音频的临时 presigned GET URL 所需的最小权限 R2 凭据。
-# 建议用只读、只限目标 bucket 的 R2 API token（R2 tokens 不能限制到 key prefix：
-# 实际边界 = 仅 read 目标 bucket，签发的 URL 本身只对单个 object key 有效且会过期）。
-# 这些值不进仓库；生产用 npx wrangler secret put <NAME> 注入。
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-# 本地开发的部署值（生产由 scripts/deploy.mjs 注入）。转录服务指向本机时不需要 Access 凭据。
+# 转录服务 endpoint（self-hosted）；本地开发指向本机。生产由 scripts/deploy.mjs 以 --var 注入。
 TRANSCRIPTION_SERVICE_URL=http://127.0.0.1:28100
+# Canonical Manuscript Store（GitHub 仓库）。生产由 scripts/deploy.mjs 以 --var 注入。
 GITHUB_OWNER=your-github-username
 GITHUB_REPO=your-manuscript-repository
 GITHUB_TOKEN=github-fine-grained-token-with-contents-write
 REFINER_API_KEY=replace-with-refiner-api-key
+# 百炼 Paraformer 的 API key：只在 TRANSCRIPTION_PROVIDER=dashscope 时读取，self-hosted 时保留占位即可。
+DASHSCOPE_API_KEY=unused-with-self-hosted-transcription
+#
+# ── 可选 secret（部署页不收集）──
+# Cloudflare Access service token：Cloudflare 经 Tunnel 入口调用自托管转录服务时携带。
+# 生产 self-hosted 路径必填；本地开发转录服务指向 127.0.0.1 时不需要。
+# CF_ACCESS_CLIENT_ID=
+# CF_ACCESS_CLIENT_SECRET=
+# 签发自定义上传音频的临时 presigned GET URL 所需的最小权限 R2 凭据。
+# 建议用只读、只限目标 bucket 的 R2 API token（R2 tokens 不能限制到 key prefix：
+# 实际边界 = 仅 read 目标 bucket，签发的 URL 本身只对单个 object key 有效且会过期）。
+# R2_ACCOUNT_ID=
+# R2_ACCESS_KEY_ID=
+# R2_SECRET_ACCESS_KEY=
 # 可选：随每次请求下发的转录选项（本机 MLX 引擎用它指定语言；不设则自动判定）。
 # TRANSCRIPTION_LANGUAGE=zh
 # 可选：稿件 frontmatter 中 processed_at 使用的 IANA 时区（默认 Asia/Shanghai）。
 # MANUSCRIPT_TIME_ZONE=Asia/Shanghai
-# 可选：转录实现（self-hosted 默认 | dashscope 百炼 Paraformer）。
-# 选 dashscope 时还需要 DASHSCOPE_API_KEY（本地开发直接写在这里；生产用 wrangler secret）。
+# 可选：转录实现（self-hosted 默认 | dashscope 百炼 Paraformer，需上面的 DASHSCOPE_API_KEY）。
+# 部署到 Cloudflare 时它是 wrangler.jsonc 中的 var，在部署页或 dashboard 修改。
 # TRANSCRIPTION_PROVIDER=self-hosted
-# DASHSCOPE_API_KEY=

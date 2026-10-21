@@ -28,22 +28,22 @@
         "description": "Cloudflare Workflows durable execution engine for the transcription and refinement pipeline."
       },
       "CONTROL_AUTH_USER": {
-        "description": "Username for Basic Auth protecting the /manage control plane and control APIs (required for workers.dev or without Access)."
+        "description": "Username for Basic Auth on `/manage` and the control APIs. **Required** — without it the control plane refuses every request on workers.dev."
       },
       "CONTROL_AUTH_PASSWORD": {
-        "description": "Password for Basic Auth protecting the /manage control plane and control APIs."
+        "description": "Password for that Basic Auth user. Use a long random value, e.g. `openssl rand -base64 24`."
       },
       "REFINER_API_KEY": {
-        "description": "API key for your OpenAI-compatible Refinement Provider (OpenAI, DeepSeek, OpenRouter, Qwen, etc.)."
+        "description": "API key for your OpenAI-compatible LLM (OpenAI, DeepSeek, OpenRouter, Qwen, …). Set the API base URL and model later in **Settings → Advanced** at `/manage`."
       },
       "GITHUB_TOKEN": {
-        "description": "GitHub Personal Access Token with Contents: Read and write permissions on your manuscript repository."
+        "description": "Fine-grained GitHub token with **Contents: Read and write** on your manuscript repository only. [Create one](https://github.com/settings/personal-access-tokens/new)."
       },
       "GITHUB_OWNER": {
-        "description": "GitHub username or organization owning the manuscript repository."
+        "description": "GitHub user or organization that owns the manuscript repository (create an empty repository first)."
       },
       "GITHUB_REPO": {
-        "description": "GitHub manuscript repository name."
+        "description": "Name of the GitHub repository where manuscripts are saved as Markdown."
       },
       "GITHUB_BRANCH": {
         "description": "Branch in the manuscript repository (default: main)."
@@ -52,19 +52,19 @@
         "description": "Directory path for manuscript Markdown files in the repository (default: podcasts/transcripts)."
       },
       "TRANSCRIPTION_PROVIDER": {
-        "description": "Transcription backend: 'self-hosted' (default) or 'dashscope' (Alibaba Cloud Paraformer)."
+        "description": "`self-hosted` (your own Transcription Service, see docs) or `dashscope` (Alibaba Cloud Paraformer — no server to run; also set DASHSCOPE_API_KEY)."
       },
       "TRANSCRIPTION_SERVICE_URL": {
-        "description": "Endpoint URL for self-hosted Transcription Service (required if TRANSCRIPTION_PROVIDER is self-hosted)."
+        "description": "URL of your self-hosted Transcription Service. Leave the placeholder if you use `dashscope`."
       },
       "CF_ACCESS_CLIENT_ID": {
-        "description": "Cloudflare Access Service Token Client ID for the transcription service hostname."
+        "description": "Cloudflare Access Service Token Client ID for the transcription service hostname. Optional; add after deploying if your Transcription Service sits behind Cloudflare Access."
       },
       "CF_ACCESS_CLIENT_SECRET": {
-        "description": "Cloudflare Access Service Token Client Secret for the transcription service hostname."
+        "description": "Cloudflare Access Service Token Client Secret for the transcription service hostname. Optional; add after deploying if your Transcription Service sits behind Cloudflare Access."
       },
       "DASHSCOPE_API_KEY": {
-        "description": "Alibaba Cloud DashScope API key (required if TRANSCRIPTION_PROVIDER is dashscope)."
+        "description": "Alibaba Cloud DashScope API key, used only when TRANSCRIPTION_PROVIDER is `dashscope`. Leave the placeholder otherwise."
       },
       "R2_ACCOUNT_ID": {
         "description": "Cloudflare account ID for presigning custom audio upload URLs (optional)."
@@ -74,6 +74,12 @@
       },
       "R2_SECRET_ACCESS_KEY": {
         "description": "R2 Secret Access Key for presigning custom audio upload URLs (optional)."
+      },
+      "APP_ENV": {
+        "description": "Leave as `production`."
+      },
+      "R2_BUCKET_NAME": {
+        "description": "Leave as is — the deploy script sets it to the R2 bucket chosen above."
       }
     }
   },
