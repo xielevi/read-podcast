@@ -35,6 +35,7 @@ publication.
   (see `docs/ARCHITECTURE.md`, Credentials in `openai-proxy`).
 - Recovery is Cloudflare-owned (cron); `GET /tasks` is a pure read.
 - Read / browse is public, mutations and execution are private. `/` + `/api/public/*`
+  (plus the read-only pages `/a/<task_id>`, `/sitemap.xml`, `/robots.txt`)
   is Public Browse Mode of the same workspace: GET-only, side-effect free (episodes
   are the D1 snapshot, never an RSS refresh), no reader state or task status. Actions
   are classified by side effect; anonymous clicks navigate to `/manage`. Everything

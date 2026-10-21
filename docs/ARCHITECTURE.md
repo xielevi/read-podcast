@@ -163,7 +163,7 @@ Cloudflare Access can enforce the boundary before a request reaches the applicat
 
 | Mode | Pages | API | Who |
 |---|---|---|---|
-| **Public Browse Mode** | `/` | `/api/public/*` | anyone |
+| **Public Browse Mode** | `/`, `/a/<task_id>`, `/sitemap.xml`, `/robots.txt` | `/api/public/*` | anyone |
 | **Authenticated Control Mode** | `/manage*` | `/api/control/*` | the owner, through Cloudflare Access |
 
 - Both modes render the same workspace (subscriptions, import, manuscripts, episode
@@ -203,9 +203,24 @@ Cloudflare Access can enforce the boundary before a request reaches the applicat
   audio, cover image, episode link) can carry credentials for private feeds, so they stay on
   the control plane; a subscription is exposed only as its name, its feed host and whether it
   has a cover.
+- Every published manuscript has a permanent, crawlable URL `/a/<task_id>`. Together with
+  `/sitemap.xml` (`/` and every published `/a/<task_id>`, `lastmod` = `articles.updated_at`) and
+  `/robots.txt` (allows `/` and `/a/`, disallows `/manage` and `/api/control/`), these are
+  public **pages**, not APIs: HTML / XML / text served by the Worker on both platforms
+  (`src/article_page.ts`; on Cloudflare they are listed in `run_worker_first`), under the same
+  guarantees as `/api/public/*` — `GET`/`HEAD` only, no writes, only published articles, allowlist
+  fields only, never Store paths, commits or task status. An article page is the SPA shell with a
+  server-injected head (title, description, canonical, Open Graph / Twitter card; `og:image` is the
+  public artwork proxy) and an escaped `<noscript>` copy of the text, read from the publish
+  snapshot through the same edge-cached path as `…/articles/:id/content`. Regeneration moves an
+  episode's article to a new `task_id`, so an id that is not a current article but whose task's
+  `episode_id` has one answers `301` to the current `/a/<task_id>`; every other id is `404`
+  (unpublished, running and unknown ids are indistinguishable). In the browser the reader keeps
+  the address at `/a/<task_id>` in Public Browse Mode; `/manage` keeps its address, and "share"
+  always yields the public permalink.
 - Every other API — settings, subscription writes, the refreshing episode read, uploads,
   tasks, read state, concept extraction — lives under `/api/control/*`. No other API prefix
-  exists, so there is no alias that bypasses Access.
+  exists (the public pages above add no API), so there is no alias that bypasses Access.
 - Public Browse Mode persists no reader state: no read state, no reading progress, no saved
   scroll position, no task queue. UI and reader typography preferences follow a dual-track model:
   Authenticated Control Mode (`/manage`) persists preferences to Cloudflare D1 (local zero
