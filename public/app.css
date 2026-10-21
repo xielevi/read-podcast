@@ -1196,6 +1196,52 @@
       line-height: 1.4;
       vertical-align: middle;
     }
+    /* 导读卡（渐进式阅读第一层）：与阅读器 Chrome 同一套玻璃质感，只吃 --reader-* 变量 */
+    .manuscript-body .reader-brief {
+      margin-bottom: 2.6em;
+      padding: 22px 26px 20px;
+      border: 1px solid var(--reader-line);
+      border-radius: var(--radius-md);
+      background: var(--reader-chrome);
+      box-shadow: var(--reader-shadow);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      font-size: .92em;
+      line-height: 1.7;
+    }
+    .reader-brief-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 14px; margin-bottom: 10px; font-family: var(--sans); }
+    .reader-brief-kicker { color: var(--reader-accent); font-size: 12px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+    .reader-brief-time { color: var(--reader-ink-soft); font-size: 12px; font-variant-numeric: tabular-nums; }
+    .manuscript-body .reader-brief-tldr { margin: 0 0 .9em; font-size: 1.12em; font-weight: 600; line-height: 1.6; }
+    .reader-brief-label { margin: 1.1em 0 .35em; color: var(--reader-ink-soft); font-family: var(--sans); font-size: 11px; font-weight: 700; letter-spacing: .08em; }
+    .manuscript-body .reader-brief-points { margin: 0; padding-left: 1.25em; }
+    .manuscript-body .reader-brief-points li { margin: .2em 0; }
+    .reader-brief-quote { margin: .5em 0 .7em; padding-left: 1em; border-left: 3px solid var(--reader-accent-soft); }
+    .manuscript-body .reader-brief-quote p { margin: 0; }
+    .reader-brief-quote figcaption { color: var(--reader-ink-soft); font-family: var(--sans); font-size: .82em; }
+    .manuscript-body .reader-brief-audience { margin: 0; color: var(--reader-ink-soft); }
+    .reader-brief-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 36px;
+      margin-top: 16px;
+      padding: 7px 16px;
+      border: 1px solid var(--reader-accent);
+      border-radius: 999px;
+      color: var(--reader-accent);
+      background: var(--reader-accent-soft);
+      font-family: var(--sans);
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .2s ease, color .2s ease;
+    }
+    .reader-brief-cta svg { width: 15px; height: 15px; }
+    .reader-brief-cta:hover { color: var(--reader-bg); background: var(--reader-accent); }
+    /* 第二层：小节标题下一行淡色小结，可在「排版」里隐藏 */
+    .manuscript-body .section-summary { margin: -.25em auto 1.2em; color: var(--reader-ink-soft); font-family: var(--sans); font-size: .82em; line-height: 1.6; }
+    .reader[data-section-summaries="off"] .section-summary { display: none; }
     .reader-state { display: grid; min-height: 45vh; place-items: center; color: var(--reader-ink-soft); text-align: center; }
     .reader-loading::after { display: inline-block; width: 1.3em; overflow: hidden; vertical-align: bottom; content: "…"; animation: ellipsis 1.2s steps(3, end) infinite; }
 
@@ -1491,6 +1537,8 @@
       .reader-appearance { display: none; }
       .reader-layout { grid-template-columns: 1fr !important; }
       .manuscript-body { padding: 25px 18px max(76px, calc(56px + env(safe-area-inset-bottom))); font-size: 17px; }
+      .manuscript-body .reader-brief { padding: 16px 16px 14px; margin-bottom: 2em; }
+      .reader-brief-cta { width: 100%; justify-content: center; min-height: 44px; }
       .close-btn { width: 44px; height: 44px; display: grid; place-items: center; }
       .close-btn svg { width: 18px; height: 18px; }
       .control-btn { padding: 8px 14px; font-size: 13px; min-width: 44px; min-height: 36px; }

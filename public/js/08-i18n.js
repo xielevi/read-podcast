@@ -210,6 +210,15 @@
         'reader.loading': '正在展开稿纸',
         'reader.empty_content': '稿件内容为空。',
         'reader.close_toc': '关闭目录',
+        'reader.brief_kicker': '三分钟导读',
+        'reader.brief_full_minutes': '全文约 {0} 分钟',
+        'reader.brief_key_points': '要点',
+        'reader.brief_quotes': '原话',
+        'reader.brief_audience': '适合谁读全文',
+        'reader.brief_read_full': '阅读全文',
+        'reader.section_summaries': '小节摘要',
+        'reader.section_summaries_on': '显示',
+        'reader.section_summaries_off': '隐藏',
 
         'concepts.title': '关键概念',
         'concepts.extracting': '正在抽取关键概念…',
@@ -552,6 +561,15 @@
         'reader.loading': 'Opening manuscript…',
         'reader.empty_content': 'Manuscript content is empty.',
         'reader.close_toc': 'Close Outline',
+        'reader.brief_kicker': '3-minute brief',
+        'reader.brief_full_minutes': 'Full text · about {0} min',
+        'reader.brief_key_points': 'Key points',
+        'reader.brief_quotes': 'In their words',
+        'reader.brief_audience': 'Who should read the full text',
+        'reader.brief_read_full': 'Read full text',
+        'reader.section_summaries': 'Section summaries',
+        'reader.section_summaries_on': 'Show',
+        'reader.section_summaries_off': 'Hide',
 
         'concepts.title': 'Key Concepts',
         'concepts.extracting': 'Extracting key concepts…',
@@ -761,6 +779,7 @@
       if (typeof renderPromptTemplateOptions === 'function') renderPromptTemplateOptions();
       if (typeof _lastSettingsData !== 'undefined' && _lastSettingsData && typeof renderSettings === 'function') renderSettings(_lastSettingsData);
       if (typeof updateReaderStats === 'function') updateReaderStats();
+      if (typeof refreshArticleBriefLabels === 'function') refreshArticleBriefLabels();
     }
 
     function setLocale(locale, persist) {
