@@ -23,6 +23,10 @@ Read Podcast keeps the conversation itself. It transcribes the episode you pick,
 
 ## Before and after
 
+<p align="center">
+  <img src="docs/assets/readme/before-after.webp" alt="Illustrative speech-recognition output beside the edited manuscript of the same passage" width="920">
+</p>
+
 What speech recognition gives you *(illustrative — typical unedited ASR output, written for this README)*:
 
 ```text
