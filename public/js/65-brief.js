@@ -13,14 +13,19 @@
     }
 
     /** 读取导读；任何失败（404、网络、旧稿件）都返回 null，绝不阻塞正文。 */
+    // 导读请求的等待上限：正文与它并行读取，导读迟迟不回来时按 null 处理，绝不拖住正文。
+    var BRIEF_LOAD_TIMEOUT_MS = 4000;
+
     function loadArticleBrief(taskId) {
-      return fetch(articleMetaUrl(taskId))
+      var request = fetch(articleMetaUrl(taskId))
         .then(function (response) { return response.ok ? response.json() : null; })
         .then(function (data) {
           var brief = data && data.brief;
           return brief && typeof brief === 'object' && typeof brief.tldr === 'string' ? brief : null;
         })
         .catch(function () { return null; });
+      var timeout = new Promise(function (resolve) { setTimeout(function () { resolve(null); }, BRIEF_LOAD_TIMEOUT_MS); });
+      return Promise.race([request, timeout]);
     }
 
     /** 与服务端 normalizeHeading 同一规则：去强调符号与收尾 #、合并空白、小写。 */

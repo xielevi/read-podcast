@@ -64,11 +64,14 @@ async function articlePage(rawId: string, url: URL, env: Env): Promise<Response>
 
   if (!row) {
     // 重新生成会把同一 episode 的 articles.task_id 换成新任务（见 src/finalize.ts）。
-    // 旧链接按 tasks.episode_id 找到当前稿件后永久重定向；找不到一律 404，不区分任务状态。
+    // 旧链接按 tasks.episode_id 找到当前稿件后永久重定向——只限曾经成功发布过的任务
+    // （它的 /a/ 链接可能已被分享）；排队 / 处理中 / 失败 / 取消的任务一律与未知 id 同样 404，
+    // 不泄露其存在或与单集的关联。
     const current = await env.db.prepare(
       `SELECT articles.task_id AS task_id FROM tasks
          JOIN articles ON articles.episode_id = tasks.episode_id
-        WHERE tasks.id = ? AND tasks.episode_id IS NOT NULL`,
+        WHERE tasks.id = ? AND tasks.episode_id IS NOT NULL
+          AND tasks.status = 'success' AND tasks.content_commit_sha IS NOT NULL`,
     ).bind(taskId).first<{ task_id: string }>();
     if (current?.task_id && current.task_id !== taskId) {
       return new Response(null, {

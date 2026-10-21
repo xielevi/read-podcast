@@ -863,6 +863,7 @@ describe("稿件导读（渐进式阅读）", () => {
         renderBasicMarkdown: (markdown: string) => string;
         decorateManuscriptWithBrief: (body: Element, brief: unknown) => void;
         setSectionSummaries: (mode: string) => void;
+        loadArticleBrief: (taskId: string) => Promise<unknown>;
       },
     };
   }
@@ -907,6 +908,13 @@ describe("稿件导读（渐进式阅读）", () => {
     win.applyLocale("en");
     expect(card.querySelector(".reader-brief-time")?.textContent).toBe("Full text · about 12 min");
     expect(card.querySelector(".reader-brief-kicker")?.textContent).toBe("3-minute brief");
+  });
+
+  it("导读请求迟迟不返回时按 null 处理，不拖住正文", async () => {
+    const { dom, win } = loadReader();
+    (dom.window as unknown as { fetch: () => Promise<never> }).fetch = () => new Promise<never>(() => {});
+    (dom.window as unknown as { setTimeout: (fn: () => void) => number }).setTimeout = (fn) => { fn(); return 0; };
+    await expect(win.loadArticleBrief("aaaaaaaa-1111-1111-1111-111111111111")).resolves.toBeNull();
   });
 
   it("旧稿件（brief = null）不渲染任何导读元素", () => {

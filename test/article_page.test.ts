@@ -23,6 +23,7 @@ const REGENERATED = "bbbbbbbb-2222-2222-2222-222222222222";
 const RUNNING = "cccccccc-3333-3333-3333-333333333333";
 const UPLOAD = "dddddddd-4444-4444-4444-444444444444";
 const UNKNOWN = "eeeeeeee-5555-5555-5555-555555555555";
+const REGENERATING = "ffffffff-6666-6666-6666-666666666666";
 const CONTENT_PATH = "podcasts/transcripts/20260519_忽左忽右_474.md";
 const COMMIT = "sha-current-commit";
 const COVER = "https://img.example.com/huzuo.jpg?sig=secret-cover-token";
@@ -60,6 +61,8 @@ function seed(): void {
   insertTask.run(REGENERATED, "1:474", "rss", TITLE, "success", 100, CONTENT_PATH, "sha-old-commit");
   insertTask.run(CURRENT, "1:474", "rss", TITLE, "success", 100, CONTENT_PATH, COMMIT);
   insertTask.run(RUNNING, null, "upload", "476 仍在处理", "refining", 60, null, null);
+  // 同一单集正在重新生成（尚未发布）：它的 id 不能 301，否则泄露未发布任务的存在。
+  insertTask.run(REGENERATING, "1:474", "rss", TITLE, "refining", 60, null, null);
   insertTask.run(UPLOAD, null, "upload", "导入音频", "success", 100, "podcasts/transcripts/upload.md", "sha-upload");
   db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha, created_at, updated_at)
     VALUES (?, '1:474', ?, '忽左忽右', ?, ?, '2026-05-19T00:00:00.000Z', '2026-05-20T08:00:00.000Z')`).run(CURRENT, TITLE, CONTENT_PATH, COMMIT);
@@ -144,7 +147,7 @@ describe("GET /a/<task_id> —— 已发布稿件的永久链接", () => {
 
   it("未发布 / 未知 / 非法 id 一律 404 页面（noindex），不区分任务状态", async () => {
     const bodies: string[] = [];
-    for (const path of [`/a/${RUNNING}`, `/a/${UNKNOWN}`, "/a/not-a-task!", "/a/", "/a"]) {
+    for (const path of [`/a/${RUNNING}`, `/a/${REGENERATING}`, `/a/${UNKNOWN}`, "/a/not-a-task!", "/a/", "/a"]) {
       const res = await call(path);
       expect(res.status, path).toBe(404);
       expect(res.headers.get("content-type"), path).toContain("text/html");

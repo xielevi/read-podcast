@@ -294,7 +294,10 @@ in R2 (retry, recovery). Each `N` is a submission number.
   still publishes; only cancellation / stale-attempt ownership errors propagate. The step
   returns the normalized brief (a few KB) as its durable checkpoint — never the manuscript —
   and swallows its own failure on its last attempt, so a replay never re-bills the model
-  and a publish retry never re-runs it. Code, not the model, owns the facts the reader relies on:
+  and a publish retry never re-runs it. If the engine itself exhausts the step (e.g. step
+  timeouts), the pipeline publishes with `brief = null` and a `skip-brief` step writes an R2
+  marker beside the refined checkpoint (`refined/<task>/<attempt>.brief-skipped`); a later
+  replay of `generate-brief` sees it and returns `null` without calling the model. Code, not the model, owns the facts the reader relies on:
   `reading_minutes` is computed from manuscript length, section headings must match real
   manuscript headings, quotes must occur verbatim, lengths are capped. Manuscripts beyond
   the input budget are condensed per section (every heading kept, each section's opening

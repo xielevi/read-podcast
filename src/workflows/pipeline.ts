@@ -59,6 +59,7 @@ import { runTranscriptionPhase, type PollTuning } from "./transcription";
 export const CLAIM_STEP = "claim-refinement";
 export const REFINE_STEP = "refine";
 export const BRIEF_STEP = "generate-brief";
+export const BRIEF_SKIP_STEP = "skip-brief";
 export const PUBLISH_STEP = "validate-and-publish";
 /** 导读 step：最多 3 次尝试（1 + 2 次重试），每次一个外部子请求；超时足够一次调用 + 读 R2。 */
 export const BRIEF_RETRY_LIMIT = 2;
@@ -310,6 +311,8 @@ export async function briefStep(
 ): Promise<ArticleBrief | null> {
   const task = assertAttemptCurrent(await loadTaskRow(env, params.taskId), params.attemptId);
   try {
+    // 本 attempt 已放弃导读（引擎层面耗尽后写下的标记）：重放时直接 null，不再计费。
+    if (await env.storage.get(briefSkipKey(refinedKey))) return null;
     const refinedObject = await env.storage.get(refinedKey);
     const refinedText = refinedObject ? await refinedObject.text() : "";
     if (!refinedText.trim()) return null; // publish step 会对缺失的 checkpoint 显式失败，这里不抢着归因
@@ -325,6 +328,11 @@ export async function briefStep(
     console.warn(`generate-brief(${params.taskId}) skipped:`, error instanceof Error ? error.message : error);
     return null;
   }
+}
+
+/** 「本 attempt 放弃导读」的 durable 标记，与 refined checkpoint 同前缀、同生命周期。 */
+export function briefSkipKey(refinedKey: string): string {
+  return refinedKey.replace(/\.md$/, "") + ".brief-skipped";
 }
 
 /** 这些错误代表任务已不归本次执行所有，导读 step 不能吞掉它们。 */
@@ -551,6 +559,15 @@ export async function runProcessingPipeline(
       if (BRIEF_PROPAGATED_CODES.has(errorCodeOf(error))) throw error;
       console.warn(`generate-brief(${params.taskId}) failed; publishing without brief:`, error instanceof Error ? error.message : error);
       brief = null;
+      // 引擎不记录失败的 step：写下放弃标记，之后任何重放都由 briefStep 直接返回 null，不再调用模型。
+      try {
+        await step.do(BRIEF_SKIP_STEP, { retries: { limit: 2, delay: "5 seconds" }, timeout: "1 minute" }, async () => {
+          await env.storage.put(briefSkipKey(refinedKey), "1");
+          return true;
+        });
+      } catch (markError) {
+        console.warn(`skip-brief(${params.taskId}) marker not written:`, markError instanceof Error ? markError.message : markError);
+      }
     }
 
     const published = await step.do(

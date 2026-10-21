@@ -22,7 +22,7 @@ import {
   type ArticleBrief,
 } from "../src/refinement/brief";
 import { formatMarkdown, stripLeadingFrontmatter } from "../src/refinement/formatter";
-import { BRIEF_STEP, PUBLISH_STEP, REFINE_STEP, runProcessingPipeline } from "../src/workflows/pipeline";
+import { BRIEF_SKIP_STEP, BRIEF_STEP, PUBLISH_STEP, REFINE_STEP, runProcessingPipeline } from "../src/workflows/pipeline";
 import { processingWorkflowId } from "../src/workflows/processing";
 import {
   ATTEMPT,
@@ -286,6 +286,19 @@ describe("generate-brief step", () => {
     const { cloud, engine, run } = await setup();
     engine.injected.set(BRIEF_STEP, [new Error("step timed out"), new Error("step timed out"), new Error("step timed out")]);
     await run();
+    expect(taskRow(cloud.d1).status).toBe("success");
+    expect(storedBrief(cloud)).toBeNull();
+  });
+
+  it("引擎层面耗尽后重放：放弃标记生效，不再调用模型", async () => {
+    const { cloud, engine, run } = await setup();
+    engine.injected.set(BRIEF_STEP, [new Error("step timed out"), new Error("step timed out"), new Error("step timed out")]);
+    engine.crashAfter.add(PUBLISH_STEP);
+    await expect(run()).rejects.toThrow();
+    expect(engine.executed).toContain(BRIEF_SKIP_STEP);
+    const callsBefore = cloud.externals.briefCalls;
+    await run(engine.replay());
+    expect(cloud.externals.briefCalls).toBe(callsBefore);
     expect(taskRow(cloud.d1).status).toBe("success");
     expect(storedBrief(cloud)).toBeNull();
   });
