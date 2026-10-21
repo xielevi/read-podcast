@@ -131,7 +131,7 @@ async function articlePage(rawId: string, url: URL, env: Env): Promise<Response>
   return htmlResponse(withDocumentLanguage(injectShell(await spaShell(url, env), meta, body), contentLang), 200);
 }
 
-/** 服务端首帧的 <html lang>；客户端内联脚本随后按访客界面语言改写，爬虫看到的是稿件语言。 */
+/** 服务端首帧的 <html lang>（不执行脚本的爬虫看到稿件语言）；客户端随后按界面语言改写外壳，阅读器正文另设 lang。 */
 function withDocumentLanguage(html: string, lang: "zh" | "en"): string {
   const value = lang === "en" ? "en" : "zh-CN";
   return /<html[^>]*\slang=/i.test(html)

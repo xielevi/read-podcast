@@ -87,7 +87,7 @@ describe("parseFeed (golden parity vs original feedparser)", () => {
 });
 
 describe("parseFeed XML parser compatibility", () => {
-  it("decodes named and numeric entities (as feedparser does) and keeps numeric-looking identifiers", () => {
+  it("preserves v4 entity handling and numeric-looking identifiers", () => {
     const feed = parseFeed(`<rss><channel>
       <title>News &amp; Culture &#x4E2D;</title>
       <itunes:image href="https://cdn.example.com/cover?a=1&amp;b=2"/>
@@ -101,7 +101,7 @@ describe("parseFeed XML parser compatibility", () => {
       </item>
     </channel></rss>`, "News");
 
-    // 数字字符引用同样解码：WordPress 等英文 feed 的标题常带 &#038; / &#8217;。
+    // 显示字段（频道标题、单集标题、简介）解码数字字符引用，与 feedparser 一致。
     expect(feed.channelTitle).toBe("News & Culture 中");
     expect(feed.channelImage).toBe("https://cdn.example.com/cover?a=1&b=2");
     expect(feed.episodes).toHaveLength(1);
@@ -114,6 +114,18 @@ describe("parseFeed XML parser compatibility", () => {
       duration_seconds: 90,
       summary: "Tom & Jerry",
     });
+  });
+
+  it("decodes WordPress-style numeric references in titles but keeps guid identities byte-stable", () => {
+    const feed = parseFeed(`<rss><channel><title>Show</title><item>
+      <title>#501 – DHH: Programming &#038; Linux &#8217;s &#1114112;</title>
+      <guid isPermaLink="false">https://example.com/?p=1&#038;v=2</guid>
+      <description>Q&#038;A</description>
+      <enclosure url="https://cdn.example.com/a.mp3"/>
+    </item></channel></rss>`, "Show");
+    expect(feed.episodes[0].title).toBe("#501 – DHH: Programming & Linux ’s &#1114112;");
+    expect(feed.episodes[0].summary).toBe("Q&A");
+    expect(feed.episodes[0].id).toBe("https://example.com/?p=1&#038;v=2");
   });
 
   it("keeps CDATA entities literal and normalizes repeated enclosures", () => {

@@ -16,6 +16,9 @@
       var latinMatches = sample.match(/[a-zA-Z]/g);
       var latinCount = latinMatches ? latinMatches.length : 0;
       var isCJK = cjkCount > 0 && cjkCount >= latinCount * 0.1;
+      // 正文语言跟随稿件内容（界面语言只管外壳）：读屏与断词按稿件语言处理。
+      var bodyEl = byId('manuscript-body');
+      if (bodyEl) bodyEl.setAttribute('lang', isCJK ? 'zh-CN' : 'en');
 
       if (isCJK) {
         var charCount = clean.replace(/\s+/g, '').length;

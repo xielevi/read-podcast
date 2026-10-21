@@ -826,11 +826,13 @@ This is an English podcast transcript discussing distributed systems, edge compu
       // Should calculate character count (~3600), not ~15 words!
       expect(statsEl?.textContent).toContain("characters");
       expect(statsEl?.textContent).not.toContain("words");
+      expect(dom.window.document.getElementById("manuscript-body")?.getAttribute("lang")).toBe("zh-CN");
 
       // Case B: English UI + English manuscript
       win.updateReaderStats(englishManuscript);
       expect(statsEl?.textContent).toContain("words");
       expect(statsEl?.textContent).not.toContain("characters");
+      expect(dom.window.document.getElementById("manuscript-body")?.getAttribute("lang")).toBe("en");
 
       // Case C: Chinese UI + Chinese manuscript
       win.applyLocale("zh");
