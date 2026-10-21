@@ -151,7 +151,7 @@ async function publishedContent(taskId: string, env: Env): Promise<PublishedCont
  * 换版本只能通过重新发布（commit_sha 更新）。
  * 缓存只在公共面这一层；控制面与发布流程仍直接读取当前版本。
  */
-function publishedMarkdown(article: PublishedContentRow, origin: string, env: Env): Promise<Response> {
+export function publishedMarkdown(article: PublishedContentRow, origin: string, env: Env): Promise<Response> {
   const key = `${origin}/api/public/articles/cache/${encodeURIComponent(article.commit_sha)}/${encodeURIComponent(article.content_path)}`;
   return cachedAtEdge(key, async () => {
     const markdown = await env.manuscripts.read(article.content_path, article.commit_sha);

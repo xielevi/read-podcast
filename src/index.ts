@@ -22,6 +22,7 @@ import {
 } from "./tasks";
 import { getArticle, listArticles } from "./articles";
 import { listEpisodePage } from "./episode_page";
+import { routePublicPage } from "./article_page";
 import {
   publicArticleConcepts,
   publicArticleContent,
@@ -85,6 +86,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (method !== "GET" && method !== "HEAD") return error(405, "method_not_allowed", "Public API is read-only");
     return routePublic(path, url, env);
   }
+
+  // 公共页面（/a/<task_id>、/sitemap.xml、/robots.txt）：只读的 HTML / XML 页面，不是 API（见 src/article_page.ts）。
+  const page = await routePublicPage(request, env);
+  if (page) return page;
 
   const denied = controlAuthFailure(request, env);
   if (denied) return denied;

@@ -349,6 +349,7 @@
       byId('reader-title').classList.remove('reader-title-expanded');
       document.querySelector('.reader-head').classList.remove('reader-head-title-expanded');
       byId('reader-download').href = articleUrl(cleanId, '/download');
+      onArticleOpened(cleanId, title);
       updateReaderReadState();
       
       var tocContainer = byId('reader-toc');

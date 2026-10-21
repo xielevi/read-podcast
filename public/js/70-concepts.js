@@ -186,6 +186,7 @@
       document.body.style.top = '';
       document.body.style.width = '';
       window.scrollTo(0, _savedScrollY);
+      onArticleClosed();
     }
 
     byId('tab-podcast').addEventListener('click', function () { switchMode('podcast'); });

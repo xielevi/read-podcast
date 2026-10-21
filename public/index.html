@@ -38,7 +38,8 @@
       // <base>/ 是公开浏览，<base>/manage 是控制模式（Cloudflare Access 保护）；与 js/10-core.js 同一规则。
       var currentPath = String(window.location.pathname || '/').replace(/\/+$/, '');
       var manage = currentPath.match(/^(.*?)\/manage(?:\/.*)?$/);
-      var appBasePath = manage ? manage[1] : (currentPath && currentPath !== '/' ? currentPath : '');
+      var article = manage ? null : currentPath.match(/^(.*?)\/a\/([0-9a-f-]+)$/i);
+      var appBasePath = manage ? manage[1] : article ? article[1] : (currentPath && currentPath !== '/' ? currentPath : '');
       window.READ_PODCAST_BASE_PATH = appBasePath;
       document.documentElement.dataset.surface = manage ? 'manage' : 'public';
       var stylesheet = document.createElement('link');
@@ -306,6 +307,7 @@
             </div>
           </details>
           <button class="ghost-btn reader-lang-btn" id="reader-lang-toggle-btn" type="button" aria-label="切换语言" title="切换语言" data-i18n-aria-label="lang.toggle_label" data-i18n-title="lang.toggle_label">中 / EN</button>
+          <button class="reader-download reader-share" id="reader-share-btn" type="button" title="分享或复制稿件链接" data-i18n-title="reader.share_label"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66l-1 1"/><path d="M14 10a4 4 0 0 0-5.66 0l-3 3a4 4 0 0 0 5.66 5.66l1-1"/></svg><span class="reader-download-label" id="reader-share-label" aria-live="polite" data-i18n="reader.share">分享</span></button>
           <a class="reader-download" id="reader-download" href="#" download title="下载 Markdown" data-i18n-title="reader.download_md"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v11M7.5 11.5 12 16l4.5-4.5"/><path d="M4 16.5v1.8A2.7 2.7 0 0 0 6.7 21h10.6a2.7 2.7 0 0 0 2.7-2.7v-1.8"/></svg><span class="reader-download-label" data-i18n="reader.download_md">下载 Markdown</span></a>
           <button class="control-btn reader-read-toggle owner-state-only" id="reader-read-toggle" type="button" aria-pressed="false" hidden data-i18n="reader.mark_read">标记为已读</button>
           <button class="close-btn" id="reader-close-btn" type="button" aria-label="关闭阅读" data-i18n-aria-label="reader.close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
