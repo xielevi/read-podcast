@@ -126,10 +126,12 @@ describe("GET /a/<task_id> —— 已发布稿件的永久链接", () => {
     expect(html).toContain('id="manuscript-reader"');
   });
 
-  it("没有订阅封面的稿件不输出 og:image；页面不暴露 Store 路径、commit、任务状态或源地址凭据", async () => {
+  it("没有订阅封面的稿件用站点预览图（大图卡片）；页面不暴露 Store 路径、commit、任务状态或源地址凭据", async () => {
     const upload = await (await call(`/a/${UPLOAD}`)).text();
     expect(upload).toContain("<title>导入音频</title>");
-    expect(metaContent(upload, "property", "og:image")).toBeNull();
+    expect(metaContent(upload, "property", "og:image")).toBe("https://app.test/og.png");
+    expect(metaContent(upload, "name", "twitter:image")).toBe("https://app.test/og.png");
+    expect(metaContent(upload, "name", "twitter:card")).toBe("summary_large_image");
 
     const current = await (await call(`/a/${CURRENT}`)).text();
     for (const html of [upload, current]) {

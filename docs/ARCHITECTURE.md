@@ -213,7 +213,7 @@ Cloudflare Access can enforce the boundary before a request reaches the applicat
   guarantees as `/api/public/*` — `GET`/`HEAD` only, no writes, only published articles, allowlist
   fields only, never Store paths, commits or task status. An article page is the SPA shell with a
   server-injected head (title, description, canonical, Open Graph / Twitter card; `og:image` is the
-  public artwork proxy) and an escaped `<noscript>` copy of the text, read from the publish
+  public artwork proxy, or the static site image `/og.png` when the podcast has no cover) and an escaped `<noscript>` copy of the text, read from the publish
   snapshot through the same edge-cached path as `…/articles/:id/content`. Regeneration moves an
   episode's article to a new `task_id`, so an id that is not a current article but whose task's
   `episode_id` has one answers `301` to the current `/a/<task_id>`; every other id is `404`
