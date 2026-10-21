@@ -151,6 +151,8 @@
         acceptNode: function (node) {
           if (!node.nodeValue || findTermStart(node.nodeValue, term) === -1) return NodeFilter.FILTER_SKIP;
           if (node.parentElement && node.parentElement.closest('a')) return NodeFilter.FILTER_SKIP;
+          // 概念链接落在全文的首次出现处，而不是导读卡 / 小节摘要里
+          if (node.parentElement && node.parentElement.closest('.reader-brief, .section-summary')) return NodeFilter.FILTER_SKIP;
           return NodeFilter.FILTER_ACCEPT;
         }
       });
@@ -186,6 +188,7 @@
       document.body.style.top = '';
       document.body.style.width = '';
       window.scrollTo(0, _savedScrollY);
+      onArticleClosed();
     }
 
     byId('tab-podcast').addEventListener('click', function () { switchMode('podcast'); });

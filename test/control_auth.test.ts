@@ -210,7 +210,7 @@ describe("生产边界与 Deploy Button 约定配置", () => {
 
   it("wrangler.jsonc 的 run_worker_first 包含 /manage*，避免静态资产绕过认证", () => {
     const config = read("wrangler.jsonc");
-    expect(config).toMatch(/"run_worker_first"\s*:\s*\[\s*"\/api\/\*"\s*,\s*"\/manage\*"\s*\]/);
+    expect(config).toMatch(/"run_worker_first"\s*:\s*\[\s*"\/api\/\*"\s*,\s*"\/manage\*"\s*[,\]]/);
   });
 
   it("package.json 包含符合 Cloudflare Deploy Button 规范的 cloudflare.bindings 描述", () => {

@@ -473,7 +473,7 @@ describe("0022_i18n_support", () => {
   const columns = (db: DatabaseSync, table: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>).map(column => column.name);
 
   it("是最新一条迁移；增加 locale、content_language 与多语言 concepts 缓存支持", () => {
-    expect(migrationFiles().at(-1)).toBe("0022_i18n_support.sql");
+    expect(migrationFiles()).toContain("0022_i18n_support.sql");
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON;");
     migrate(db, { upTo: "0021_drop_unused_columns.sql" });
@@ -517,5 +517,26 @@ describe("0022_i18n_support", () => {
     const db = new DatabaseSync(":memory:");
     migrate(db);
     expect([...columns(db, "tasks")].sort()).toEqual([...TASK_COLUMNS].sort());
+  });
+});
+
+describe("0023_article_brief", () => {
+  it("是最新一条迁移；articles 增加可空 brief 列，历史稿件保持 NULL", () => {
+    expect(migrationFiles().at(-1)).toBe("0023_article_brief.sql");
+    const db = new DatabaseSync(":memory:");
+    db.exec("PRAGMA foreign_keys = ON;");
+    migrate(db, { upTo: "0022_i18n_support.sql" });
+    db.exec(`
+      INSERT INTO tasks (id, episode_id, source_type, podcast_name, episode_title, status)
+      VALUES ('t1', NULL, 'upload', 'P', 'A', 'success');
+      INSERT INTO articles (task_id, title, podcast_name, content_path, commit_sha)
+      VALUES ('t1', 'A', 'P', 'path/a.md', 'sha1');
+    `);
+
+    migrate(db, { from: "0023_article_brief.sql", upTo: "0023_article_brief.sql" });
+
+    expect((db.prepare("SELECT brief FROM articles WHERE task_id = 't1'").get() as { brief: unknown }).brief).toBeNull();
+    db.prepare("UPDATE articles SET brief = ? WHERE task_id = 't1'").run('{"version":1}');
+    expect((db.prepare("SELECT brief FROM articles WHERE task_id = 't1'").get() as { brief: string }).brief).toBe('{"version":1}');
   });
 });

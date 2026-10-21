@@ -1,6 +1,7 @@
 import { HttpError, error, json, parseLimit, parseOffset } from "./http";
 import { sha256Hex } from "./crypto";
 import { proxyArtwork, searchItunes } from "./episodes";
+import { parseStoredBrief, type ArticleBrief } from "./refinement/brief";
 import type { Env } from "./types";
 
 // Public Browse Mode：匿名可访问的只读面（/api/public/*），支撑与控制模式同一套工作区的浏览。
@@ -138,6 +139,26 @@ export async function publicListArticles(url: URL, env: Env): Promise<Response> 
   return json(result.results);
 }
 
+/**
+ * GET /api/public/articles/:id —— 单篇已发布稿件的阅读元数据 + 导读（白名单 DTO）。
+ * brief 解析为对象；缺失 / 损坏 → null（旧稿件无导读）。纯读 D1，无副作用。
+ */
+export async function publicGetArticle(taskId: string, env: Env): Promise<Response> {
+  const row = await env.db.prepare(`SELECT ${PUBLIC_ARTICLE_COLUMNS}, brief FROM articles WHERE task_id = ?`)
+    .bind(taskId)
+    .first<PublicArticleRow & { brief: string | null }>();
+  if (!row) return error(404, "article_not_found", "Article not found");
+  const dto: PublicArticleRow & { brief: ArticleBrief | null } = {
+    task_id: row.task_id,
+    title: row.title,
+    podcast_name: row.podcast_name,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    brief: parseStoredBrief(row.brief),
+  };
+  return json(dto);
+}
+
 async function publishedContent(taskId: string, env: Env): Promise<PublishedContentRow | null> {
   return env.db.prepare("SELECT title, content_path, commit_sha FROM articles WHERE task_id = ?")
     .bind(taskId)
@@ -151,7 +172,7 @@ async function publishedContent(taskId: string, env: Env): Promise<PublishedCont
  * 换版本只能通过重新发布（commit_sha 更新）。
  * 缓存只在公共面这一层；控制面与发布流程仍直接读取当前版本。
  */
-function publishedMarkdown(article: PublishedContentRow, origin: string, env: Env): Promise<Response> {
+export function publishedMarkdown(article: PublishedContentRow, origin: string, env: Env): Promise<Response> {
   const key = `${origin}/api/public/articles/cache/${encodeURIComponent(article.commit_sha)}/${encodeURIComponent(article.content_path)}`;
   return cachedAtEdge(key, async () => {
     const markdown = await env.manuscripts.read(article.content_path, article.commit_sha);

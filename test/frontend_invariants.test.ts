@@ -181,6 +181,28 @@ describe("Frontend Invariants & Correctness Blockers", () => {
       expect(detect(pathname)).toEqual({ base, surface });
     });
 
+    it.each([
+      ["/a/11111111-1111-1111-1111-111111111111", ""],
+      ["/a/11111111-1111-1111-1111-111111111111/", ""],
+      ["/podcast/a/11111111-1111-1111-1111-111111111111", "/podcast"],
+    ])("永久链接 %s → base %j, surface public，并带出稿件 id", (pathname, base) => {
+      expect(detect(pathname)).toEqual({ base, surface: "public", article: "11111111-1111-1111-1111-111111111111" });
+    });
+
+    it("永久链接：公开浏览打开 / 关闭稿件时同步地址，控制模式地址不变，分享总是给出公开 /a/<id>", () => {
+      expect(HTML).toContain("currentPath.match(/^(.*?)\\/a\\/([0-9a-f-]+)$/i)");
+      expect(JS_CORE).toContain("path.match(/^(.*?)\\/a\\/([0-9a-f-]+)$/i)");
+      expect(JS_READER).toContain("onArticleOpened(cleanId, title);");
+      expect(BUNDLE).toContain("onArticleClosed();");
+      const permalink = readFileSync(resolve(ROOT, "public/js/97-permalink.js"), "utf-8");
+      expect(permalink).toMatch(/function onArticleOpened\(taskId, title\) \{\s*if \(IS_MANAGE\) return;/);
+      expect(permalink).toContain("return window.location.origin + articlePermalinkPath(taskId);");
+      expect(permalink).toContain("appUrl('/a/' + encodeURIComponent(");
+      expect(permalink).toContain("navigator.share");
+      expect(permalink).toContain("navigator.clipboard");
+      expect(HTML).toMatch(/<button class="reader-download reader-share" id="reader-share-btn" type="button"/);
+    });
+
     it("index.html 与 10-core.js 使用同一条 /manage 识别规则，并在首屏前标记 surface", () => {
       expect(HTML).toContain("currentPath.match(/^(.*?)\\/manage(?:\\/.*)?$/)");
       expect(JS_CORE).toContain("path.match(/^(.*?)\\/manage(?:\\/.*)?$/)");
@@ -816,5 +838,124 @@ This is an English podcast transcript discussing distributed systems, edge compu
       expect(statsEl?.textContent).toContain("字 · 约");
       expect(statsEl?.textContent).toContain("分钟");
     });
+  });
+});
+
+describe("稿件导读（渐进式阅读）", () => {
+  function loadReader(url = "https://example.com/") {
+    const dom = new JSDOM(HTML, {
+      url,
+      runScripts: "dangerously",
+      pretendToBeVisual: true,
+      virtualConsole: new VirtualConsole(),
+      beforeParse(window) {
+        Object.defineProperty(window.navigator, "language", { value: "zh-CN", configurable: true });
+        (window as unknown as { fetch: typeof fetch }).fetch = (() => Promise.resolve({ ok: true, json: () => Promise.resolve([]) })) as unknown as typeof fetch;
+      },
+    });
+    const script = dom.window.document.createElement("script");
+    script.textContent = BUNDLE;
+    dom.window.document.body.appendChild(script);
+    return {
+      dom,
+      win: dom.window as unknown as {
+        applyLocale: (locale: string) => void;
+        renderBasicMarkdown: (markdown: string) => string;
+        decorateManuscriptWithBrief: (body: Element, brief: unknown, taskId?: string) => void;
+        setSectionSummaries: (mode: string) => void;
+        loadArticleBrief: (taskId: string) => Promise<unknown>;
+      },
+    };
+  }
+
+  const MARKDOWN = "## 01 | 开场\n\n**许知远**：正文一。\n\n## 02 | **算法**与注意力\n\n正文二。";
+  const BRIEF = {
+    version: 1,
+    tldr: "一句话导读。",
+    key_points: ["要点一", "要点二", "要点三"],
+    quotes: [{ speaker: "许知远", text: "正文一。" }],
+    audience: "关心阅读的人。",
+    sections: [{ heading: "02 | **算法**与注意力", summary: "第二节小结。" }],
+    reading_minutes: 12,
+  };
+
+  it("导读卡置于正文顶部（不进入大纲），小节摘要紧跟匹配标题，可在排版中隐藏", () => {
+    const { dom, win } = loadReader();
+    const body = dom.window.document.getElementById("manuscript-body")!;
+    body.innerHTML = win.renderBasicMarkdown(MARKDOWN);
+    win.decorateManuscriptWithBrief(body, BRIEF);
+
+    const card = body.firstElementChild as HTMLElement;
+    expect(card.className).toBe("reader-brief");
+    expect(card.querySelector("h1, h2, h3")).toBeNull();
+    expect(card.textContent).toContain("一句话导读。");
+    expect(card.querySelectorAll(".reader-brief-points li")).toHaveLength(3);
+    expect(card.querySelector(".reader-brief-time")?.textContent).toBe("全文约 12 分钟");
+    expect(card.querySelector(".reader-brief-cta")).not.toBeNull();
+
+    const headings = body.querySelectorAll("h2");
+    expect(headings[0].nextElementSibling?.classList.contains("section-summary")).toBe(false);
+    expect(headings[1].nextElementSibling?.className).toBe("section-summary");
+    expect(headings[1].nextElementSibling?.textContent).toBe("第二节小结。");
+
+    const reader = dom.window.document.getElementById("manuscript-reader")!;
+    expect(reader.dataset.sectionSummaries).toBe("on");
+    win.setSectionSummaries("off");
+    expect(reader.dataset.sectionSummaries).toBe("off");
+    expect(dom.window.document.getElementById("section-summaries-off-btn")!.classList.contains("active")).toBe(true);
+    expect(CSS).toContain('.reader[data-section-summaries="off"] .section-summary { display: none; }');
+
+    win.applyLocale("en");
+    expect(card.querySelector(".reader-brief-time")?.textContent).toBe("Full text · about 12 min");
+    expect(card.querySelector(".reader-brief-kicker")?.textContent).toBe("3-minute brief");
+  });
+
+  it("旧稿件：主人模式给「生成导读」入口，点击后 POST 并渲染导读卡；公开浏览不渲染", async () => {
+    const id = "aaaaaaaa-1111-1111-1111-111111111111";
+    const pub = loadReader();
+    const pubBody = pub.dom.window.document.getElementById("manuscript-body")!;
+    pubBody.innerHTML = pub.win.renderBasicMarkdown(MARKDOWN);
+    pub.win.decorateManuscriptWithBrief(pubBody, null, id);
+    expect(pubBody.querySelector(".reader-brief-generate")).toBeNull();
+
+    const manage = loadReader("https://example.com/manage");
+    const calls: Array<{ url: string; method?: string }> = [];
+    (manage.dom.window as unknown as { fetch: unknown }).fetch = (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), method: init?.method });
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ brief: BRIEF, generated: true })) });
+    };
+    const body = manage.dom.window.document.getElementById("manuscript-body")!;
+    body.innerHTML = manage.win.renderBasicMarkdown(MARKDOWN);
+    manage.win.decorateManuscriptWithBrief(body, null, id);
+    const button = body.querySelector(".reader-brief-generate button") as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    button.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(calls).toEqual([{ url: `/api/control/articles/${id}/brief`, method: "POST" }]);
+    expect(body.querySelector(".reader-brief-generate")).toBeNull();
+    expect(body.firstElementChild?.className).toBe("reader-brief");
+  });
+
+  it("导读请求迟迟不返回时按 null 处理，不拖住正文", async () => {
+    const { dom, win } = loadReader();
+    (dom.window as unknown as { fetch: () => Promise<never> }).fetch = () => new Promise<never>(() => {});
+    (dom.window as unknown as { setTimeout: (fn: () => void) => number }).setTimeout = (fn) => { fn(); return 0; };
+    await expect(win.loadArticleBrief("aaaaaaaa-1111-1111-1111-111111111111")).resolves.toBeNull();
+  });
+
+  it("旧稿件（brief = null）不渲染任何导读元素", () => {
+    const { dom, win } = loadReader();
+    const body = dom.window.document.getElementById("manuscript-body")!;
+    body.innerHTML = win.renderBasicMarkdown(MARKDOWN);
+    win.decorateManuscriptWithBrief(body, null);
+    expect(body.querySelector(".reader-brief, .section-summary")).toBeNull();
+  });
+
+  it("导读文案中英双语齐全；导读卡沿用阅读器玻璃质感与 --reader-* 变量", () => {
+    for (const key of ["reader.brief_kicker", "reader.brief_full_minutes", "reader.brief_key_points", "reader.brief_quotes", "reader.brief_audience", "reader.brief_read_full", "reader.section_summaries", "reader.section_summaries_on", "reader.section_summaries_off"]) {
+      expect(JS_I18N.split(`'${key}':`).length - 1, key).toBe(2);
+    }
+    expect(CSS).toMatch(/\.manuscript-body \.reader-brief \{[^}]*background: var\(--reader-chrome\);[^}]*backdrop-filter: var\(--glass-blur\);/);
   });
 });

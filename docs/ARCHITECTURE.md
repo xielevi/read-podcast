@@ -163,7 +163,7 @@ Cloudflare Access can enforce the boundary before a request reaches the applicat
 
 | Mode | Pages | API | Who |
 |---|---|---|---|
-| **Public Browse Mode** | `/` | `/api/public/*` | anyone |
+| **Public Browse Mode** | `/`, `/a/<task_id>`, `/sitemap.xml`, `/feed.xml`, `/robots.txt` | `/api/public/*` | anyone |
 | **Authenticated Control Mode** | `/manage*` | `/api/control/*` | the owner, through Cloudflare Access |
 
 - Both modes render the same workspace (subscriptions, import, manuscripts, episode
@@ -203,9 +203,26 @@ Cloudflare Access can enforce the boundary before a request reaches the applicat
   audio, cover image, episode link) can carry credentials for private feeds, so they stay on
   the control plane; a subscription is exposed only as its name, its feed host and whether it
   has a cover.
+- Every published manuscript has a permanent, crawlable URL `/a/<task_id>`. Together with
+  `/sitemap.xml` (`/` and every published `/a/<task_id>`, `lastmod` = `articles.updated_at`),
+  `/feed.xml` (Atom feed of the 30 most recent articles; each entry is the article's brief from
+  D1 with a link to `/a/<task_id>` — the feed never reads the Store, so articles without a brief
+  carry only title and podcast) and `/robots.txt` (allows `/` and `/a/`, disallows `/manage` and `/api/control/`), these are
+  public **pages**, not APIs: HTML / XML / text served by the Worker on both platforms
+  (`src/article_page.ts`; on Cloudflare they are listed in `run_worker_first`), under the same
+  guarantees as `/api/public/*` — `GET`/`HEAD` only, no writes, only published articles, allowlist
+  fields only, never Store paths, commits or task status. An article page is the SPA shell with a
+  server-injected head (title, description, canonical, Open Graph / Twitter card; `og:image` is the
+  public artwork proxy) and an escaped `<noscript>` copy of the text, read from the publish
+  snapshot through the same edge-cached path as `…/articles/:id/content`. Regeneration moves an
+  episode's article to a new `task_id`, so an id that is not a current article but whose task's
+  `episode_id` has one answers `301` to the current `/a/<task_id>`; every other id is `404`
+  (unpublished, running and unknown ids are indistinguishable). In the browser the reader keeps
+  the address at `/a/<task_id>` in Public Browse Mode; `/manage` keeps its address, and "share"
+  always yields the public permalink.
 - Every other API — settings, subscription writes, the refreshing episode read, uploads,
   tasks, read state, concept extraction — lives under `/api/control/*`. No other API prefix
-  exists, so there is no alias that bypasses Access.
+  exists (the public pages above add no API), so there is no alias that bypasses Access.
 - Public Browse Mode persists no reader state: no read state, no reading progress, no saved
   scroll position, no task queue. UI and reader typography preferences follow a dual-track model:
   Authenticated Control Mode (`/manage`) persists preferences to Cloudflare D1 (local zero
@@ -238,7 +255,8 @@ is not stored in D1. Steps run in this order:
 resolve-raw
 → resolve-source-N → submit-transcription-N → poll-transcription-N
 → persist-raw-N → release-transcription-N
-→ claim-refinement → refine + completeness guard → validate-and-publish → success
+→ claim-refinement → refine + completeness guard → generate-brief (best-effort)
+→ validate-and-publish → success
 ```
 
 `resolve-raw` skips the transcription steps when a plausible raw transcript already exists
@@ -267,6 +285,33 @@ in R2 (retry, recovery). Each `N` is a submission number.
   Key concepts proposed for published manuscripts are verified against Wikipedia in the
   reader's chosen language (`zh` -> Chinese Wikipedia, `en` -> English Wikipedia) and cached
   independently in D1 (`article_concepts` keyed by `(content_path, commit_sha, lang)`).
+- **Article brief (progressive disclosure).** After the refined checkpoint exists,
+  `generate-brief` makes one extra call to the same Refinement Provider (same config
+  snapshot, `src/refinement/brief.ts`) over the refined Markdown and produces a small
+  versioned JSON brief: TL;DR, 3–6 key points, 0–3 verbatim quotes, who should read the full
+  text, one summary per manuscript section, and a reading time. The brief is **best-effort**:
+  provider errors, malformed JSON or failed validation yield `brief = null` and the task
+  still publishes; only cancellation / stale-attempt ownership errors propagate. The step
+  returns the normalized brief (a few KB) as its durable checkpoint — never the manuscript —
+  and swallows its own failure on its last attempt, so a replay never re-bills the model
+  and a publish retry never re-runs it. If the engine itself exhausts the step (e.g. step
+  timeouts), the pipeline publishes with `brief = null` and a `skip-brief` step writes an R2
+  marker beside the refined checkpoint (`refined/<task>/<attempt>.brief-skipped`); a later
+  replay of `generate-brief` sees it and returns `null` without calling the model. Code, not the model, owns the facts the reader relies on:
+  `reading_minutes` is computed from manuscript length, section headings must match real
+  manuscript headings, quotes must occur verbatim, lengths are capped. Manuscripts beyond
+  the input budget are condensed per section (every heading kept, each section's opening
+  kept) rather than truncated, so late sections still get summaries. The brief is stored
+  in D1 (`articles.brief`, JSON, written in the same batch as the article upsert) and
+  embedded in the published Markdown frontmatter as a single-line JSON `brief:` value so the
+  Canonical Manuscript Store stays self-describing; the Markdown body is unchanged. Readers
+  receive it through the article DTOs (`GET /api/public/articles/:id`,
+  `GET /api/control/articles/:id`); older articles have `brief = null` until the owner
+  backfills one from the reader in `/manage` (`POST /api/control/articles/:id/brief`): it reads
+  the publish snapshot, reuses a frontmatter `brief:` when present, otherwise calls the
+  Refinement Provider once with the current settings, and writes only `articles.brief`
+  conditioned on the same `commit_sha` — no re-publish, `updated_at` unchanged, and an article
+  that already has a brief is returned without a model call.
 - **Completeness guard.** Two checks keep a degraded run from being published as a manuscript.
   Before refining, a raw transcript with fewer than 200 non-whitespace characters fails the
   task (transcription degraded; the model must not invent an article from show notes). After
@@ -387,6 +432,7 @@ Facts that differ from the self-hosted path and are accepted by design:
 | Data | Where | Lifetime |
 |---|---|---|
 | Business state and indexes | D1 | durable |
+| Article brief (TL;DR, key points, section summaries) | D1 `articles.brief` (JSON; also mirrored in the manuscript frontmatter) | durable, per published version |
 | Uploaded audio | R2 `uploads/*` | 1 day |
 | Raw transcript | R2 `raw/*` | 7 days |
 | Refined text checkpoint | R2 `refined/*` | 7 days |

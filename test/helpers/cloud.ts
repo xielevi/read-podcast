@@ -6,6 +6,7 @@
  * Cloudflare 侧代码对它一无所知，只认 /v1/transcriptions 契约。
  */
 import { DEFAULT_REFINER_SETTINGS } from "../../src/refinement/defaults";
+import { BRIEF_SYSTEM_PROMPT, BRIEF_SYSTEM_PROMPT_EN } from "../../src/refinement/brief";
 import type { StepConfigLike, StepContextLike, WorkflowStepLike } from "../../src/workflows/common";
 import type { PollTuning } from "../../src/workflows/transcription";
 import type { Env } from "../../src/types";
@@ -28,6 +29,17 @@ export const UPLOAD_KEY = `uploads/${UPLOAD_ID}/a.mp3`;
 
 export const RAW_TEXT = "这是一段原始转录内容，用于验证精修质量门禁。".repeat(80);
 export const REFINED_TEXT = `### 📌 节目大纲与时间线\n- **00:00** 开场\n\n## 01 | 主题\n\n**程衍樑**：${RAW_TEXT}`;
+
+/** 假 LLM 对导读请求的默认回复：对 REFINED_TEXT 合法（标题真实存在、引用逐字出现）。 */
+export const BRIEF_RESPONSE = {
+  version: 1,
+  tldr: "一期关于精修质量门禁的节目。",
+  key_points: ["要点一", "要点二", "要点三"],
+  quotes: [{ speaker: "程衍樑", text: "这是一段原始转录内容" }],
+  audience: "关心转录质量的读者。",
+  sections: [{ heading: "01 | 主题", summary: "讨论质量门禁。" }],
+  reading_minutes: 999,
+};
 
 /** 测试里的 poll 调参：不真实等待。 */
 export const FAST_POLL: PollTuning & { maxTranscriptionMs?: number } = { windowMs: 1_000, maxPolls: 3, waitSeconds: 0, minIntervalMs: 0 };
@@ -394,8 +406,13 @@ export class FakeTranscriptionService {
 // ── 假 GitHub + 假 LLM ──
 
 export class FakeExternals {
+  /** 精修调用（不含导读）。 */
   llmCalls = 0;
   llmFailures: number[] = [];
+  /** 导读调用（generate-brief step）：与精修分开计数，按 system prompt 识别。 */
+  briefCalls = 0;
+  briefFailures: number[] = [];
+  briefContent: string = JSON.stringify(BRIEF_RESPONSE);
   githubFailures: number[] = [];
   github = { commits: 0, contents: 0 };
   /** 已提交到「仓库」的文件：path → 内容（使 commitPodcast 的幂等检查真实生效）。即分支 HEAD。 */
@@ -441,6 +458,13 @@ export class FakeExternals {
       return Response.json({ sha: "commit-sha" });
     }
     if (url.includes("/chat/completions")) {
+      const system = JSON.parse(String(init?.body ?? "{}"))?.messages?.[0]?.content;
+      if (system === BRIEF_SYSTEM_PROMPT || system === BRIEF_SYSTEM_PROMPT_EN) {
+        this.briefCalls += 1;
+        const failure = this.briefFailures.shift();
+        if (failure) return new Response("llm failure", { status: failure });
+        return Response.json({ choices: [{ message: { content: this.briefContent }, finish_reason: "stop" }] });
+      }
       this.llmCalls += 1;
       const failure = this.llmFailures.shift();
       if (failure) return new Response("llm failure", { status: failure });

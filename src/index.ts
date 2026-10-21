@@ -20,13 +20,15 @@ import {
   taskContent,
   taskDownload,
 } from "./tasks";
-import { getArticle, listArticles } from "./articles";
+import { backfillArticleBrief, getArticle, listArticles } from "./articles";
 import { listEpisodePage } from "./episode_page";
+import { routePublicPage } from "./article_page";
 import {
   publicArticleConcepts,
   publicArticleContent,
   publicArticleDownload,
   publicArtwork,
+  publicGetArticle,
   publicListArticles,
   publicListSubscriptions,
   publicSearchPodcast,
@@ -65,6 +67,8 @@ async function routePublic(path: string, url: URL, env: Env): Promise<Response> 
   if (path === `${PUBLIC_API}/artwork`) return publicArtwork(url, env);
   if (path === `${PUBLIC_API}/articles`) return publicListArticles(url, env);
   if (path === `${PUBLIC_API}/preferences`) return getPublicPreferences(env);
+  const articleMeta = path.match(/^\/api\/public\/articles\/([0-9a-f-]+)$/i);
+  if (articleMeta) return publicGetArticle(articleMeta[1], env);
   const match = path.match(/^\/api\/public\/articles\/([0-9a-f-]+)\/(content|download|concepts)$/i);
   if (match?.[2] === "content") return publicArticleContent(match[1], url, env);
   if (match?.[2] === "download") return publicArticleDownload(match[1], url, env);
@@ -85,6 +89,10 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     if (method !== "GET" && method !== "HEAD") return error(405, "method_not_allowed", "Public API is read-only");
     return routePublic(path, url, env);
   }
+
+  // 公共页面（/a/<task_id>、/sitemap.xml、/robots.txt）：只读的 HTML / XML 页面，不是 API（见 src/article_page.ts）。
+  const page = await routePublicPage(request, env);
+  if (page) return page;
 
   const denied = controlAuthFailure(request, env);
   if (denied) return denied;
@@ -130,6 +138,8 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (path === `${API}/articles` && method === "GET") return listArticles(url, env);
   const articleMatch = path.match(/^\/api\/control\/articles\/([0-9a-f-]+)$/i);
   if (articleMatch && method === "GET") return getArticle(articleMatch[1], env);
+  const articleBriefMatch = path.match(/^\/api\/control\/articles\/([0-9a-f-]+)\/brief$/i);
+  if (articleBriefMatch && method === "POST") return backfillArticleBrief(articleBriefMatch[1], env);
 
   // ── 任务 ──（更具体的路径必须先于 /tasks/:id 匹配）
   if (path === `${API}/tasks/custom` && method === "POST") return createCustomTask(request, env, ctx);
