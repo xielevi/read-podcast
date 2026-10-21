@@ -12,7 +12,7 @@
 **[在线体验 → read-podcast.xielevi.cc](https://read-podcast.xielevi.cc)** · [示例稿件](#示例稿件) · [快速开始](#快速开始) · [横向对比](#横向对比)
 
 <p align="center">
-  <img src="docs/assets/readme/reader.webp" alt="带目录的稿件阅读器" width="920">
+  <img src="docs/assets/readme/flow.gif" alt="从节目列表打开一集：先看三分钟导读，再看小节摘要和全文" width="920">
 </p>
 
 ## 为什么需要它
@@ -49,6 +49,18 @@ Read Podcast 发布的是这样的 *（[在线体验](https://read-podcast.xiele
 *上面的成稿片段保留原文，未作改写。*
 
 这期 63 分钟的节目，最终成稿约 1.7 万字：开头是带时间戳的大纲，正文分六个小节，两位说话人都标出了真名。篇幅有硬性检查：默认情况下，成稿不足转写稿 70% 长度就过不了质量门禁，不会发布。在线体验里都是中文节目；英文节目会使用英文编辑指令整理。
+
+## 先读导读，想看再读全文
+
+每篇稿件开头是一份三分钟导读：核心结论、要点、原话金句，以及适合谁读全文。每个小节开头有一句摘要，可以先扫一遍结构，再挑重要的部分细读。手机上也是同样的读法。
+
+<p align="center">
+  <img src="docs/assets/readme/reader-brief.webp" alt="阅读器：正文上方的三分钟导读" width="920">
+</p>
+
+<p align="center">
+  <img src="docs/assets/readme/mobile.webp" alt="手机阅读：导读卡，以及带一句话摘要的小节标题" width="720">
+</p>
 
 ## 示例稿件
 
