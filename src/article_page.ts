@@ -1,3 +1,4 @@
+import { detectLanguageFromText } from "./language";
 import { publishedMarkdown } from "./public";
 import { parseStoredBrief, type ArticleBrief } from "./refinement/brief";
 import type { Env } from "./types";
@@ -98,12 +99,16 @@ async function articlePage(rawId: string, url: URL, env: Env): Promise<Response>
   // 节目封面（方图，summary 卡片）优先；没有封面时用站点社交预览图（public/og.png，横图）。
   const image = hasArtwork ? `${url.origin}/api/public/artwork?podcast=${encodeURIComponent(row.podcast_name)}` : `${url.origin}${SITE_IMAGE}`;
 
+  // 稿件页的文档语言跟随稿件内容（不是访客界面语言）：爬虫与分享预览据此识别语种。
+  const contentLang = detectLanguageFromText(`${title}\n${markdown}`);
+
   const meta = [
     `<title>${escapeHtml(row.podcast_name ? `${title} · ${row.podcast_name}` : title)}</title>`,
     `<meta name="description" content="${escapeHtml(description)}">`,
     `<link rel="canonical" href="${escapeHtml(canonical)}">`,
     `<meta name="read-podcast:article" content="${escapeHtml(row.task_id)}">`,
     `<meta property="og:type" content="article">`,
+    `<meta property="og:locale" content="${contentLang === "en" ? "en_US" : "zh_CN"}">`,
     `<meta property="og:site_name" content="${SITE_NAME}">`,
     `<meta property="og:title" content="${escapeHtml(title)}">`,
     `<meta property="og:description" content="${escapeHtml(description)}">`,
@@ -123,7 +128,15 @@ async function articlePage(rawId: string, url: URL, env: Env): Promise<Response>
     + renderPlainHtml(markdown)
     + `</article></noscript>`;
 
-  return htmlResponse(injectShell(await spaShell(url, env), meta, body), 200);
+  return htmlResponse(withDocumentLanguage(injectShell(await spaShell(url, env), meta, body), contentLang), 200);
+}
+
+/** 服务端首帧的 <html lang>；客户端内联脚本随后按访客界面语言改写，爬虫看到的是稿件语言。 */
+function withDocumentLanguage(html: string, lang: "zh" | "en"): string {
+  const value = lang === "en" ? "en" : "zh-CN";
+  return /<html[^>]*\slang=/i.test(html)
+    ? html.replace(/(<html[^>]*\slang=)("[^"]*"|'[^']*'|[^\s>]+)/i, (_match, head: string) => `${head}"${value}"`)
+    : html.replace(/<html(?=[\s>])/i, `<html lang="${value}"`);
 }
 
 async function notFoundPage(url: URL, env: Env): Promise<Response> {

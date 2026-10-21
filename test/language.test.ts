@@ -48,4 +48,16 @@ describe("language normalization & detection", () => {
     expect(resolveContentLanguage(null, null, "Hello everyone, welcome back to the Ezra Klein show.")).toBe("en");
     expect(resolveContentLanguage(null, null, "大家好，欢迎收听今天的节目。")).toBe("zh");
   });
+
+  it("keeps long English transcripts English even when they mention a few Chinese names", () => {
+    const names = "孔子 老子 庄子 孟子 荀子 韩非子 墨子 鲁迅 王阳明 朱熹 ";
+    const english = `${"We talked about markets, history and philosophy for a long while. ".repeat(80)}${names}`;
+    expect(names.replace(/\s/g, "").length).toBeGreaterThanOrEqual(20);
+    expect(detectLanguageFromText(english)).toBe("en");
+  });
+
+  it("keeps Chinese transcripts with heavy English terminology Chinese", () => {
+    const mixed = "今天我们聊 AI agent、LLM inference 和 GPU cluster 的成本结构，以及 open source 社区的变化。".repeat(20);
+    expect(detectLanguageFromText(mixed)).toBe("zh");
+  });
 });

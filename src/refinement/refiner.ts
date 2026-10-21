@@ -109,13 +109,23 @@ export function buildChatRequest(options: ChatRequestOptions): { headers: Record
   return { headers, body };
 }
 
-/** 组合精修 Prompt：任务级 custom_prompt 优先，否则使用默认杂志级 Prompt。 */
+/**
+ * 自定义 Prompt 的输出语言锁：模板或补充要求可能用另一种语言写成（例如中文界面上传英文音频），
+ * 末尾按转录语言补一句，避免模型跟随指令语言改写成稿语言。默认 Prompt 本身已按语言选择，不追加。
+ */
+export const OUTPUT_LANGUAGE_LOCK = {
+  zh: "输出语言：稿件必须使用中文（与转录稿语言一致），即使上面的要求是用其他语言写的。",
+  en: "Output language: write the manuscript in English, the language of the transcript, even if the instructions above are written in another language.",
+} as const;
+
+/** 组合精修 Prompt：任务级 custom_prompt 优先（附输出语言锁），否则使用默认杂志级 Prompt。 */
 export function buildRefinePrompt(summary: string, customPrompt?: string | null, template = DEFAULT_REFINE_PROMPT): string {
   const isEn = template === DEFAULT_REFINE_PROMPT_EN;
   const effectiveSummary = summary || (isEn ? "No official show notes" : "无官方简介");
   const custom = (customPrompt ?? "").trim();
   if (custom) {
-    return custom.includes("{summary}") ? custom.replaceAll("{summary}", effectiveSummary) : custom;
+    const filled = custom.includes("{summary}") ? custom.replaceAll("{summary}", effectiveSummary) : custom;
+    return `${filled}\n\n${OUTPUT_LANGUAGE_LOCK[isEn ? "en" : "zh"]}`;
   }
   const base = (template ?? "").trim() || (isEn ? FALLBACK_REFINE_PROMPT_EN : FALLBACK_REFINE_PROMPT);
   return base.replaceAll("{summary}", effectiveSummary);

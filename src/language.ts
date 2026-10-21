@@ -60,7 +60,9 @@ export function detectLanguageFromText(text: string): ContentLanguage {
     }
   }
 
-  if (cjkCount >= 20 || (cjkCount > 0 && cjkCount >= latinCount * 0.1)) {
+  // 按比例判定：一个汉字约等于一个英文词（约 5 个字母），汉字达到拉丁字母的 10% 即为中文为主。
+  // 不设绝对阈值——英文长稿里出现二十来个汉字（人名、地名）不应改用中文 Prompt。
+  if (cjkCount > 0 && cjkCount >= latinCount * 0.1) {
     return "zh";
   }
 

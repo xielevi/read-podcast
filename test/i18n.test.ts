@@ -5,7 +5,7 @@ import {
   REFINER_SYSTEM_PROMPT,
   REFINER_SYSTEM_PROMPT_EN,
 } from "../src/refinement/defaults";
-import { buildRefineMessages, buildRefinePrompt } from "../src/refinement/refiner";
+import { buildRefineMessages, buildRefinePrompt, OUTPUT_LANGUAGE_LOCK } from "../src/refinement/refiner";
 import { QUALITY_FEATURE_PATTERNS, verifyRefinementQuality } from "../src/refinement/quality";
 import { CONCEPTS_SYSTEM_PROMPT, CONCEPTS_SYSTEM_PROMPT_EN } from "../src/refinement/concepts";
 import {
@@ -66,14 +66,14 @@ describe("i18n & Bilingual Editorial Pipeline", () => {
         customPrompt,
         DEFAULT_REFINE_PROMPT
       );
-      expect(promptZh).toBe("Please summarize this conversation into 5 key bullet points: 简介内容");
+      expect(promptZh).toBe(`Please summarize this conversation into 5 key bullet points: 简介内容\n\n${OUTPUT_LANGUAGE_LOCK.zh}`);
 
       const promptEn = buildRefinePrompt(
         "Show notes",
         customPrompt,
         DEFAULT_REFINE_PROMPT_EN
       );
-      expect(promptEn).toBe("Please summarize this conversation into 5 key bullet points: Show notes");
+      expect(promptEn).toBe(`Please summarize this conversation into 5 key bullet points: Show notes\n\n${OUTPUT_LANGUAGE_LOCK.en}`);
     });
   });
 

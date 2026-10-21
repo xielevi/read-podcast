@@ -630,7 +630,7 @@ title: 袁长庚×胡安焉
       expect(win.t("stage.finalizing")).toBe("Saving");
       expect(win.t("tasks.title")).toBe("Tasks");
       expect(win.t("tasks.processing_count", 2)).toBe("Processing 2");
-      expect(win.t("tasks.attention_count", 3)).toBe("3 task(s) require attention");
+      expect(win.t("tasks.attention_count", 3)).toBe("3 task(s) need attention");
 
       // Simulate a running task
       win.setTaskStatus("downloading", 20, "task-1", "Test Episode");
@@ -970,5 +970,104 @@ describe("稿件导读（渐进式阅读）", () => {
       expect(JS_I18N.split(`'${key}':`).length - 1, key).toBe(2);
     }
     expect(CSS).toMatch(/\.manuscript-body \.reader-brief \{[^}]*background: var\(--reader-chrome\);[^}]*backdrop-filter: var\(--glass-blur\);/);
+  });
+});
+
+describe("Locale: browser default, manual switch and persistence", () => {
+  function boot(url: string, options: { languages?: string[]; language?: string; saved?: string; cloudLocale?: string | null } = {}) {
+    const puts: string[] = [];
+    const dom = new JSDOM(HTML, {
+      url,
+      runScripts: "dangerously",
+      pretendToBeVisual: true,
+      virtualConsole: new VirtualConsole(),
+      beforeParse(window) {
+        Object.defineProperty(window.navigator, "languages", { value: options.languages ?? [], configurable: true });
+        Object.defineProperty(window.navigator, "language", { value: options.language ?? "", configurable: true });
+        if (options.saved) window.localStorage.setItem("app_locale", options.saved);
+        (window as unknown as { fetch: typeof fetch }).fetch = ((input: string, init?: { method?: string; body?: string }) => {
+          if (init?.method === "PUT") puts.push(String(init.body));
+          const body = String(input).endsWith("/preferences") ? { locale: options.cloudLocale ?? null } : [];
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+        }) as unknown as typeof fetch;
+      },
+    });
+    const inlineLocale = dom.window.document.documentElement.dataset.locale;
+    const script = dom.window.document.createElement("script");
+    script.textContent = BUNDLE;
+    dom.window.document.body.appendChild(script);
+    const win = dom.window as unknown as {
+      getLocale: () => string;
+      setLocale: (locale: string, persist?: boolean) => void;
+      detectBrowserLocale: (nav: unknown) => string;
+    };
+    return { dom, win, inlineLocale, puts };
+  }
+
+  it("picks the first Chinese or English tag from navigator.languages, defaulting to English", () => {
+    const { win } = boot("https://example.com/");
+    expect(win.detectBrowserLocale({ languages: ["fr-FR", "zh-TW", "en-US"] })).toBe("zh");
+    expect(win.detectBrowserLocale({ languages: ["de-DE", "en-GB", "zh-CN"] })).toBe("en");
+    expect(win.detectBrowserLocale({ languages: ["ja-JP"], language: "ja-JP" })).toBe("en");
+    expect(win.detectBrowserLocale({ language: "zh_CN" })).toBe("zh");
+    expect(win.detectBrowserLocale(null)).toBe("en");
+  });
+
+  it("first paint (inline script) and the bundle agree on the browser default", () => {
+    for (const [languages, expected] of [[["fr-FR", "zh-HK"], "zh"], [["en-US"], "en"], [["ko-KR"], "en"]] as const) {
+      const { win, inlineLocale, dom } = boot("https://example.com/", { languages: [...languages] });
+      expect(inlineLocale).toBe(expected);
+      expect(win.getLocale()).toBe(expected);
+      expect(dom.window.document.documentElement.lang).toBe(expected === "zh" ? "zh-CN" : "en");
+    }
+  });
+
+  it("a saved manual choice beats the browser language on first paint and in the bundle", () => {
+    const { win, inlineLocale } = boot("https://example.com/", { languages: ["zh-CN"], saved: "en" });
+    expect(inlineLocale).toBe("en");
+    expect(win.getLocale()).toBe("en");
+  });
+
+  it("on the public site the switch persists to localStorage", () => {
+    const { win, dom, puts } = boot("https://example.com/", { languages: ["zh-CN"] });
+    win.setLocale("en", true);
+    expect(dom.window.localStorage.getItem("app_locale")).toBe("en");
+    expect(puts).toEqual([]);
+  });
+
+  it("in /manage the switch syncs to D1 and is mirrored locally for the next first paint", async () => {
+    const { win, dom, puts } = boot("https://example.com/manage", { languages: ["zh-CN"] });
+    win.setLocale("en", true);
+    expect(dom.window.localStorage.getItem("app_locale")).toBe("en");
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(puts.some(body => JSON.parse(body).locale === "en")).toBe(true);
+  });
+
+  it("in /manage a saved owner locale from D1 wins and is mirrored locally", async () => {
+    const { win, dom } = boot("https://example.com/manage", { languages: ["zh-CN"], cloudLocale: "en" });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(win.getLocale()).toBe("en");
+    expect(dom.window.localStorage.getItem("app_locale")).toBe("en");
+  });
+
+  it("prompt templates follow the UI language and swap untouched content on switch", () => {
+    const { dom, win } = boot("http://localhost:8787/manage", { languages: ["en-US"] });
+    const w = win as unknown as { _promptTemplates: unknown[]; renderPromptTemplateOptions: () => void; applyLocale: (l: string) => void; applyPromptTemplate: (id: string) => void };
+    w._promptTemplates = [{ id: "clean_verbatim", name: "清洁逐字稿", description: "", content: "中文模板", content_en: "English template" }];
+    w.renderPromptTemplateOptions();
+    const select = dom.window.document.getElementById("prompt-template-select") as unknown as HTMLSelectElement;
+    const box = dom.window.document.getElementById("custom-prompt") as unknown as HTMLTextAreaElement;
+    expect(select.options[1].value).toBe("clean_verbatim");
+    select.value = "clean_verbatim";
+    w.applyPromptTemplate("clean_verbatim");
+    expect(box.value).toBe("English template");
+
+    w.applyLocale("zh");
+    expect(select.value).toBe("clean_verbatim");
+    expect(box.value).toBe("中文模板");
+
+    box.value = "中文模板 + 我的补充";
+    w.applyLocale("en");
+    expect(box.value).toBe("中文模板 + 我的补充");
   });
 });

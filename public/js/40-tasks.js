@@ -188,7 +188,8 @@
       var attentionCount = ids.filter(function (id) { return _taskCards[id].status === 'failed' || _taskCards[id].status === 'cancelled'; }).length;
 
       setHidden(byId('task-card'), !ids.length);
-      byId('task-queue-count').textContent = runningCount ? '（' + runningCount + '）' : (attentionCount ? '（' + attentionCount + '）' : '');
+      var queueCount = runningCount || attentionCount;
+      byId('task-queue-count').textContent = queueCount ? (getLocale() === 'en' ? ' (' + queueCount + ')' : '（' + queueCount + '）') : '';
 
       var triggerBtn = byId('task-panel-btn');
       var triggerLabel = byId('task-trigger-label');

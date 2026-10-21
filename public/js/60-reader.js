@@ -15,7 +15,7 @@
       var cjkCount = cjkMatches ? cjkMatches.length : 0;
       var latinMatches = sample.match(/[a-zA-Z]/g);
       var latinCount = latinMatches ? latinMatches.length : 0;
-      var isCJK = cjkCount >= 20 || (cjkCount > 0 && cjkCount >= latinCount * 0.1);
+      var isCJK = cjkCount > 0 && cjkCount >= latinCount * 0.1;
 
       if (isCJK) {
         var charCount = clean.replace(/\s+/g, '').length;

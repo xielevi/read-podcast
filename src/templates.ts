@@ -1,10 +1,13 @@
 import { json } from "./http";
+import { DEFAULT_REFINE_PROMPT_EN } from "./refinement/defaults";
 
 export interface PromptTemplate {
   id: string;
   name: string;
   description: string;
   content: string;
+  /** 英文界面使用的同一模板（英文播客用英文指令更自然；输出语言仍由 refine 步骤按转录语言锁定）。 */
+  content_en: string;
 }
 
 export const PROMPT_TEMPLATES: PromptTemplate[] = [
@@ -72,6 +75,7 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 **嘉宾**：整理后的发言。
 
 除正文外，不要输出任何解释。`,
+    content_en: DEFAULT_REFINE_PROMPT_EN,
   },
   {
     id: "clean_verbatim",
@@ -91,6 +95,20 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 4. **字数门禁**：成稿字数必须达到原始转录字数的 90% 以上。
 
 直接输出整理后的 Markdown 对话正文，不要输出任何引言或解释。`,
+    content_en: `# Clean Verbatim Transcript Prompt
+
+## Role
+
+You are a professional transcriptionist. Turn the raw transcript into a clean, readable verbatim transcript.
+
+## Principles
+
+1. **Nothing removed**: keep 100% of the substance — every claim, argument, example and detail. Never summarize, condense or paraphrase.
+2. **Clean up disfluencies only**: remove pure fillers and stutters ("um", "uh", "you know", "like", repeated false starts); fix obvious mis-transcriptions and broken punctuation.
+3. **Paragraphs and speakers**: keep natural paragraph breaks and label each speaker. Keep each speaker's person and word order unchanged.
+4. **Length gate**: the result must be at least 90% of the raw transcript's length.
+
+Output only the cleaned Markdown dialogue, with no preamble or explanation.`
   },
   {
     id: "structured_interview",
@@ -111,6 +129,21 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 5. **篇幅与完整度**：完整保留问答中的论证逻辑与案例细节，严禁把回答缩写为干瘪总结；成稿篇幅通常在原始转录的 75%–85% 以上。
 
 直接输出排版完成的 Markdown 正文，不附带多余分析。`,
+    content_en: `# Structured Interview Prompt
+
+## Role
+
+You are the editor of a collection of in-depth interviews. Turn the spoken transcript into a clearly structured, rigorous Q&A.
+
+## Requirements
+
+1. **Outline and timeline**: before the body, list the core topics with timestamps under \`### 📌 Episode Outline & Timeline\`.
+2. **Clear Q&A turns**: mark who asks and who answers, using real names where known (otherwise **[Q]** and **[A]**).
+3. **Structured headings**: add level-2 headings as the discussion moves on, formatted as \`## 01 | Topic\`, so readers can find their place quickly.
+4. **No outlining**: keep the reasoning and supporting detail inside each answer; never reduce an answer to a few dry bullet points.
+5. **Length and completeness**: keep the arguments and examples in full; the result is usually 75%–85% or more of the raw transcript's length.
+
+Output only the finished Markdown body, with no extra commentary.`,
   },
 ];
 

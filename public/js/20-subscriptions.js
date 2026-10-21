@@ -37,6 +37,19 @@
         .catch(function () { addLog(t('custom.templates_load_failed'), 'warning'); });
     }
 
+    function findPromptTemplate(id) {
+      for (var i = 0; i < _promptTemplates.length; i++) {
+        if (_promptTemplates[i] && String(_promptTemplates[i].id) === String(id)) return _promptTemplates[i];
+      }
+      return null;
+    }
+
+    // 模板正文跟随界面语言：英文界面用 content_en（服务端未提供时退回 content）。
+    function promptTemplateContent(template) {
+      if (!template) return '';
+      return String((getLocale() === 'en' && template.content_en) || template.content || '');
+    }
+
     function renderPromptTemplateOptions() {
       var select = byId('prompt-template-select');
       if (!select) return;
@@ -47,7 +60,7 @@
       while (select.options.length > 1) select.remove(1);
       _promptTemplates.forEach(function (template) {
         var option = document.createElement('option');
-        option.value = String(template.content || '');
+        option.value = String(template.id || '');
         var labelKey = 'template.' + template.id + '.name';
         var translated = t(labelKey);
         option.textContent = translated !== labelKey ? translated : String(template.name || t('custom.untitled_template'));
@@ -58,11 +71,17 @@
       });
       if (currentVal) {
         select.value = currentVal;
+        // 切换语言时，未经修改的模板正文换成新语言版本；用户改过的内容保持不动。
+        var selected = findPromptTemplate(currentVal);
+        var box = byId('custom-prompt');
+        if (selected && box && (box.value === String(selected.content || '') || box.value === String(selected.content_en || ''))) {
+          box.value = promptTemplateContent(selected);
+        }
       }
     }
 
-    function applyPromptTemplate(content) {
-      byId('custom-prompt').value = content || '';
+    function applyPromptTemplate(id) {
+      byId('custom-prompt').value = promptTemplateContent(findPromptTemplate(id));
     }
 
     function handleAudioDrop(event) {

@@ -141,6 +141,24 @@ describe("GET /a/<task_id> —— 已发布稿件的永久链接", () => {
     }
   });
 
+  it("文档语言跟随稿件内容：中文稿件 zh-CN / zh_CN，英文稿件 en / en_US", async () => {
+    const zh = await (await call(`/a/${CURRENT}`)).text();
+    expect(zh).toMatch(/<html lang="zh-CN">/);
+    expect(metaContent(zh, "property", "og:locale")).toBe("zh_CN");
+
+    const english = "99999999-7777-7777-7777-777777777777";
+    cloud.d1.raw.prepare(`INSERT INTO tasks (id, source_type, podcast_name, episode_title, audio_url, status, progress, message, current_attempt_id, final_content_path, content_commit_sha)
+      VALUES (?, 'upload', 'Example Show', 'How Markets Learn', 'r2://uploads/y/a.mp3', 'success', 100, '', 'attempt-en', 'podcasts/transcripts/en.md', 'sha-en')`).run(english);
+    cloud.d1.raw.prepare(`INSERT INTO articles (task_id, title, podcast_name, content_path, commit_sha, created_at, updated_at)
+      VALUES (?, 'How Markets Learn', 'Example Show', 'podcasts/transcripts/en.md', 'sha-en', '2026-05-03T00:00:00.000Z', '2026-05-03T00:00:00.000Z')`).run(english);
+    cloud.externals.files.set("podcasts/transcripts/en.md",
+      "## 01 | Opening\n\n**Host**: Today we look at how prices carry information, with a short aside on 孔子 and the 2008 crisis.");
+    const en = await (await call(`/a/${english}`)).text();
+    expect(en).toMatch(/<html lang="en">/);
+    expect(en.match(/<html[\s>]/g)).toHaveLength(1);
+    expect(metaContent(en, "property", "og:locale")).toBe("en_US");
+  });
+
   it("重新生成后旧 task_id 301 到同一单集的当前稿件", async () => {
     const res = await call(`/a/${REGENERATED}`);
     expect(res.status).toBe(301);
