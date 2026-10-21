@@ -10,7 +10,8 @@
  *                     → persist-raw-N（raw → R2）              │
  *                                                              ▼
  *   claim-refinement (65%)
- *     → refine（外部 LLM，唯一昂贵调用；写入 R2 checkpoint，返回 key）
+ *     → refine（外部 LLM，昂贵调用；写入 R2 checkpoint，返回 key）
+ *     → generate-brief（尽力而为的导读：一次小 LLM 调用，step 返回归一后的 brief 或 null）
  *     → validate-and-publish（质量门禁 90% → Formatter → GitHub → D1 success 100%）
  *
  * 各阶段互不重做：step 输出被 durable 持久化，replay / retry 时已完成的 step 不会重新执行——
@@ -31,7 +32,8 @@ import {
   REFINER_SYSTEM_PROMPT,
   REFINER_SYSTEM_PROMPT_EN,
 } from "../refinement/defaults";
-import { resolveContentLanguage } from "../language";
+import { detectLanguageFromText, normalizeContentLanguage, resolveContentLanguage } from "../language";
+import { generateBrief, type ArticleBrief } from "../refinement/brief";
 import {
   RefinerError,
   buildRefineMessages,
@@ -56,7 +58,11 @@ import { runTranscriptionPhase, type PollTuning } from "./transcription";
 
 export const CLAIM_STEP = "claim-refinement";
 export const REFINE_STEP = "refine";
+export const BRIEF_STEP = "generate-brief";
 export const PUBLISH_STEP = "validate-and-publish";
+/** 导读 step：最多 3 次尝试（1 + 2 次重试），每次一个外部子请求；超时足够一次调用 + 读 R2。 */
+export const BRIEF_RETRY_LIMIT = 2;
+export const BRIEF_STEP_TIMEOUT = "4 minutes";
 export const FAILURE_STEP = "record-failure";
 
 // 说明：MIN_REAL_TRANSCRIPT_CHARS 的唯一权威定义在 ../refinement/defaults.ts
@@ -274,7 +280,57 @@ export async function refineStep(
   return refinedKey;
 }
 
-// ── Step 3: validate-and-publish（Formatter + GitHub + D1） ──
+// ── Step 3: generate-brief（尽力而为的导读） ──
+
+/** 导读重试延迟：服务端 Retry-After（封顶 60 秒）或 15s / 30s；导读不值得把发布拖上十几分钟。 */
+const briefRetryDelay = ({ ctx, error }: { ctx: { attempt: number }; error: Error }): string => {
+  const retryAfter = (error as Error & { retryAfterSeconds?: number }).retryAfterSeconds;
+  if (typeof retryAfter === "number" && Number.isFinite(retryAfter) && retryAfter > 0) {
+    return `${Math.min(Math.round(retryAfter), 60)} seconds`;
+  }
+  return `${15 * Math.max(1, Number(ctx?.attempt ?? 1))} seconds`;
+};
+
+/**
+ * 读 refined checkpoint → 一次 LLM 调用 → 校验归一。返回值即 durable checkpoint（几 KB 的 JSON，不含正文）。
+ *
+ * 失败语义（导读绝不阻塞发布）：
+ * - 所有权失败（取消 / attempt 过期）照常抛 NonRetryable，交给外层统一收敛；
+ * - 服务商可重试错误（429 / 5xx / 超时）与基础设施瞬时错误（R2 读失败）在还有重试额度时抛出，
+ *   交给 step durable retry；
+ * - 其余一切（不可重试的服务商错误、最后一次尝试仍失败、模型输出不合法）→ 返回 null，step 成功落盘，
+ *   重放 / publish 重试都不会再次调用模型。输出不合法不重试：同一输入再问一次不值得再计费。
+ */
+export async function briefStep(
+  env: Env,
+  params: ProcessingWorkflowParams,
+  refinedKey: string,
+  attempt: number,
+  fetchFn: typeof fetch = fetch,
+): Promise<ArticleBrief | null> {
+  const task = assertAttemptCurrent(await loadTaskRow(env, params.taskId), params.attemptId);
+  try {
+    const refinedObject = await env.storage.get(refinedKey);
+    const refinedText = refinedObject ? await refinedObject.text() : "";
+    if (!refinedText.trim()) return null; // publish step 会对缺失的 checkpoint 显式失败，这里不抢着归因
+    const lang = normalizeContentLanguage(task.content_language) ?? detectLanguageFromText(refinedText);
+    return await generateBrief({ markdown: refinedText, lang, config: params.config, apiKey: env.REFINER_API_KEY, fetchFn });
+  } catch (error) {
+    if (attempt <= BRIEF_RETRY_LIMIT) {
+      if (error instanceof RefinerError && error.retryable) {
+        throw workflowError(error.code, error.message, { retryable: true, retryAfterSeconds: error.retryAfterSeconds });
+      }
+      if (!(error instanceof RefinerError)) throw error;
+    }
+    console.warn(`generate-brief(${params.taskId}) skipped:`, error instanceof Error ? error.message : error);
+    return null;
+  }
+}
+
+/** 这些错误代表任务已不归本次执行所有，导读 step 不能吞掉它们。 */
+const BRIEF_PROPAGATED_CODES = new Set(["cancelled", "cancel_requested", "stale_attempt", "task_not_found"]);
+
+// ── Step 4: validate-and-publish（Formatter + GitHub + D1） ──
 
 /**
  * 成稿时间戳必须对同一 (task, attempt) 确定性：publish step 重放（isolate 崩溃后引擎
@@ -292,6 +348,7 @@ export async function publishStep(
   env: Env,
   params: ProcessingWorkflowParams,
   refinedKey: string,
+  brief: ArticleBrief | null = null,
 ): Promise<{ finalPath: string; commitSha: string }> {
   await markProgress(env, params, 95, "正在保存正式稿…");
 
@@ -318,6 +375,7 @@ export async function publishStep(
     { refinement_success: true, transcript_source: "ai_refined" },
     deterministicProcessedAt(task),
     manuscriptTimeZone(env.MANUSCRIPT_TIME_ZONE),
+    brief,
   );
 
   try {
@@ -326,6 +384,7 @@ export async function publishStep(
       attemptId: params.attemptId,
       writingFilename,
       markdown,
+      brief,
     });
     return { finalPath: saved.finalPath, commitSha: saved.commitSha };
   } catch (error) {
@@ -479,10 +538,25 @@ export async function runProcessingPipeline(
       async () => refineStep(env, params, rawKey, deps.fetchFn ?? fetch),
     );
 
+    // 导读：尽力而为。step 自身在最后一次尝试时吞掉失败并返回 null；这里的 catch 只兜住
+    // step 超时之类引擎层面的耗尽，所有权类错误（取消 / attempt 过期）照常向外传播。
+    let brief: ArticleBrief | null = null;
+    try {
+      brief = await step.do(
+        BRIEF_STEP,
+        { retries: { limit: BRIEF_RETRY_LIMIT, delay: briefRetryDelay }, timeout: BRIEF_STEP_TIMEOUT },
+        async ctx => briefStep(env, params, refinedKey, ctx?.attempt ?? 1, deps.fetchFn ?? fetch),
+      );
+    } catch (error) {
+      if (BRIEF_PROPAGATED_CODES.has(errorCodeOf(error))) throw error;
+      console.warn(`generate-brief(${params.taskId}) failed; publishing without brief:`, error instanceof Error ? error.message : error);
+      brief = null;
+    }
+
     const published = await step.do(
       PUBLISH_STEP,
       { retries: { limit: REFINE_RETRY_LIMIT, delay: exponentialRetryDelay }, timeout: PUBLISH_STEP_TIMEOUT },
-      async () => publishStep(env, params, refinedKey),
+      async () => publishStep(env, params, refinedKey, brief),
     );
 
     return {

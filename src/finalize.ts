@@ -13,6 +13,7 @@
  * - publish 重试最终耗尽时，由 Workflow 外层 failure handling 统一收敛为 error(final_persist_failed)。
  */
 import { MAX_FINAL_MARKDOWN_BYTES } from "./refinement/defaults";
+import type { ArticleBrief } from "./refinement/brief";
 import { NOW } from "./db";
 import type { Env } from "./types";
 
@@ -42,6 +43,8 @@ export interface PersistFinalArticleInput {
   // 稿件文件名唯一来源：Edge 侧 build_filename_base 产物。
   writingFilename: string;
   markdown: string;
+  // 导读（尽力而为）：null = 本次未生成；与 article upsert 同一 batch 写入 articles.brief。
+  brief?: ArticleBrief | null;
 }
 
 interface FinalizeTaskRow {
@@ -125,26 +128,29 @@ export async function persistFinalArticle(
       WHERE id = ? AND current_attempt_id = ? AND status = 'finalizing'`)
       .bind(saved.finalPath, saved.commitSha, input.taskId, input.attemptId);
 
+    const briefJson = input.brief ? JSON.stringify(input.brief) : null;
     const articleUpsertStmt = task.episode_id
-      ? env.db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha)
-          VALUES (?, ?, ?, ?, ?, ?)
+      ? env.db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha, brief)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(episode_id) WHERE episode_id IS NOT NULL DO UPDATE SET
             task_id = excluded.task_id,
             title = excluded.title,
             podcast_name = excluded.podcast_name,
             content_path = excluded.content_path,
             commit_sha = excluded.commit_sha,
+            brief = excluded.brief,
             updated_at = ${NOW}`)
-          .bind(input.taskId, task.episode_id, task.episode_title, task.podcast_name, saved.finalPath, saved.commitSha)
-      : env.db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha)
-          VALUES (?, NULL, ?, ?, ?, ?)
+          .bind(input.taskId, task.episode_id, task.episode_title, task.podcast_name, saved.finalPath, saved.commitSha, briefJson)
+      : env.db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha, brief)
+          VALUES (?, NULL, ?, ?, ?, ?, ?)
           ON CONFLICT(task_id) DO UPDATE SET
             title = excluded.title,
             podcast_name = excluded.podcast_name,
             content_path = excluded.content_path,
             commit_sha = excluded.commit_sha,
+            brief = excluded.brief,
             updated_at = ${NOW}`)
-          .bind(input.taskId, task.episode_title, task.podcast_name, saved.finalPath, saved.commitSha);
+          .bind(input.taskId, task.episode_title, task.podcast_name, saved.finalPath, saved.commitSha, briefJson);
 
     // D1 原子事务提交：任务更新与成稿建立同生共死
     const [updateRes] = await env.db.batch([taskUpdateStmt, articleUpsertStmt]);

@@ -536,7 +536,9 @@ describe("stale / duplicate 结果保护", () => {
     await run(replay);
 
     expect(replay.executed).toEqual([PUBLISH_STEP]);
-    expect(cloud.r2.getLog.filter(key => key === REFINED_KEY)).toHaveLength(2);
+    // generate-brief 读一次 checkpoint，publish 首次 + 重放各读一次；导读不随重放重新生成
+    expect(cloud.r2.getLog.filter(key => key === REFINED_KEY)).toHaveLength(3);
+    expect(cloud.externals.briefCalls).toBe(1);
     expect(cloud.r2.getLog.filter(k => k.startsWith("raw/")).length).toBe(rawGetsBefore); // publish 不重复读取 R2 raw
     expect(cloud.externals.github.commits).toBe(1);
     expect(cloud.externals.llmCalls).toBe(1);
@@ -565,8 +567,10 @@ describe("R2 refined checkpoint", () => {
     const { cloud, engine, run } = await setup();
     const get = cloud.r2.get.bind(cloud.r2);
     let failed = false;
+    let publishing = false;
+    engine.before.set(PUBLISH_STEP, () => void (publishing = true));
     vi.spyOn(cloud.r2, "get").mockImplementation(async (key) => {
-      if (key === REFINED_KEY && !failed) {
+      if (key === REFINED_KEY && publishing && !failed) {
         failed = true;
         throw new Error("R2 temporarily unavailable");
       }

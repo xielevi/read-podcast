@@ -1,4 +1,5 @@
 import { error, json, parseLimit, parseOffset } from "./http";
+import { parseStoredBrief, type ArticleBrief } from "./refinement/brief";
 import type { Env } from "./types";
 
 export interface ArticleRow {
@@ -26,13 +27,19 @@ export async function listArticles(url: URL, env: Env): Promise<Response> {
   return json(result.results);
 }
 
-/** GET /articles/:task_id —— 根据 task_id 查询特定正式稿索引元数据。 */
+/**
+ * GET /articles/:task_id —— 根据 task_id 查询特定正式稿索引元数据（含导读）。
+ * brief 是显式白名单字段：D1 中的 JSON 解析为对象，缺失 / 损坏 → null（旧稿件）。
+ * 列表接口不带 brief：每篇数 KB，稿件库一次取 200 篇时没必要整体下发。
+ */
 export async function getArticle(taskId: string, env: Env): Promise<Response> {
   const article = await env.db.prepare(
-    `SELECT task_id, episode_id, title, podcast_name, content_path, commit_sha, created_at, updated_at
+    `SELECT task_id, episode_id, title, podcast_name, content_path, commit_sha, created_at, updated_at, brief
      FROM articles WHERE task_id = ?`,
-  ).bind(taskId).first<ArticleRow>();
+  ).bind(taskId).first<ArticleRow & { brief: string | null }>();
 
   if (!article) return error(404, "article_not_found", "Article not found");
-  return json(article);
+  const { brief, ...row } = article;
+  const dto: ArticleRow & { brief: ArticleBrief | null } = { ...row, brief: parseStoredBrief(brief) };
+  return json(dto);
 }
