@@ -407,7 +407,7 @@
           updateReaderStats(presentationContent);
           var renderedHtml = renderBasicMarkdown(presentationContent);
           byId('manuscript-body').innerHTML = renderedHtml;
-          decorateManuscriptWithBrief(byId('manuscript-body'), result.brief);
+          decorateManuscriptWithBrief(byId('manuscript-body'), result.brief, cleanId);
           
           var headings = byId('manuscript-body').querySelectorAll('h1, h2, h3');
           var tocLinks = [];

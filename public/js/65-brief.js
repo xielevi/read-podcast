@@ -113,8 +113,13 @@
      * 在已渲染的正文上叠加导读：顶部导读卡 + 匹配标题下的小节摘要。
      * 导读卡不使用 h1–h3（不进入大纲目录）；概念链接跳过导读文字（见 70-concepts.js）。
      */
-    function decorateManuscriptWithBrief(body, brief) {
-      if (!body || !brief) return;
+    function decorateManuscriptWithBrief(body, brief, taskId) {
+      if (!body) return;
+      if (!brief) {
+        // 旧稿件没有导读：主人模式下给一个手动补生成的入口（公开浏览什么都不渲染）。
+        if (IS_MANAGE && taskId) body.insertBefore(buildBriefGenerate(body, taskId), body.firstChild);
+        return;
+      }
       var summaries = {};
       (Array.isArray(brief.sections) ? brief.sections : []).forEach(function (section) {
         if (section && section.heading && section.summary) summaries[briefHeadingKey(section.heading)] = section.summary;
@@ -127,6 +132,40 @@
         delete summaries[key];
       });
       body.insertBefore(buildBriefCard(brief), body.firstChild);
+    }
+
+    /** 主人模式：为旧稿件补生成导读（POST /api/control/articles/:id/brief，会调用一次精修模型）。 */
+    function buildBriefGenerate(body, taskId) {
+      var box = briefEl('div', 'reader-brief-generate');
+      var button = briefEl('button', 'reader-brief-cta', t('reader.brief_generate'));
+      button.type = 'button';
+      button.setAttribute('data-i18n', 'reader.brief_generate');
+      var status = briefEl('span', 'reader-brief-generate-status');
+      status.setAttribute('role', 'status');
+      button.addEventListener('click', function () {
+        button.disabled = true;
+        status.textContent = t('reader.brief_generating');
+        body.dataset.briefFor = String(taskId);
+        fetch(appUrl('/api/control/articles/' + encodeURIComponent(String(taskId)) + '/brief'), { method: 'POST' })
+          .then(readApiResponse)
+          .then(function (data) {
+            if (!data || !data.brief) throw new Error('brief_unavailable');
+            return data.brief;
+          })
+          .then(function (brief) {
+            // 期间读者可能已切到另一篇：只装饰仍是同一篇的正文。
+            if (body.dataset.briefFor !== String(taskId) || !box.isConnected) return;
+            box.remove();
+            decorateManuscriptWithBrief(body, brief, taskId);
+          })
+          .catch(function () {
+            button.disabled = false;
+            status.textContent = t('reader.brief_generate_failed');
+          });
+      });
+      box.appendChild(button);
+      box.appendChild(status);
+      return box;
     }
 
     function setSectionSummaries(mode, skipSave) {

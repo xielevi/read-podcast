@@ -842,9 +842,9 @@ This is an English podcast transcript discussing distributed systems, edge compu
 });
 
 describe("稿件导读（渐进式阅读）", () => {
-  function loadReader() {
+  function loadReader(url = "https://example.com/") {
     const dom = new JSDOM(HTML, {
-      url: "https://example.com/",
+      url,
       runScripts: "dangerously",
       pretendToBeVisual: true,
       virtualConsole: new VirtualConsole(),
@@ -861,7 +861,7 @@ describe("稿件导读（渐进式阅读）", () => {
       win: dom.window as unknown as {
         applyLocale: (locale: string) => void;
         renderBasicMarkdown: (markdown: string) => string;
-        decorateManuscriptWithBrief: (body: Element, brief: unknown) => void;
+        decorateManuscriptWithBrief: (body: Element, brief: unknown, taskId?: string) => void;
         setSectionSummaries: (mode: string) => void;
         loadArticleBrief: (taskId: string) => Promise<unknown>;
       },
@@ -908,6 +908,33 @@ describe("稿件导读（渐进式阅读）", () => {
     win.applyLocale("en");
     expect(card.querySelector(".reader-brief-time")?.textContent).toBe("Full text · about 12 min");
     expect(card.querySelector(".reader-brief-kicker")?.textContent).toBe("3-minute brief");
+  });
+
+  it("旧稿件：主人模式给「生成导读」入口，点击后 POST 并渲染导读卡；公开浏览不渲染", async () => {
+    const id = "aaaaaaaa-1111-1111-1111-111111111111";
+    const pub = loadReader();
+    const pubBody = pub.dom.window.document.getElementById("manuscript-body")!;
+    pubBody.innerHTML = pub.win.renderBasicMarkdown(MARKDOWN);
+    pub.win.decorateManuscriptWithBrief(pubBody, null, id);
+    expect(pubBody.querySelector(".reader-brief-generate")).toBeNull();
+
+    const manage = loadReader("https://example.com/manage");
+    const calls: Array<{ url: string; method?: string }> = [];
+    (manage.dom.window as unknown as { fetch: unknown }).fetch = (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), method: init?.method });
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ brief: BRIEF, generated: true })) });
+    };
+    const body = manage.dom.window.document.getElementById("manuscript-body")!;
+    body.innerHTML = manage.win.renderBasicMarkdown(MARKDOWN);
+    manage.win.decorateManuscriptWithBrief(body, null, id);
+    const button = body.querySelector(".reader-brief-generate button") as HTMLButtonElement;
+    expect(button).not.toBeNull();
+    button.click();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(calls).toEqual([{ url: `/api/control/articles/${id}/brief`, method: "POST" }]);
+    expect(body.querySelector(".reader-brief-generate")).toBeNull();
+    expect(body.firstElementChild?.className).toBe("reader-brief");
   });
 
   it("导读请求迟迟不返回时按 null 处理，不拖住正文", async () => {

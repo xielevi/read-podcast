@@ -404,6 +404,56 @@ describe("DTO：brief 是显式白名单字段（对象或 null）", () => {
     for (const item of items) expect(item).not.toHaveProperty("brief");
   });
 
+  describe("POST /api/control/articles/:id/brief（旧稿件回填）", () => {
+    const post = (cloud: Cloud, id: string) =>
+      worker.fetch(new Request(`https://app.test/api/control/articles/${id}/brief`, { method: "POST" }), cloud.env, { waitUntil() {}, passThroughOnException() {} } as unknown as ExecutionContext);
+    const storedFor = (cloud: Cloud, id: string) =>
+      (cloud.d1.raw.prepare("SELECT brief, updated_at FROM articles WHERE task_id = ?").get(id) as { brief: string | null; updated_at: string });
+
+    it("读取发布快照生成导读，只写 articles.brief（不改 updated_at、不重新发布）", async () => {
+      const cloud = seeded();
+      globalThis.fetch = cloud.fetch;
+      cloud.externals.files.set("podcasts/transcripts/old.md", `---\ntitle: 旧稿件\n---\n\n${REFINED_TEXT}`);
+      const before = storedFor(cloud, OLD);
+      const commitsBefore = cloud.externals.github.commits;
+      const res = await post(cloud, OLD);
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { brief: ArticleBrief; generated: boolean };
+      expect(body.generated).toBe(true);
+      expect(body.brief).toMatchObject({ tldr: BRIEF_RESPONSE.tldr, sections: [{ heading: "01 | 主题" }] });
+      expect(cloud.externals.briefCalls).toBe(1);
+      const after = storedFor(cloud, OLD);
+      expect(JSON.parse(after.brief!)).toEqual(body.brief);
+      expect(after.updated_at).toBe(before.updated_at);
+      expect(cloud.externals.github.commits).toBe(commitsBefore);
+    });
+
+    it("已有导读或 frontmatter 已带 brief：不调用模型", async () => {
+      const cloud = seeded();
+      globalThis.fetch = cloud.fetch;
+      const existing = await post(cloud, TASK);
+      expect(((await existing.json()) as { generated: boolean }).generated).toBe(false);
+
+      const brief = normalizeBrief(BRIEF_RESPONSE, REFINED_TEXT)!;
+      cloud.externals.files.set("podcasts/transcripts/old.md", `---\ntitle: 旧稿件\nbrief: ${JSON.stringify(brief)}\n---\n\n${REFINED_TEXT}`);
+      const res = await post(cloud, OLD);
+      expect(res.status).toBe(200);
+      expect(((await res.json()) as { generated: boolean }).generated).toBe(false);
+      expect(cloud.externals.briefCalls).toBe(0);
+      expect(JSON.parse(storedFor(cloud, OLD).brief!)).toEqual(brief);
+    });
+
+    it("模型输出不可用 → 422，不写入；未知稿件 → 404", async () => {
+      const cloud = seeded();
+      globalThis.fetch = cloud.fetch;
+      cloud.externals.files.set("podcasts/transcripts/old.md", REFINED_TEXT);
+      cloud.externals.briefContent = "抱歉";
+      expect((await post(cloud, OLD)).status).toBe(422);
+      expect(storedFor(cloud, OLD).brief).toBeNull();
+      expect((await post(cloud, "99999999-9999-9999-9999-999999999999")).status).toBe(404);
+    });
+  });
+
   it("GET /api/control/articles/:id：brief 解析为对象；旧稿件为 null", async () => {
     const cloud = seeded();
     const body = (await (await call(cloud, `/api/control/articles/${TASK}`)).json()) as Record<string, unknown>;

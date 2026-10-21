@@ -306,7 +306,12 @@ in R2 (retry, recovery). Each `N` is a submission number.
   embedded in the published Markdown frontmatter as a single-line JSON `brief:` value so the
   Canonical Manuscript Store stays self-describing; the Markdown body is unchanged. Readers
   receive it through the article DTOs (`GET /api/public/articles/:id`,
-  `GET /api/control/articles/:id`); older articles have `brief = null`.
+  `GET /api/control/articles/:id`); older articles have `brief = null` until the owner
+  backfills one from the reader in `/manage` (`POST /api/control/articles/:id/brief`): it reads
+  the publish snapshot, reuses a frontmatter `brief:` when present, otherwise calls the
+  Refinement Provider once with the current settings, and writes only `articles.brief`
+  conditioned on the same `commit_sha` — no re-publish, `updated_at` unchanged, and an article
+  that already has a brief is returned without a model call.
 - **Completeness guard.** Two checks keep a degraded run from being published as a manuscript.
   Before refining, a raw transcript with fewer than 200 non-whitespace characters fails the
   task (transcription degraded; the model must not invent an article from show notes). After

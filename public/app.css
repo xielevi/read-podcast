@@ -1240,6 +1240,10 @@
       transition: background .2s ease, color .2s ease;
     }
     .reader-brief-cta svg { width: 15px; height: 15px; }
+    .reader-brief-cta:disabled { opacity: .55; cursor: progress; }
+    .reader-brief-generate { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 0 auto 1.6em; }
+    .reader-brief-generate .reader-brief-cta { margin-top: 0; }
+    .reader-brief-generate-status { color: var(--reader-ink-soft); font-family: var(--sans); font-size: .82em; }
     .reader-brief-cta:hover { color: var(--reader-bg); background: var(--reader-accent); }
     /* 第二层：小节标题下一行淡色小结，可在「排版」里隐藏 */
     .manuscript-body .section-summary { margin: -.25em auto 1.2em; color: var(--reader-ink-soft); font-family: var(--sans); font-size: .82em; line-height: 1.6; }
