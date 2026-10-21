@@ -2,53 +2,135 @@
 
 **English** · [简体中文](README.zh-CN.md)
 
-Pick a podcast episode you want to keep. Read Podcast turns it into a readable, long-form manuscript with speakers and sections, then saves the Markdown in storage you control. Read it on your phone, search for a passage later, or share the published page.
+**Turn the podcast episodes you want to keep into full-length, readable manuscripts — speakers, sections and outline included — saved as Markdown in storage you own.**
 
-<p align="center">
-  <img src="docs/assets/readme/library.webp" alt="Read Podcast subscriptions and manuscripts" width="920">
-</p>
+[![CI](https://github.com/xielevi/read-podcast/actions/workflows/ci.yml/badge.svg)](https://github.com/xielevi/read-podcast/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/xielevi/read-podcast)](LICENSE)
+[![Runs on Cloudflare Workers](https://img.shields.io/badge/runs%20on-Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=white)](docs/DEPLOYMENT.md#2-cloudflare-application)
+[![Self-host with Docker Compose](https://img.shields.io/badge/self--host-Docker%20Compose-2496ED?logo=docker&logoColor=white)](docs/DEPLOYMENT.md#7-local-docker-deployment)
 
-**[Live demo → read-podcast.xielevi.cc](https://read-podcast.xielevi.cc)** · [Try it locally](#try-it-locally) · [Deploy on Cloudflare](docs/DEPLOYMENT.md#2-cloudflare-application) · [Run with Docker](docs/DEPLOYMENT.md#7-local-docker-deployment)
-
-The live demo is the maintainer's own instance, open read-only to visitors: browse subscriptions and read published manuscripts. Generating new manuscripts requires deploying your own copy.
-
-## From episode to manuscript
-
-Add a podcast from Apple Podcasts or an RSS URL, or import an audio file (up to 200 MiB). Choose an episode and start generation; new episodes are **never processed automatically**. You can leave the browser while it fetches, transcribes, edits and saves the piece.
-
-The editor removes verbal repetition while keeping the conversation's arguments and examples. The result is a substantial article, with headings and speaker labels, rather than a short recap. Read it in the browser with an outline and reading settings, or download the Markdown. The interface is available in Chinese and English; editorial prompts follow the spoken language, while Wikipedia concept links follow the reader's UI language. Custom editorial instructions take precedence.
+**[Live demo → read-podcast.xielevi.cc](https://read-podcast.xielevi.cc)** · [Sample manuscripts](#sample-manuscripts) · [Quick start](#quick-start) · [How it compares](#how-it-compares)
 
 <p align="center">
   <img src="docs/assets/readme/reader.webp" alt="Manuscript reader with outline" width="920">
 </p>
 
-Published manuscripts live in your own GitHub repository on Cloudflare, or in a local directory with Docker. The application keeps an index and serves the reading pages; your Markdown remains in the chosen manuscript store.
+## Why
 
-## Choose where it runs
+You finish a two-hour conversation that was worth every minute. A week later you want the one argument that made it worth it, and the only way back is to scrub through audio. Show notes list topics; AI recaps squeeze two hours into a few bullet points. The conclusions survive, the reasoning and examples do not.
 
-| | Cloudflare | Docker / Node |
-|---|---|---|
-| Application | Worker, D1, Workflows and R2 | Single host, SQLite and local files |
-| Manuscripts | Your GitHub repository | Local directory by default |
-| Transcription | Your own service or configured cloud backend | Compose includes Faster-Whisper |
-| Owner access | Cloudflare Access | Localhost by default; optional Basic Auth |
+Read Podcast keeps the conversation itself. It transcribes the episode you pick, then edits it the way a magazine edits an interview: verbal repetition goes, the arguments, evidence and back-and-forth stay. You get an article you can read, search, quote and keep.
 
-The reference local transcription service runs MLX Whisper on Apple Silicon. The service also implements Faster-Whisper and an opt-in OpenAI-compatible upload proxy; the Cloudflare Worker has a DashScope adapter. Availability and cost of external providers depend on your own configuration and account; see [deployment](docs/DEPLOYMENT.md). Refinement requires an OpenAI-compatible LLM API.
+## Before and after
 
-The maintainer runs the Cloudflare application on Workers Free, but that does not establish spare CPU, subrequest or Workflow capacity for every workload. Check [deployment limits](docs/DEPLOYMENT.md#resource-names-and-free-plan-boundary-checks) against your usage. LLM and cloud transcription providers may charge separately.
+What speech recognition gives you *(illustrative — typical unedited ASR output, written for this README)*:
 
-This is a single-owner workspace. Reading at `/` is public by default: visitors can browse subscriptions and published manuscripts. Protect the whole hostname if those should be private. On Cloudflare, `/manage*` and `/api/control/*` **must** be protected by Access on a custom domain or Basic Auth on workers.dev; Docker binds to localhost by default. Generation is manual per episode.
+```text
+嗯对 说到这个航天飞机这个项目啊 首先就是 首先需要回溯到它的前身 就是那个阿波罗
+然后呃几个月之前我看了一个那个采访 他提了一个 很有意思的视角 就是所有我们认为的
+这个工程学上的超级项目 要想成功的话几乎都 都依赖三个 三项先决条件 第一个是稳定的
+政治承诺 第二个就是呃 有保障的资金支持 第三就是清晰的 阶段性的目标
+```
 
-## Deployment options
+What Read Podcast publishes *(real excerpt from the [live demo](https://read-podcast.xielevi.cc/a/26b88d3a-3b60-430d-b709-7d36ed52e741), 忽左忽右 #502)*:
 
-1. **Deploy to Cloudflare** *(preview, pending independent-account validation)*:
-   The template implementation is in review; the official button will be added here only after a fresh deployment has been verified. See the [deployment guide](docs/DEPLOYMENT.md#deploy-to-cloudflare-template-one-click-deployment) for the remaining checks.
-2. **`npm run setup`** *(Recommended for production with custom domain, Cloudflare Access, and Tunnel)*:
-   Interactive, idempotent setup script that provisions resources and guides Zero Trust configuration. See [Cloudflare deployment](docs/DEPLOYMENT.md#2-cloudflare-application).
-3. **Docker**:
-   Single-host installation running entirely on local compute and local storage. See [Docker guide](docs/DEPLOYMENT.md#7-local-docker-deployment).
+```markdown
+## 02 | 超级工程的三大先决条件
 
-## Try it locally
+**刘怡**：说到航天飞机这个项目，首先需要回溯到它的前身，就是大家应该都知道的美国载人登月的阿波罗计划。……
+他提了一个很有意思的视角：所有我们所认为的工程学上的超级项目，要想成功几乎都依赖三项先决条件——
+第一，稳定的政治承诺；第二，有保障的资金支持；第三，清晰的阶段性目标。
+```
+
+*In English: “Every engineering mega-project depends on three preconditions — stable political commitment, secured funding, and clear intermediate goals.”*
+
+That 63-minute episode became a manuscript of about 17,000 characters: a timestamped outline, six titled sections and both speakers named. Length is checked, not hoped for: by default a draft shorter than 70% of the transcript fails the quality gate and is not published. The demo library is in Chinese; English episodes are edited with English prompts.
+
+## Sample manuscripts
+
+Read full results on the live demo, the maintainer's own instance, open read-only to visitors (generating new manuscripts requires your own deployment):
+
+- [宇宙超级工程是如何垮掉的：刘怡谈「挑战者号」事故四十周年](https://read-podcast.xielevi.cc/a/26b88d3a-3b60-430d-b709-7d36ed52e741) — 忽左忽右 · 63 min · two speakers, 6 sections
+- [袁长庚×胡安焉：脏活与狗屁工作，谁在工位追问意义？](https://read-podcast.xielevi.cc/a/8c2652d0-99b6-4985-9c65-9e5ba766b7e6) — 上海书评 · 80 min · three speakers, 11 sections
+- [对话经济学家朱宁：1929之后，我们学会避免下一场经济危机了吗？](https://read-podcast.xielevi.cc/a/6a85212f-236c-577d-a554-a8375452e068) — 知行小酒馆 · 73 min · two speakers, 12 sections
+
+<p align="center">
+  <img src="docs/assets/readme/library.webp" alt="Read Podcast subscriptions and manuscripts" width="920">
+</p>
+
+## Features
+
+- **Subscribe or import** — find shows on Apple Podcasts, paste any RSS URL, or upload your own audio (up to 200 MiB).
+- **You choose what gets processed** — generation starts per episode; new episodes are never processed automatically. Close the browser and the job keeps running.
+- **Long-form editing, not summarising** — speaker labels (real names when the show notes give them), titled sections and a timestamped outline; repetition removed, arguments and examples kept. Custom editorial instructions take precedence.
+- **A reader built for long text** — outline navigation, reading settings, and key concepts linked to Wikipedia in the reader's language.
+- **Chinese and English** — the UI speaks both; editorial prompts follow the episode's spoken language.
+- **Markdown you own** — each manuscript is a Markdown file with YAML front matter in your GitHub repository (Cloudflare) or a local folder ready for Obsidian (Docker). Download any piece from the reader.
+- **Public read-only browsing** — visitors at `/` can browse subscriptions and published manuscripts; everything that changes state lives under `/manage`.
+- **Self-hosted, bring your own models** — Cloudflare Workers or a single Docker host; transcription with local Whisper (MLX on Apple Silicon, Faster-Whisper in Docker), an OpenAI-compatible upload proxy, or DashScope; editing with any OpenAI-compatible LLM API.
+
+## How it compares
+
+A category-level comparison; individual products vary.
+
+| | Podcast-app AI summaries | Transcription services | Highlight / note apps | **Read Podcast** |
+|---|---|---|---|---|
+| What you get | A short recap or chapter notes | A verbatim transcript | Clips and notes on moments you mark | An edited, full-length manuscript |
+| Fidelity to the argument | Conclusions, little reasoning | Everything, including fillers and false starts | Only what you highlighted | Reasoning and examples kept; ≥ 70% of transcript length by default |
+| Where your text lives | Inside the app | Files you export | In the app, with exports | Markdown in your GitHub repository or local folder |
+| Self-hostable | No | Usually hosted only | Typically no | Yes — Cloudflare or Docker, MIT licensed |
+| Cost model | Bundled with the app or its subscription | Per minute or subscription | Freemium or subscription | Your hosting plus your LLM usage; local transcription has no API fees |
+| Setup | None | None | None | You deploy it and bring an LLM API key |
+
+## Quick start
+
+### Docker — the fastest path
+
+You need Docker and an API key for any OpenAI-compatible LLM. Transcription runs locally in the bundled Faster-Whisper container, and manuscripts land in `./manuscripts`.
+
+```bash
+git clone https://github.com/xielevi/read-podcast.git && cd read-podcast
+cp .env.example .env              # set REFINER_API_KEY
+docker compose up -d
+```
+
+Open `http://127.0.0.1:3000/manage` and set your provider's API base and model under **Settings → Advanced**. Ports are bound to localhost; set `CONTROL_AUTH_USER` / `CONTROL_AUTH_PASSWORD` before exposing the host. Details: [Docker guide](docs/DEPLOYMENT.md#7-local-docker-deployment).
+
+### Cloudflare — an edge-hosted reading site
+
+Runs on Workers, D1, Workflows and R2, and publishes manuscripts to your own GitHub repository. You need a domain on Cloudflare, a transcription backend (your own [Transcription Service](docs/DEPLOYMENT.md#3-transcription-service) behind a Tunnel, or [DashScope](docs/DEPLOYMENT.md#4-cloud-transcription-dashscope-paraformer)) and an LLM API key.
+
+```bash
+npm install
+npm run setup                     # idempotent: creates D1/R2, prompts for secrets, prints the Access checklist
+```
+
+Then follow the [Cloudflare guide](docs/DEPLOYMENT.md#2-cloudflare-application) for Access, the Tunnel and deployment. A one-click **Deploy to Cloudflare** template is in review; the button will be added here only after a fresh-account deployment has been verified ([remaining checks](docs/DEPLOYMENT.md#deploy-to-cloudflare-template-one-click-deployment)).
+
+The maintainer runs the Cloudflare application on Workers Free, but that does not establish spare CPU, subrequest or Workflow capacity for every workload. Check the [Free-plan limits](docs/DEPLOYMENT.md#resource-names-and-free-plan-boundary-checks) against your usage. LLM and cloud transcription providers may charge separately.
+
+### Security boundary
+
+This is a single-owner workspace. Reading at `/` is public by default; protect the whole hostname if subscriptions and manuscripts should be private. On Cloudflare, `/manage*` and `/api/control/*` **must** be protected by Cloudflare Access on a custom domain or Basic Auth on workers.dev; without Basic Auth credentials, a workers.dev control plane refuses every request. Docker binds to localhost by default, with optional Basic Auth. See [Deployment](docs/DEPLOYMENT.md) and [Security](.github/SECURITY.md).
+
+## Roadmap
+
+In development, not yet released:
+
+- **Brief card** — a short TL;DR at the top of each manuscript, alongside the full text.
+- **RSS output feed** — follow your published manuscripts in any feed reader.
+- **Deploy to Cloudflare button** — pending fresh-account validation.
+
+## Documentation
+
+- [Deployment](docs/DEPLOYMENT.md) — setup, credentials, security boundaries, smoke tests and Free-plan limits
+- [Architecture](docs/ARCHITECTURE.md) — task lifecycle, checkpoints and manuscript storage
+- [Upgrading](docs/UPGRADING.md) — backups and schema migrations
+- [Changelog](CHANGELOG.md)
+
+## Contributing
+
+Issues and pull requests are welcome. Start with the [contributing guide](.github/CONTRIBUTING.md), and report vulnerabilities through the [security policy](.github/SECURITY.md). To work on the Worker locally:
 
 ```bash
 npm install
@@ -57,13 +139,8 @@ npm run db:migrate:local
 npm run dev                       # http://localhost:8787; owner view at /manage
 ```
 
-Local development has no Access gate. To generate a manuscript you also need a transcription service, LLM key and GitHub manuscript repository configured in `.dev.vars`. The example points to a local transcription service at `http://127.0.0.1:28100`; see [deployment](docs/DEPLOYMENT.md) for a production setup. For a single-host installation, use the [Docker guide](docs/DEPLOYMENT.md#7-local-docker-deployment) instead.
+Local development has no Access gate. To generate a manuscript you also need a transcription service, an LLM key and a GitHub manuscript repository configured in `.dev.vars`; the example points to a local transcription service at `http://127.0.0.1:28100`.
 
-## Further reading
-
-- [Deployment](docs/DEPLOYMENT.md) — setup, credentials, security boundaries, smoke tests and Free-plan limits
-- [Architecture](docs/ARCHITECTURE.md) — task lifecycle, checkpoints and manuscript storage
-- [Upgrading](docs/UPGRADING.md) — backups and schema migrations
-- [Contributing](.github/CONTRIBUTING.md) · [Security](.github/SECURITY.md) · [Changelog](CHANGELOG.md)
+If Read Podcast saves you a re-listen, **a ⭐ on GitHub** helps other people find it.
 
 The earlier Python/macOS desktop app is archived on [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python); v1.0 is the TypeScript browser application with Cloudflare and Docker deployments. [MIT license](LICENSE).
