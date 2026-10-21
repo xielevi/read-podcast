@@ -1110,6 +1110,8 @@
     .reader-download { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 5px 12px; border: 1px solid var(--reader-line); border-radius: var(--radius-sm); color: var(--reader-ink-soft); font-size: 11px; font-weight: 700; text-decoration: none; transition: color .2s ease, border-color .2s ease, background .2s ease; }
     .reader-download svg { width: 14px; height: 14px; }
     .reader-download:hover { color: var(--reader-accent); border-color: var(--reader-accent); background: var(--reader-surface-active); }
+    .reader-share { background: transparent; font-family: inherit; cursor: pointer; }
+    .reader-share.is-copied { color: var(--reader-accent); border-color: var(--reader-accent); }
     .reader .close-btn { color: var(--reader-ink-soft); border-color: var(--reader-line); background: transparent; }
     .reader .close-btn:hover { color: var(--reader-accent); border-color: var(--reader-accent); background: var(--reader-surface-active); }
 

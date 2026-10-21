@@ -5,6 +5,9 @@
       var path = String(window.location.pathname || '/').replace(/\/+$/, '');
       var manage = path.match(/^(.*?)\/manage(?:\/.*)?$/);
       if (manage) return { base: manage[1], surface: 'manage' };
+      // <base>/a/<task_id> 是已发布稿件的公开永久链接（见 js/97-permalink.js）。
+      var article = path.match(/^(.*?)\/a\/([0-9a-f-]+)$/i);
+      if (article) return { base: article[1], surface: 'public', article: article[2] };
       return { base: path && path !== '/' ? path : '', surface: 'public' };
     }());
     var APP_BASE_PATH = APP_LOCATION.base;

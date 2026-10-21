@@ -181,6 +181,28 @@ describe("Frontend Invariants & Correctness Blockers", () => {
       expect(detect(pathname)).toEqual({ base, surface });
     });
 
+    it.each([
+      ["/a/11111111-1111-1111-1111-111111111111", ""],
+      ["/a/11111111-1111-1111-1111-111111111111/", ""],
+      ["/podcast/a/11111111-1111-1111-1111-111111111111", "/podcast"],
+    ])("永久链接 %s → base %j, surface public，并带出稿件 id", (pathname, base) => {
+      expect(detect(pathname)).toEqual({ base, surface: "public", article: "11111111-1111-1111-1111-111111111111" });
+    });
+
+    it("永久链接：公开浏览打开 / 关闭稿件时同步地址，控制模式地址不变，分享总是给出公开 /a/<id>", () => {
+      expect(HTML).toContain("currentPath.match(/^(.*?)\\/a\\/([0-9a-f-]+)$/i)");
+      expect(JS_CORE).toContain("path.match(/^(.*?)\\/a\\/([0-9a-f-]+)$/i)");
+      expect(JS_READER).toContain("onArticleOpened(cleanId, title);");
+      expect(BUNDLE).toContain("onArticleClosed();");
+      const permalink = readFileSync(resolve(ROOT, "public/js/97-permalink.js"), "utf-8");
+      expect(permalink).toMatch(/function onArticleOpened\(taskId, title\) \{\s*if \(IS_MANAGE\) return;/);
+      expect(permalink).toContain("return window.location.origin + articlePermalinkPath(taskId);");
+      expect(permalink).toContain("appUrl('/a/' + encodeURIComponent(");
+      expect(permalink).toContain("navigator.share");
+      expect(permalink).toContain("navigator.clipboard");
+      expect(HTML).toMatch(/<button class="reader-download reader-share" id="reader-share-btn" type="button"/);
+    });
+
     it("index.html 与 10-core.js 使用同一条 /manage 识别规则，并在首屏前标记 surface", () => {
       expect(HTML).toContain("currentPath.match(/^(.*?)\\/manage(?:\\/.*)?$/)");
       expect(JS_CORE).toContain("path.match(/^(.*?)\\/manage(?:\\/.*)?$/)");
