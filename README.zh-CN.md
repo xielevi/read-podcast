@@ -2,55 +2,135 @@
 
 [English](README.md) · **简体中文**
 
-听过一集好播客，想回头找某段话，却不想再从头听一遍？Read Podcast 可以把你选中的单集整理成一篇有章节、能读下去的长稿，存成你自己保管的 Markdown。手机上读、搜索段落、分享公开页面，都可以。
+**把值得留下的播客单集，整理成有说话人、有章节、有大纲的完整长稿，以 Markdown 存进你自己掌控的地方。**
 
-<p align="center">
-  <img src="docs/assets/readme/library.webp" alt="Read Podcast 的订阅与稿件工作区" width="920">
-</p>
+[![CI](https://github.com/xielevi/read-podcast/actions/workflows/ci.yml/badge.svg)](https://github.com/xielevi/read-podcast/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/github/license/xielevi/read-podcast)](LICENSE)
+[![Runs on Cloudflare Workers](https://img.shields.io/badge/runs%20on-Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=white)](docs/DEPLOYMENT.md#2-cloudflare-application)
+[![Self-host with Docker Compose](https://img.shields.io/badge/self--host-Docker%20Compose-2496ED?logo=docker&logoColor=white)](docs/DEPLOYMENT.md#7-local-docker-deployment)
 
-**[在线体验 → read-podcast.xielevi.cc](https://read-podcast.xielevi.cc)** · [本地试用](#本地试用) · [部署到 Cloudflare](docs/DEPLOYMENT.md#2-cloudflare-application) · [用 Docker 部署](docs/DEPLOYMENT.md#7-local-docker-deployment)
-
-在线体验是维护者自己的实例，对访客只读开放：可以浏览订阅、阅读已发布的稿件。想生成新稿件，请部署你自己的一份。
-
-## 挑一集，留下全文
-
-从 Apple Podcasts 搜索节目，粘贴 RSS 地址，或导入自己的音频（最多 200 MiB）。选好单集后手动开始生成；新单集不会自动转写。获取音频、转写、整理、保存的过程会显示进度，关掉浏览器也能继续。
-
-整理时会删掉口语重复，留下对话中的推理、例子和细节。成稿有说话人和章节，适合连贯阅读。每篇稿件还会尽力附带一份三分钟导读（一句话概括、要点、原话、适合谁读）和每节一句话小结，方便先判断再读全文。阅读器提供目录和排版设置，也能下载 Markdown。界面可切换中文和英文；编辑指令按音频内容语言选择，维基百科概念链接则跟随界面语言。你填写的自定义指令优先。
+**[在线体验 → read-podcast.xielevi.cc](https://read-podcast.xielevi.cc)** · [示例稿件](#示例稿件) · [快速开始](#快速开始) · [横向对比](#横向对比)
 
 <p align="center">
   <img src="docs/assets/readme/reader.webp" alt="带目录的稿件阅读器" width="920">
 </p>
 
-Cloudflare 部署把已发布稿件放进你的 GitHub 仓库；Docker 默认保存在主机目录。应用负责索引与阅读页面，Markdown 留在你选定的稿件存储中。
+## 为什么需要它
 
-## 部署在哪里
+一期两小时的对谈，每一分钟都值得。可一周后你想找回那个最打动你的论证，唯一的办法是拖着进度条重听。节目简介只列了话题，AI 摘要把两小时压成几条要点——结论还在，推理和例子都没了。
 
-| | Cloudflare | Docker / Node |
-|---|---|---|
-| 应用与状态 | Worker、D1、Workflows、R2 | 单机、SQLite、本地文件 |
-| 稿件 | 你的 GitHub 仓库 | 默认本地目录 |
-| 转写 | 自建服务或配置云端后端 | Compose 内含 Faster-Whisper |
-| 管理权限 | Cloudflare Access | 默认只监听本机，可启用 Basic Auth |
+Read Podcast 留下的是对话本身。它转写你选中的单集，再像杂志编辑访谈稿那样整理：删掉口语重复，留下论证、证据和你来我往。最后得到一篇能读、能搜、能引用、能长期保存的文章。
 
-参考转写服务在 Apple Silicon 上运行 MLX Whisper；项目还实现了 Faster-Whisper、可选的 OpenAI 兼容上传代理，以及 Worker 端的百炼 DashScope 适配。第三方服务的可用性和费用取决于你自己的配置与账户，详见[部署指南](docs/DEPLOYMENT.md)。稿件整理需要 OpenAI 兼容的 LLM API。
+## 整理前后对比
 
-维护者在 Workers Free 上运行 Cloudflare 版，但这不能证明所有工作负载都有充足的 CPU、子请求或 Workflow 余量。请按自己的用量核对[部署限制](docs/DEPLOYMENT.md#resource-names-and-free-plan-boundary-checks)；LLM 和云端转写可能另行计费。
+语音识别直接给你的是这样的 *（示意——为本文编写的典型未经整理的 ASR 输出）*：
 
-这是单主人工作区。`/` 默认公开，访客能看到订阅和已发布稿件；如果这些也要保密，请保护整个域名。Cloudflare 自定义域名部署必须用 Access 保护 `/manage*` 和 `/api/control/*`；workers.dev 路径用 Basic Auth。Docker 默认只绑定本机。稿件由你逐集手动生成。
+```text
+嗯对 说到这个航天飞机这个项目啊 首先就是 首先需要回溯到它的前身 就是那个阿波罗
+然后呃几个月之前我看了一个那个采访 他提了一个 很有意思的视角 就是所有我们认为的
+这个工程学上的超级项目 要想成功的话几乎都 都依赖三个 三项先决条件 第一个是稳定的
+政治承诺 第二个就是呃 有保障的资金支持 第三就是清晰的 阶段性的目标
+```
 
-## 部署途径
+Read Podcast 发布的是这样的 *（[在线体验](https://read-podcast.xielevi.cc/a/26b88d3a-3b60-430d-b709-7d36ed52e741)中的真实片段，忽左忽右 #502）*：
 
-1. **Deploy to Cloudflare** *(一键部署模板，草案 / 待实测验证)*：
-   正式按钮须在独立账号完成首次部署验证后才会放到 README。
-   > [!NOTE]
-   > 一键部署模板已完成代码与配置准备，当前处于草案阶段，等待在全新 Cloudflare 账号中完成全流程实测验证后再正式对外推荐。测试时请务必填写 `CONTROL_AUTH_USER` 与 `CONTROL_AUTH_PASSWORD` 以保护控制面。
-2. **`npm run setup`** *(推荐生产使用：自定义域名、Cloudflare Access 与 Tunnel)*：
-   交互式幂等初始化脚本，自动创建资源并打印 Zero Trust 配置清单。详见[部署指南](docs/DEPLOYMENT.md#2-cloudflare-application)。
-3. **Docker**：
-   完全本地路径，使用本机算力与本地文件存储。详见 [Docker 路径](docs/DEPLOYMENT.md#7-local-docker-deployment)。
+```markdown
+## 02 | 超级工程的三大先决条件
 
-## 本地试用
+**刘怡**：说到航天飞机这个项目，首先需要回溯到它的前身，就是大家应该都知道的美国载人登月的阿波罗计划。……
+他提了一个很有意思的视角：所有我们所认为的工程学上的超级项目，要想成功几乎都依赖三项先决条件——
+第一，稳定的政治承诺；第二，有保障的资金支持；第三，清晰的阶段性目标。
+```
+
+*上面的成稿片段保留原文，未作改写。*
+
+这期 63 分钟的节目，最终成稿约 1.7 万字：开头是带时间戳的大纲，正文分六个小节，两位说话人都标出了真名。篇幅有硬性检查：默认情况下，成稿不足转写稿 70% 长度就过不了质量门禁，不会发布。在线体验里都是中文节目；英文节目会使用英文编辑指令整理。
+
+## 示例稿件
+
+在线体验是维护者自己的实例，对访客只读开放（想生成新稿件，请部署你自己的一份）。可以先读几篇完整成稿：
+
+- [宇宙超级工程是如何垮掉的：刘怡谈「挑战者号」事故四十周年](https://read-podcast.xielevi.cc/a/26b88d3a-3b60-430d-b709-7d36ed52e741) — 忽左忽右 · 63 分钟 · 两位说话人，6 个小节
+- [袁长庚×胡安焉：脏活与狗屁工作，谁在工位追问意义？](https://read-podcast.xielevi.cc/a/8c2652d0-99b6-4985-9c65-9e5ba766b7e6) — 上海书评 · 80 分钟 · 三位说话人，11 个小节
+- [对话经济学家朱宁：1929之后，我们学会避免下一场经济危机了吗？](https://read-podcast.xielevi.cc/a/6a85212f-236c-577d-a554-a8375452e068) — 知行小酒馆 · 73 分钟 · 两位说话人，12 个小节
+
+<p align="center">
+  <img src="docs/assets/readme/library.webp" alt="Read Podcast 的订阅与稿件工作区" width="920">
+</p>
+
+## 功能
+
+- **订阅或导入**：在 Apple Podcasts 中搜索节目、粘贴任意 RSS 地址，或上传自己的音频（最多 200 MiB）。
+- **处理哪一集由你决定**：逐集手动开始生成，新单集不会自动处理。关掉浏览器，任务照样继续。
+- **整理成长稿，而不是摘要**：标注说话人（简介里有名字就用真名）、分章节、生成带时间戳的大纲；删掉重复，保留论证和例子。你填写的自定义指令优先。
+- **为长文设计的阅读器**：目录导航、排版设置，关键概念按阅读界面语言链接到维基百科。
+- **中英双语**：界面可切换中文和英文；编辑指令跟随音频内容的语言。
+- **Markdown 归你所有**：每篇稿件都是带 YAML front matter 的 Markdown 文件，Cloudflare 部署存进你的 GitHub 仓库，Docker 部署存进本地目录，可直接放进 Obsidian。阅读器里也能下载任意一篇。
+- **公开只读浏览**：访客在 `/` 可以浏览订阅和已发布稿件；所有会改变状态的操作都在 `/manage` 之下。
+- **自托管，模型自选**：部署在 Cloudflare Workers 或单台 Docker 主机；转写可用本地 Whisper（Apple Silicon 上的 MLX、Docker 内的 Faster-Whisper）、OpenAI 兼容的上传代理或百炼 DashScope；整理可用任意 OpenAI 兼容的 LLM API。
+
+## 横向对比
+
+按产品类别比较，具体产品各有差异。
+
+| | 播客 App 内置 AI 摘要 | 转写服务 | 划线 / 笔记类 App | **Read Podcast** |
+|---|---|---|---|---|
+| 得到什么 | 简短回顾或章节要点 | 逐字转写稿 | 你标记片段的剪辑与笔记 | 经过整理的完整长稿 |
+| 对论证的保留 | 只有结论，推理很少 | 全部保留，连同口头禅和说错重来 | 只有你划过的部分 | 保留推理和例子；默认不少于转写稿 70% 篇幅 |
+| 文字存在哪里 | App 内部 | 你导出的文件 | App 内，可导出 | 你的 GitHub 仓库或本地目录里的 Markdown |
+| 能否自托管 | 不能 | 通常只有托管服务 | 一般不能 | 可以——Cloudflare 或 Docker，MIT 许可 |
+| 费用模式 | 随 App 或其订阅附带 | 按分钟或订阅计费 | 免费增值或订阅 | 自己的托管费用加 LLM 用量；本地转写不产生 API 费用 |
+| 上手成本 | 无 | 无 | 无 | 需要自己部署，并准备 LLM API key |
+
+## 快速开始
+
+### Docker：最快的路径
+
+需要 Docker 和任意 OpenAI 兼容 LLM 的 API key。转写在自带的 Faster-Whisper 容器里本地运行，成稿保存在 `./manuscripts`。
+
+```bash
+git clone https://github.com/xielevi/read-podcast.git && cd read-podcast
+cp .env.example .env              # 填入 REFINER_API_KEY
+docker compose up -d
+```
+
+打开 `http://127.0.0.1:3000/manage`，在 **设置 → 高级设置** 中填写服务商的 API 地址和模型。端口只绑定本机；如需对外开放，请先设置 `CONTROL_AUTH_USER` / `CONTROL_AUTH_PASSWORD`。详见 [Docker 路径](docs/DEPLOYMENT.md#7-local-docker-deployment)。
+
+### Cloudflare：部署在边缘的阅读站
+
+运行在 Workers、D1、Workflows 和 R2 上，稿件发布到你自己的 GitHub 仓库。需要一个托管在 Cloudflare 的域名、一个转写后端（通过 Tunnel 接入的自建[转写服务](docs/DEPLOYMENT.md#3-transcription-service)，或[百炼 DashScope](docs/DEPLOYMENT.md#4-cloud-transcription-dashscope-paraformer)），以及 LLM API key。
+
+```bash
+npm install
+npm run setup                     # 幂等：创建 D1/R2、交互录入密钥、打印 Access 配置清单
+```
+
+然后按 [Cloudflare 部署指南](docs/DEPLOYMENT.md#2-cloudflare-application)完成 Access、Tunnel 和部署。一键 **Deploy to Cloudflare** 模板正在评审中，须在全新账号完成部署验证后才会把按钮放到这里（[剩余检查项](docs/DEPLOYMENT.md#deploy-to-cloudflare-template-one-click-deployment)）。
+
+维护者在 Workers Free 上运行 Cloudflare 版，但这不能证明所有工作负载都有充足的 CPU、子请求或 Workflow 余量。请按自己的用量核对 [Free 计划限制](docs/DEPLOYMENT.md#resource-names-and-free-plan-boundary-checks)；LLM 和云端转写可能另行计费。
+
+### 安全边界
+
+这是单主人工作区。`/` 默认公开；如果订阅和稿件也要保密，请保护整个域名。在 Cloudflare 上，`/manage*` 和 `/api/control/*` **必须**受保护：自定义域名用 Cloudflare Access，workers.dev 用 Basic Auth；workers.dev 上未配置 Basic Auth 凭据时，控制面会拒绝所有请求。Docker 默认只绑定本机，可选启用 Basic Auth。详见[部署指南](docs/DEPLOYMENT.md)和[安全策略](.github/SECURITY.md)。
+
+## 路线图
+
+开发中，尚未发布：
+
+- **速览卡片**：在每篇稿件顶部提供简短 TL;DR，全文照旧保留。
+- **RSS 输出**：用任意 RSS 阅读器订阅你发布的稿件。
+- **Deploy to Cloudflare 按钮**：等待全新账号验证。
+
+## 文档
+
+- [部署指南](docs/DEPLOYMENT.md)：初始化、凭据、安全边界、冒烟测试和 Free 限制
+- [架构](docs/ARCHITECTURE.md)：任务生命周期、检查点与稿件存储
+- [升级指南](docs/UPGRADING.md)：备份和数据库迁移
+- [更新记录](CHANGELOG.md)
+
+## 参与贡献
+
+欢迎提 issue 和 PR。请先阅读[贡献指南](.github/CONTRIBUTING.md)，安全问题请按[安全策略](.github/SECURITY.md)报告。在本地开发 Worker：
 
 ```bash
 npm install
@@ -59,13 +139,8 @@ npm run db:migrate:local
 npm run dev                       # http://localhost:8787，管理界面在 /manage
 ```
 
-本地开发没有 Access 保护。要实际生成稿件，还需在 `.dev.vars` 配好转写服务、LLM key 和 GitHub 稿件仓库。示例配置指向本机 `http://127.0.0.1:28100` 的转写服务；正式部署步骤见[部署指南](docs/DEPLOYMENT.md)。如果希望单机运行，可直接走 [Docker 路径](docs/DEPLOYMENT.md#7-local-docker-deployment)。
+本地开发没有 Access 保护。要实际生成稿件，还需在 `.dev.vars` 配好转写服务、LLM key 和 GitHub 稿件仓库；示例配置指向本机 `http://127.0.0.1:28100` 的转写服务。
 
-## 继续阅读
+如果 Read Podcast 帮你省下了一次重听，**在 GitHub 上点个 ⭐**，能让更多人发现它。
 
-- [部署指南](docs/DEPLOYMENT.md)：初始化、凭据、安全边界、冒烟测试和 Free 限制
-- [架构](docs/ARCHITECTURE.md)：任务生命周期、检查点与稿件存储
-- [升级指南](docs/UPGRADING.md)：备份和数据库迁移
-- [参与开发](.github/CONTRIBUTING.md) · [安全报告](.github/SECURITY.md) · [更新记录](CHANGELOG.md)
-
-早期的 Python/macOS 桌面版代码保存在 [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python)。v1.0 是支持 Cloudflare 与 Docker 部署的 TypeScript 网页应用。[MIT 许可证](LICENSE)。
+早期的 Python/macOS 桌面版代码保存在 [`legacy/python`](https://github.com/xielevi/read-podcast/tree/legacy/python)；v1.0 是支持 Cloudflare 与 Docker 部署的 TypeScript 网页应用。[MIT 许可证](LICENSE)。
