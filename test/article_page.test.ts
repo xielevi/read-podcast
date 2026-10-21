@@ -4,6 +4,7 @@
  *   /a/<task_id>  已发布稿件页：SPA 外壳 + 服务端注入的 head（全部转义）与 noscript 正文；
  *                 重新生成后的旧 task_id 301 到当前稿件，未发布 / 未知一律 404，不泄露任务状态；
  *   /sitemap.xml  首页 + 全部已发布稿件页，lastmod = articles.updated_at；
+ *   /feed.xml     最近稿件的 Atom feed，条目正文是导读（brief），不读 Store；
  *   /robots.txt   允许 / 与 /a/，禁止 /manage 与 /api/control/。
  *
  * 与 /api/public/* 同一组只读保证：只接受 GET / HEAD，不写任何状态，不暴露 Store 路径 / commit。
@@ -164,7 +165,7 @@ describe("GET /a/<task_id> —— 已发布稿件的永久链接", () => {
     expect(head.status).toBe(200);
     expect(await head.text()).toBe("");
     for (const method of ["POST", "PUT", "DELETE"]) {
-      for (const path of [`/a/${CURRENT}`, "/sitemap.xml", "/robots.txt"]) {
+      for (const path of [`/a/${CURRENT}`, "/sitemap.xml", "/feed.xml", "/robots.txt"]) {
         expect((await call(path, method)).status, `${method} ${path}`).toBe(405);
       }
     }
@@ -172,7 +173,62 @@ describe("GET /a/<task_id> —— 已发布稿件的永久链接", () => {
     await call(`/a/${REGENERATED}`);
     await call(`/a/${RUNNING}`);
     await call("/sitemap.xml");
+    await call("/feed.xml");
     expect(stateSnapshot(cloud)).toEqual(before);
+  });
+});
+
+describe("GET /feed.xml", () => {
+  const BRIEF = JSON.stringify({
+    version: 1,
+    tldr: "康熙两次废储<背后>是皇权与储君的结构性冲突。",
+    key_points: ["要点一", "要点二", "要点三"],
+    quotes: [{ speaker: "主持人", text: "今天我们聊聊康熙" }],
+    audience: "关心清史的读者",
+    sections: [],
+    reading_minutes: 12,
+  });
+
+  it("按发布时间倒序列出已发布稿件，正文是转义后的导读，链接指向稿件页", async () => {
+    cloud.d1.raw.prepare("UPDATE articles SET brief = ? WHERE task_id = ?").run(BRIEF, CURRENT);
+    const fetched: string[] = [];
+    const inner = cloud.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      fetched.push(String(input instanceof Request ? input.url : input));
+      return inner(input, init);
+    }) as typeof fetch;
+    const res = await call("/feed.xml");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toContain("application/atom+xml");
+    const xml = await res.text();
+    expect(xml).toContain('<feed xmlns="http://www.w3.org/2005/Atom">');
+    expect(xml).toContain('<link rel="self" type="application/atom+xml" href="https://app.test/feed.xml"/>');
+    expect(xml.indexOf(`/a/${CURRENT}`)).toBeLessThan(xml.indexOf(`/a/${UPLOAD}`));
+    expect(xml.match(/<entry>/g)).toHaveLength(2);
+    expect(xml).toContain("<updated>2026-05-20T08:00:00.000Z</updated>");
+    // 标题与导读都经过转义：原始 <script> / <背后> 不会出现在 XML 里。
+    expect(xml).not.toContain("<script>");
+    expect(xml).not.toContain("<背后>");
+    expect(xml).toContain("&lt;背后&gt;");
+    expect(xml).toContain("要点二");
+    expect(xml).toContain("阅读全文（约 12 分钟）");
+    for (const id of [REGENERATED, RUNNING]) expect(xml).not.toContain(id);
+    for (const secret of [CONTENT_PATH, COMMIT, "secret-feed-token", "secret-cover-token"]) expect(xml).not.toContain(secret);
+    // feed 只读 D1，不读 Store。
+    expect(fetched).toEqual([]);
+  });
+
+  it("稿件页的 meta description 优先使用导读的 tldr", async () => {
+    cloud.d1.raw.prepare("UPDATE articles SET brief = ? WHERE task_id = ?").run(BRIEF, CURRENT);
+    const html = await (await call(`/a/${CURRENT}`)).text();
+    expect(html).toContain('<meta name="description" content="康熙两次废储&lt;背后&gt;是皇权与储君的结构性冲突。">');
+  });
+
+  it("没有导读的旧稿件只给标题、节目名与链接", async () => {
+    const xml = await (await call("/feed.xml")).text();
+    expect(xml).toContain("<summary>忽左忽右</summary>");
+    expect(xml).toContain("<summary>Read Podcast</summary>");
+    expect(xml).not.toContain("要点");
   });
 });
 

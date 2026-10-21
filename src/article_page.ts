@@ -1,10 +1,12 @@
 import { publishedMarkdown } from "./public";
+import { parseStoredBrief, type ArticleBrief } from "./refinement/brief";
 import type { Env } from "./types";
 
 // Public Browse Mode 的页面路由（不是 API）：每篇已发布稿件的永久链接与爬虫入口。
 //   /a/<task_id>  稿件页：SPA 的 index.html + 服务端注入的 <head>（标题、描述、canonical、
 //                 Open Graph / Twitter card）与 <noscript> 正文，供分享预览与搜索引擎抓取；
 //   /sitemap.xml  首页与全部已发布稿件页；
+//   /feed.xml     最近发布稿件的 Atom feed：条目正文是导读（brief），链接回稿件页；
 //   /robots.txt   允许 / 与 /a/，禁止 /manage 与 /api/control/。
 // 与 /api/public/* 同一组只读保证：只接受 GET / HEAD，不写 D1 / R2，只暴露已发布稿件
 // （articles 表中存在）的白名单字段；Store 路径与 commit 永不出现在响应中，也不泄露任务状态。
@@ -13,6 +15,7 @@ import type { Env } from "./types";
 const SITE_NAME = "Read Podcast";
 const DESCRIPTION_LENGTH = 160;
 const SITEMAP_LIMIT = 50000;
+const FEED_LIMIT = 30;
 const ARTICLE_PATH = /^\/a(?:\/([^/]*))?\/?$/;
 const TASK_ID = /^[0-9a-f-]{1,64}$/i;
 
@@ -24,6 +27,7 @@ interface ArticlePageRow {
   commit_sha: string;
   created_at: string;
   updated_at: string;
+  brief: string | null;
 }
 
 /** 公共页面路由：命中返回响应，否则 null（交给后续路由 / 静态资源）。 */
@@ -31,12 +35,13 @@ export async function routePublicPage(request: Request, env: Env): Promise<Respo
   const url = new URL(request.url);
   const path = url.pathname;
   const article = path.match(ARTICLE_PATH);
-  if (!article && path !== "/sitemap.xml" && path !== "/robots.txt") return null;
+  if (!article && path !== "/sitemap.xml" && path !== "/feed.xml" && path !== "/robots.txt") return null;
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method Not Allowed", { status: 405, headers: { allow: "GET, HEAD" } });
   }
   const response = article ? await articlePage(article[1] ?? "", url, env)
     : path === "/sitemap.xml" ? await sitemap(url, env)
+    : path === "/feed.xml" ? await feed(url, env)
     : robots(url);
   return request.method === "HEAD" ? new Response(null, { status: response.status, headers: response.headers }) : response;
 }
@@ -54,7 +59,7 @@ async function articlePage(rawId: string, url: URL, env: Env): Promise<Response>
   if (!TASK_ID.test(taskId)) return notFoundPage(url, env);
 
   const row = await env.db.prepare(
-    "SELECT task_id, title, podcast_name, content_path, commit_sha, created_at, updated_at FROM articles WHERE task_id = ?",
+    "SELECT task_id, title, podcast_name, content_path, commit_sha, created_at, updated_at, brief FROM articles WHERE task_id = ?",
   ).bind(taskId).first<ArticlePageRow>();
 
   if (!row) {
@@ -85,7 +90,7 @@ async function articlePage(rawId: string, url: URL, env: Env): Promise<Response>
 
   const canonical = `${url.origin}${articlePath(row.task_id)}`;
   const title = row.title.trim() || SITE_NAME;
-  const description = articleDescription({ markdown }) || [row.podcast_name, SITE_NAME].filter(Boolean).join(" · ");
+  const description = articleDescription({ markdown, brief: parseStoredBrief(row.brief)?.tldr }) || [row.podcast_name, SITE_NAME].filter(Boolean).join(" · ");
   const image = hasArtwork ? `${url.origin}/api/public/artwork?podcast=${encodeURIComponent(row.podcast_name)}` : "";
 
   const meta = [
@@ -246,6 +251,79 @@ async function sitemap(url: URL, env: Env): Promise<Response> {
   }
   const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries.join("\n")}\n</urlset>\n`;
   return new Response(xml, { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" } });
+}
+
+// ── Atom feed ──
+// 只读 D1（articles.title / podcast_name / brief / 时间），不读 Store：条目正文就是导读，
+// 没有导读的旧稿件只给标题与节目名，读者点链接进稿件页读全文。
+
+interface FeedRow {
+  task_id: string;
+  title: string;
+  podcast_name: string;
+  created_at: string;
+  updated_at: string;
+  brief: string | null;
+}
+
+const FEED_LABELS = {
+  zh: { keyPoints: "要点", audience: "适合谁读：", readFull: (minutes: number) => minutes ? `阅读全文（约 ${minutes} 分钟）` : "阅读全文" },
+  en: { keyPoints: "Key points", audience: "Who should read: ", readFull: (minutes: number) => minutes ? `Read the full text (~${minutes} min)` : "Read the full text" },
+};
+
+async function feed(url: URL, env: Env): Promise<Response> {
+  const rows = await env.db.prepare(
+    "SELECT task_id, title, podcast_name, created_at, updated_at, brief FROM articles ORDER BY created_at DESC LIMIT ?",
+  ).bind(FEED_LIMIT).all<FeedRow>();
+  const selfUrl = `${url.origin}/feed.xml`;
+  const updated = rows.results.reduce((latest, row) => row.updated_at > latest ? row.updated_at : latest, "1970-01-01T00:00:00.000Z");
+  const entries = rows.results.map((row) => {
+    const link = `${url.origin}${articlePath(row.task_id)}`;
+    const brief = parseStoredBrief(row.brief);
+    const summary = brief?.tldr || row.podcast_name || SITE_NAME;
+    return [
+      "  <entry>",
+      `    <id>${escapeHtml(link)}</id>`,
+      `    <title>${escapeHtml(row.title.trim() || SITE_NAME)}</title>`,
+      `    <link rel="alternate" type="text/html" href="${escapeHtml(link)}"/>`,
+      `    <published>${escapeHtml(row.created_at)}</published>`,
+      `    <updated>${escapeHtml(row.updated_at)}</updated>`,
+      row.podcast_name ? `    <author><name>${escapeHtml(row.podcast_name)}</name></author>` : "",
+      `    <summary>${escapeHtml(summary)}</summary>`,
+      `    <content type="html">${escapeHtml(feedEntryHtml(row, brief, link))}</content>`,
+      "  </entry>",
+    ].filter(Boolean).join("\n");
+  });
+  const xml = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<feed xmlns="http://www.w3.org/2005/Atom">',
+    `  <id>${escapeHtml(selfUrl)}</id>`,
+    `  <title>${SITE_NAME}</title>`,
+    `  <link rel="self" type="application/atom+xml" href="${escapeHtml(selfUrl)}"/>`,
+    `  <link rel="alternate" type="text/html" href="${escapeHtml(`${url.origin}/`)}"/>`,
+    `  <updated>${escapeHtml(updated)}</updated>`,
+    ...entries,
+    "</feed>",
+    "",
+  ].join("\n");
+  return new Response(xml, { headers: { "content-type": "application/atom+xml; charset=utf-8", "cache-control": "public, max-age=900" } });
+}
+
+/** 条目正文（HTML，随后整体转义进 <content type="html">）：导读卡的纯文本版 + 回到稿件页的链接。 */
+function feedEntryHtml(row: FeedRow, brief: ArticleBrief | null, link: string): string {
+  const labels = /[\u3400-\u9fff]/.test(`${row.title}${brief?.tldr ?? ""}`) ? FEED_LABELS.zh : FEED_LABELS.en;
+  const parts: string[] = [];
+  if (row.podcast_name) parts.push(`<p><em>${escapeHtml(row.podcast_name)}</em></p>`);
+  if (brief) {
+    parts.push(`<p>${escapeHtml(brief.tldr)}</p>`);
+    parts.push(`<p><strong>${labels.keyPoints}</strong></p><ul>${brief.key_points.map(point => `<li>${escapeHtml(point)}</li>`).join("")}</ul>`);
+    for (const quote of brief.quotes) {
+      parts.push(`<blockquote><p>${escapeHtml(quote.text)}</p><p>— ${escapeHtml(quote.speaker)}</p></blockquote>`);
+    }
+    if (brief.audience) parts.push(`<p><strong>${labels.audience}</strong>${escapeHtml(brief.audience)}</p>`);
+  }
+  parts.push(`<p><a href="${escapeHtml(link)}">${escapeHtml(labels.readFull(brief?.reading_minutes ?? 0))}</a></p>`);
+  return parts.join("");
 }
 
 function robots(url: URL): Response {

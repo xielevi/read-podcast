@@ -163,7 +163,7 @@ Cloudflare Access can enforce the boundary before a request reaches the applicat
 
 | Mode | Pages | API | Who |
 |---|---|---|---|
-| **Public Browse Mode** | `/`, `/a/<task_id>`, `/sitemap.xml`, `/robots.txt` | `/api/public/*` | anyone |
+| **Public Browse Mode** | `/`, `/a/<task_id>`, `/sitemap.xml`, `/feed.xml`, `/robots.txt` | `/api/public/*` | anyone |
 | **Authenticated Control Mode** | `/manage*` | `/api/control/*` | the owner, through Cloudflare Access |
 
 - Both modes render the same workspace (subscriptions, import, manuscripts, episode
@@ -204,8 +204,10 @@ Cloudflare Access can enforce the boundary before a request reaches the applicat
   the control plane; a subscription is exposed only as its name, its feed host and whether it
   has a cover.
 - Every published manuscript has a permanent, crawlable URL `/a/<task_id>`. Together with
-  `/sitemap.xml` (`/` and every published `/a/<task_id>`, `lastmod` = `articles.updated_at`) and
-  `/robots.txt` (allows `/` and `/a/`, disallows `/manage` and `/api/control/`), these are
+  `/sitemap.xml` (`/` and every published `/a/<task_id>`, `lastmod` = `articles.updated_at`),
+  `/feed.xml` (Atom feed of the 30 most recent articles; each entry is the article's brief from
+  D1 with a link to `/a/<task_id>` — the feed never reads the Store, so articles without a brief
+  carry only title and podcast) and `/robots.txt` (allows `/` and `/a/`, disallows `/manage` and `/api/control/`), these are
   public **pages**, not APIs: HTML / XML / text served by the Worker on both platforms
   (`src/article_page.ts`; on Cloudflare they are listed in `run_worker_first`), under the same
   guarantees as `/api/public/*` — `GET`/`HEAD` only, no writes, only published articles, allowlist

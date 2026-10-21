@@ -63,10 +63,12 @@ Read full results on the live demo, the maintainer's own instance, open read-onl
 - **Subscribe or import** — find shows on Apple Podcasts, paste any RSS URL, or upload your own audio (up to 200 MiB).
 - **You choose what gets processed** — generation starts per episode; new episodes are never processed automatically. Close the browser and the job keeps running.
 - **Long-form editing, not summarising** — speaker labels (real names when the show notes give them), titled sections and a timestamped outline; repetition removed, arguments and examples kept. Custom editorial instructions take precedence.
+- **Three-minute brief first** — each new manuscript gets a best-effort brief (TL;DR, key points, verbatim quotes, who should read on, reading time) and a one-line summary under each section, so you can decide before committing to the full text.
 - **A reader built for long text** — outline navigation, reading settings, and key concepts linked to Wikipedia in the reader's language.
 - **Chinese and English** — the UI speaks both; editorial prompts follow the episode's spoken language.
 - **Markdown you own** — each manuscript is a Markdown file with YAML front matter in your GitHub repository (Cloudflare) or a local folder ready for Obsidian (Docker). Download any piece from the reader.
 - **Public read-only browsing** — visitors at `/` can browse subscriptions and published manuscripts; everything that changes state lives under `/manage`.
+- **Shareable and followable** — every manuscript has a permanent link at `/a/<id>` with link previews; `/feed.xml` is an Atom feed of new manuscripts with their briefs, for any feed reader.
 - **Self-hosted, bring your own models** — Cloudflare Workers or a single Docker host; transcription with local Whisper (MLX on Apple Silicon, Faster-Whisper in Docker), an OpenAI-compatible upload proxy, or DashScope; editing with any OpenAI-compatible LLM API.
 
 ## How it compares
@@ -117,8 +119,6 @@ This is a single-owner workspace. Reading at `/` is public by default; protect t
 
 In development, not yet released:
 
-- **Brief card** — a short TL;DR at the top of each manuscript, alongside the full text.
-- **RSS output feed** — follow your published manuscripts in any feed reader.
 - **Deploy to Cloudflare button** — pending fresh-account validation.
 
 ## Documentation
