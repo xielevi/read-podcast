@@ -160,7 +160,7 @@ export function computeReadingMinutes(markdown: string): number {
   const sample = clean.slice(0, 20000);
   const cjk = (sample.match(/[一-龥㐀-䶿豈-﫿]/g) ?? []).length;
   const latin = (sample.match(/[a-zA-Z]/g) ?? []).length;
-  const isCjk = cjk >= 20 || (cjk > 0 && cjk >= latin * 0.1);
+  const isCjk = cjk > 0 && cjk >= latin * 0.1;
   if (isCjk) return Math.max(1, Math.round(clean.replace(/\s+/g, "").length / CJK_CHARS_PER_MINUTE));
   return Math.max(1, Math.round(clean.split(/\s+/).filter(Boolean).length / WORDS_PER_MINUTE));
 }

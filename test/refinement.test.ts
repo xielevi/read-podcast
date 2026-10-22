@@ -27,6 +27,7 @@ import {
   extractMarkdown,
   isReasoningModel,
   usesOpencodeSession,
+  OUTPUT_LANGUAGE_LOCK,
 } from "../src/refinement/refiner";
 import { countMeaningfulChars, verifyRefinementQuality } from "../src/refinement/quality";
 import { formatLocalTimestamp, formatMarkdown, manuscriptTimeZone, stripLeadingFrontmatter } from "../src/refinement/formatter";
@@ -202,10 +203,10 @@ describe("refiner: extractMarkdown / prompt 组装", () => {
     expect(prompt).toContain("严禁摘要");
 
     const custom = buildRefinePrompt("某期节目简介", "自定义 {summary} 模板");
-    expect(custom).toBe("自定义 某期节目简介 模板");
+    expect(custom).toBe(`自定义 某期节目简介 模板\n\n${OUTPUT_LANGUAGE_LOCK.zh}`);
 
     const customNoPlaceholder = buildRefinePrompt("某期节目简介", "固定模板");
-    expect(customNoPlaceholder).toBe("固定模板");
+    expect(customNoPlaceholder).toBe(`固定模板\n\n${OUTPUT_LANGUAGE_LOCK.zh}`);
 
     const fallback = buildRefinePrompt("简介", null, "");
     expect(fallback).toBe("节目简介: 简介");

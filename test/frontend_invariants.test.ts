@@ -476,7 +476,9 @@ title: 袁长庚×胡安焉
       expect(JS_CORE).toContain("function readApiResponse(response)");
     });
 
-    function loadReadApiResponse(): (response: Response) => Promise<unknown> {
+    function loadReadApiResponse(
+      localizeApiError: (code: unknown, message: unknown) => unknown = (_code, message) => message,
+    ): (response: Response) => Promise<unknown> {
       const start = JS_CORE.indexOf("function readApiResponse(response) {");
       let depth = 0;
       let end = start;
@@ -487,8 +489,14 @@ title: 袁长庚×胡安焉
           break;
         }
       }
-      return new Function(`${JS_CORE.slice(start, end)}; return readApiResponse;`)();
+      return new Function("localizeApiError", `${JS_CORE.slice(start, end)}; return readApiResponse;`)(localizeApiError);
     }
+
+    it("readApiResponse：错误文案经 localizeApiError(code, message) 本地化", async () => {
+      const readApiResponse = loadReadApiResponse((code, message) => (code === "already_processed" ? "localized" : message));
+      const conflict = new Response(JSON.stringify({ error: { code: "already_processed", message: "该节目已转录完成" } }), { status: 409 });
+      await expect(readApiResponse(conflict)).rejects.toMatchObject({ message: "localized", status: 409 });
+    });
 
     it("readApiResponse：失败时抛出服务端 error.message 并带 status；204 空 body 视为成功", async () => {
       const readApiResponse = loadReadApiResponse();
@@ -630,7 +638,7 @@ title: 袁长庚×胡安焉
       expect(win.t("stage.finalizing")).toBe("Saving");
       expect(win.t("tasks.title")).toBe("Tasks");
       expect(win.t("tasks.processing_count", 2)).toBe("Processing 2");
-      expect(win.t("tasks.attention_count", 3)).toBe("3 task(s) require attention");
+      expect(win.t("tasks.attention_count", 3)).toBe("3 task(s) need attention");
 
       // Simulate a running task
       win.setTaskStatus("downloading", 20, "task-1", "Test Episode");
@@ -826,11 +834,13 @@ This is an English podcast transcript discussing distributed systems, edge compu
       // Should calculate character count (~3600), not ~15 words!
       expect(statsEl?.textContent).toContain("characters");
       expect(statsEl?.textContent).not.toContain("words");
+      expect(dom.window.document.getElementById("manuscript-body")?.getAttribute("lang")).toBe("zh-CN");
 
       // Case B: English UI + English manuscript
       win.updateReaderStats(englishManuscript);
       expect(statsEl?.textContent).toContain("words");
       expect(statsEl?.textContent).not.toContain("characters");
+      expect(dom.window.document.getElementById("manuscript-body")?.getAttribute("lang")).toBe("en");
 
       // Case C: Chinese UI + Chinese manuscript
       win.applyLocale("zh");
@@ -970,5 +980,124 @@ describe("稿件导读（渐进式阅读）", () => {
       expect(JS_I18N.split(`'${key}':`).length - 1, key).toBe(2);
     }
     expect(CSS).toMatch(/\.manuscript-body \.reader-brief \{[^}]*background: var\(--reader-chrome\);[^}]*backdrop-filter: var\(--glass-blur\);/);
+  });
+});
+
+describe("Locale: browser default, manual switch and persistence", () => {
+  function boot(url: string, options: { languages?: string[]; language?: string; saved?: string; cloudLocale?: string | null } = {}) {
+    const puts: string[] = [];
+    const dom = new JSDOM(HTML, {
+      url,
+      runScripts: "dangerously",
+      pretendToBeVisual: true,
+      virtualConsole: new VirtualConsole(),
+      beforeParse(window) {
+        Object.defineProperty(window.navigator, "languages", { value: options.languages ?? [], configurable: true });
+        Object.defineProperty(window.navigator, "language", { value: options.language ?? "", configurable: true });
+        if (options.saved) window.localStorage.setItem("app_locale", options.saved);
+        (window as unknown as { fetch: typeof fetch }).fetch = ((input: string, init?: { method?: string; body?: string }) => {
+          if (init?.method === "PUT") puts.push(String(init.body));
+          const body = String(input).endsWith("/preferences") ? { locale: options.cloudLocale ?? null } : [];
+          return Promise.resolve({ ok: true, json: () => Promise.resolve(body) });
+        }) as unknown as typeof fetch;
+      },
+    });
+    const inlineLocale = dom.window.document.documentElement.dataset.locale;
+    const script = dom.window.document.createElement("script");
+    script.textContent = BUNDLE;
+    dom.window.document.body.appendChild(script);
+    const win = dom.window as unknown as {
+      getLocale: () => string;
+      setLocale: (locale: string, persist?: boolean) => void;
+      detectBrowserLocale: (nav: unknown) => string;
+    };
+    return { dom, win, inlineLocale, puts };
+  }
+
+  it("picks the first Chinese or English tag from navigator.languages, defaulting to English", () => {
+    const { win } = boot("https://example.com/");
+    expect(win.detectBrowserLocale({ languages: ["fr-FR", "zh-TW", "en-US"] })).toBe("zh");
+    expect(win.detectBrowserLocale({ languages: ["de-DE", "en-GB", "zh-CN"] })).toBe("en");
+    expect(win.detectBrowserLocale({ languages: ["ja-JP"], language: "ja-JP" })).toBe("en");
+    expect(win.detectBrowserLocale({ language: "zh_CN" })).toBe("zh");
+    expect(win.detectBrowserLocale(null)).toBe("en");
+  });
+
+  it("first paint (inline script) and the bundle agree on the browser default", () => {
+    for (const [languages, expected] of [[["fr-FR", "zh-HK"], "zh"], [["en-US"], "en"], [["ko-KR"], "en"]] as const) {
+      const { win, inlineLocale, dom } = boot("https://example.com/", { languages: [...languages] });
+      expect(inlineLocale).toBe(expected);
+      expect(win.getLocale()).toBe(expected);
+      expect(dom.window.document.documentElement.lang).toBe(expected === "zh" ? "zh-CN" : "en");
+    }
+  });
+
+  it("a saved manual choice beats the browser language on first paint and in the bundle", () => {
+    const { win, inlineLocale } = boot("https://example.com/", { languages: ["zh-CN"], saved: "en" });
+    expect(inlineLocale).toBe("en");
+    expect(win.getLocale()).toBe("en");
+  });
+
+  it("on the public site the switch persists to localStorage", () => {
+    const { win, dom, puts } = boot("https://example.com/", { languages: ["zh-CN"] });
+    win.setLocale("en", true);
+    expect(dom.window.localStorage.getItem("app_locale")).toBe("en");
+    expect(puts).toEqual([]);
+  });
+
+  it("in /manage the switch syncs to D1 and is mirrored locally for the next first paint", async () => {
+    const { win, dom, puts } = boot("https://example.com/manage", { languages: ["zh-CN"] });
+    win.setLocale("en", true);
+    expect(dom.window.localStorage.getItem("app_locale")).toBe("en");
+    await new Promise(resolve => setTimeout(resolve, 300));
+    expect(puts.some(body => JSON.parse(body).locale === "en")).toBe(true);
+  });
+
+  it("in /manage a saved owner locale from D1 wins and is mirrored locally", async () => {
+    const { win, dom } = boot("https://example.com/manage", { languages: ["zh-CN"], cloudLocale: "en" });
+    await new Promise(resolve => setTimeout(resolve, 20));
+    expect(win.getLocale()).toBe("en");
+    expect(dom.window.localStorage.getItem("app_locale")).toBe("en");
+  });
+
+  it("English UI shows English text for every server error code whose message is Chinese", () => {
+    const { win } = boot("https://example.com/manage", { languages: ["en-US"] });
+    const w = win as unknown as { localizeApiError: (code: string, message: string) => string; applyLocale: (l: string) => void };
+    const sources = readdirSync(resolve(ROOT, "src"), { recursive: true })
+      .map(String)
+      .filter(name => name.endsWith(".ts"))
+      .map(name => readFileSync(resolve(ROOT, "src", name), "utf-8"))
+      .join("\n");
+    const codes = new Set(
+      [...sources.matchAll(/(?:HttpError|error)\(\d+,\s*"([a-z_]+)",\s*["`][^"`]*[一-鿿]/g)].map(m => m[1]),
+    );
+    expect(codes.size).toBeGreaterThan(10);
+    for (const code of codes) {
+      expect(w.localizeApiError(code, "中文原文"), code).not.toMatch(/[一-鿿]/);
+    }
+    expect(w.localizeApiError("some_unknown_code", "original")).toBe("original");
+    w.applyLocale("zh");
+    expect(w.localizeApiError("already_processed", "该节目已转录完成")).toBe("该节目已转录完成");
+  });
+
+  it("prompt templates follow the UI language and swap untouched content on switch", () => {
+    const { dom, win } = boot("http://localhost:8787/manage", { languages: ["en-US"] });
+    const w = win as unknown as { _promptTemplates: unknown[]; renderPromptTemplateOptions: () => void; applyLocale: (l: string) => void; applyPromptTemplate: (id: string) => void };
+    w._promptTemplates = [{ id: "clean_verbatim", name: "清洁逐字稿", description: "", content: "中文模板", content_en: "English template" }];
+    w.renderPromptTemplateOptions();
+    const select = dom.window.document.getElementById("prompt-template-select") as unknown as HTMLSelectElement;
+    const box = dom.window.document.getElementById("custom-prompt") as unknown as HTMLTextAreaElement;
+    expect(select.options[1].value).toBe("clean_verbatim");
+    select.value = "clean_verbatim";
+    w.applyPromptTemplate("clean_verbatim");
+    expect(box.value).toBe("English template");
+
+    w.applyLocale("zh");
+    expect(select.value).toBe("clean_verbatim");
+    expect(box.value).toBe("中文模板");
+
+    box.value = "中文模板 + 我的补充";
+    w.applyLocale("en");
+    expect(box.value).toBe("中文模板 + 我的补充");
   });
 });

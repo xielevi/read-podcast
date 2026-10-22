@@ -131,6 +131,10 @@
         var patch = {};
         patch[key] = value;
         syncCloudPreferences(patch);
+        // 语言同时写本机：首帧 <html lang> 由 index.html 内联脚本按它决定，公开页与 /manage 切换后保持一致。
+        if (key === 'locale') {
+          try { localStorage.setItem('app_locale', String(value)); } catch (ignore) {}
+        }
       } else {
         try {
           var map = {
@@ -155,7 +159,8 @@
           if (IS_MANAGE) {
             Object.assign(_cloudPrefs, data);
             if (data.locale && (data.locale === 'zh' || data.locale === 'en') && typeof setLocale === 'function') {
-              setLocale(data.locale, false);
+              if (data.locale !== getLocale()) setLocale(data.locale, false);
+              try { localStorage.setItem('app_locale', data.locale); } catch (ignore) {}
             }
           } else {
             // 未登录态：若本地未自定义过，则继承站长云端外观/排版默认值；
@@ -205,7 +210,8 @@
         var data = null;
         try { data = text ? JSON.parse(text) : null; } catch (ignore) { data = null; }
         if (!response.ok) {
-          var failure = new Error((data && data.error && data.error.message) || ('HTTP ' + response.status));
+          var apiError = data && data.error;
+          var failure = new Error(localizeApiError(apiError && apiError.code, apiError && apiError.message) || ('HTTP ' + response.status));
           failure.status = response.status;
           throw failure;
         }

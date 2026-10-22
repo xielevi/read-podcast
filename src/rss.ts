@@ -50,6 +50,18 @@ function textOf(node: unknown): string {
   return "";
 }
 
+/**
+ * 显示文本里的数字字符引用（WordPress 等英文 feed 常见的 &#038; / &#8217;）按 feedparser 的结果解码。
+ * 只用于标题与简介：guid / link 保持原样，否则已有单集的 source_id 会变，刷新时产生重复单集。
+ */
+export function decodeNumericEntities(text: string): string {
+  return text.replace(/&#(?:x([0-9a-f]{1,6})|([0-9]{1,7}));/gi, (match, hex: string | undefined, dec: string | undefined) => {
+    const code = hex ? parseInt(hex, 16) : Number(dec);
+    if (!Number.isInteger(code) || code <= 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff)) return match;
+    return String.fromCodePoint(code);
+  });
+}
+
 function asArray<T>(value: T | T[] | undefined): T[] {
   if (value == null) return [];
   return Array.isArray(value) ? value : [value];
@@ -152,7 +164,7 @@ export function parseFeed(xml: string, podcastName: string, minDurationSeconds =
   const episodes: Episode[] = [];
   for (const raw of items) {
     const item = raw as Record<string, unknown>;
-    const title = (textOf(item.title) || "Untitled").trim();
+    const title = (decodeNumericEntities(textOf(item.title)) || "Untitled").trim();
     const link = textOf(item.link && typeof item.link !== "object" ? item.link : "") || firstStringLink(item);
     const durationRaw = textOf(item["itunes:duration"]) || "0";
     const durationSeconds = parseDuration(durationRaw);
@@ -170,11 +182,11 @@ export function parseFeed(xml: string, podcastName: string, minDurationSeconds =
       date: dateFromPubDate(published),
       duration: durationRaw,
       duration_seconds: durationSeconds,
-      summary: pickSummary(item),
+      summary: decodeNumericEntities(pickSummary(item)),
       id: guid || link,
     });
   }
-  return { channelTitle: textOf(channel.title).trim(), channelImage: channelImage(channel), episodes };
+  return { channelTitle: decodeNumericEntities(textOf(channel.title)).trim(), channelImage: channelImage(channel), episodes };
 }
 
 // <link> 可能是字符串或（Atom）对象数组；取第一个字符串型 href/文本。
