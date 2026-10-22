@@ -114,10 +114,11 @@ export function buildChatRequest(options: ChatRequestOptions): { headers: Record
  * 自定义 Prompt 的输出语言锁：模板或补充要求可能用另一种语言写成（例如中文界面上传英文音频），
  * 末尾按转录语言补一句，避免模型跟随指令语言改写成稿语言。默认 Prompt 本身已按语言选择，不追加。
  * 内置模板先由 matchTemplateLanguage 换成转录语言版本；这句锁只兜底用户自写的指令（长篇异语指令下不保证生效）。
+ * 用户明确要求的输出语言（如“翻译成中文”）优先，锁只管“指令语言 ≠ 转录语言”这一默认情形。
  */
 export const OUTPUT_LANGUAGE_LOCK = {
-  zh: "输出语言：稿件必须使用中文（与转录稿语言一致），即使上面的要求是用其他语言写的。",
-  en: "Output language: write the manuscript in English, the language of the transcript, even if the instructions above are written in another language.",
+  zh: "输出语言：除非上面的要求明确指定了其他输出语言，稿件使用中文（与转录稿语言一致），即使要求本身是用其他语言写的。",
+  en: "Output language: unless the instructions above explicitly ask for a different output language, write the manuscript in English, the language of the transcript, even if the instructions are written in another language.",
 } as const;
 
 /** 组合精修 Prompt：任务级 custom_prompt 优先（附输出语言锁），否则使用默认杂志级 Prompt。 */
