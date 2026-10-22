@@ -57,22 +57,43 @@ your domain. The subsections below document the same steps without the script.
 
 ### Deploy to Cloudflare template (One-click deployment)
 
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/xielevi/read-podcast)
+
 The [Deploy to Cloudflare flow](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
-(and plain `npm run deploy` from a checkout) runs `scripts/deploy_community.mjs`. It deploys from a
-temporary copy of `wrangler.jsonc` with `workers_dev: true`; the checked-in config stays
-`workers_dev: false` for the custom-domain production pipeline. In order it:
+copies this repository into your GitHub account, provisions the D1 database and R2 bucket you name
+on the deploy page, and runs Workers Builds with the deploy command `npm run deploy`
+(`scripts/deploy_community.mjs`, also usable from a checkout). The script deploys from a temporary
+copy of `wrangler.jsonc` with `workers_dev: true`; the checked-in config stays `workers_dev: false`
+for the custom-domain production pipeline. In order it:
 
-1. deploys the Worker, Workflow (`<worker-name>-processing`), recovery cron and static assets — Wrangler
-   creates the D1 database and R2 bucket on first deploy;
-2. applies remote D1 migrations by the `DB` binding (before the deploy once the database exists);
-3. adds any missing R2 lifecycle rules (`raw-7d`, `refined-7d`, `uploads-1d`; warns instead of failing).
+1. applies remote D1 migrations by the `DB` binding (after the first deploy if the database does not
+   exist yet), then deploys the Worker, Workflow (`<worker-name>-processing`), recovery cron and
+   static assets;
+2. adds any missing R2 lifecycle rules (`raw-7d`, `refined-7d`, `uploads-1d`; warns instead of failing).
 
-The deploy page collects the secrets listed in `.dev.vars.example` (descriptions in
-`package.json.cloudflare.bindings`); store and transcription settings are secrets in this path, so they
-are removed from the temporary config's `vars`, and `keep_vars` preserves variables set in the
-dashboard (for example `TRANSCRIPTION_PROVIDER=dashscope` plus the `DASHSCOPE_API_KEY` secret).
-`CONTROL_AUTH_USER` / `CONTROL_AUTH_PASSWORD` protect `/manage*` and `/api/control/*` with Basic Auth;
-without them the control plane answers 401. workers.dev never falls back to Access mode.
+**Deploy page fields.** Every uncommented entry of `.dev.vars.example` becomes a required secret
+(prefilled with the example value) and every Wrangler `var` becomes a required variable; descriptions
+come from `package.json` → `cloudflare.bindings`. Fill in:
+
+| Field | What to enter |
+|---|---|
+| `CONTROL_AUTH_USER` / `CONTROL_AUTH_PASSWORD` | Basic Auth for `/manage*` and `/api/control/*`; without them the control plane answers 401 |
+| `REFINER_API_KEY` | key for your OpenAI-compatible LLM (API base and model are set later in Settings → Advanced) |
+| `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO` | fine-grained token with Contents read/write on an existing manuscript repository |
+| `TRANSCRIPTION_PROVIDER` | `self-hosted` (then `TRANSCRIPTION_SERVICE_URL`) or `dashscope` (then `DASHSCOPE_API_KEY`); leave the other one's placeholder |
+
+Variables (`APP_ENV`, `R2_BUCKET_NAME`, `GITHUB_BRANCH`, `GITHUB_PODCAST_PATH`) keep the values in
+`wrangler.jsonc`: the deploy page does not write edits to them back to the new repository, so change
+them there. `R2_BUCKET_NAME` is always set from the chosen bucket. Optional secrets are not collected:
+add `CF_ACCESS_CLIENT_ID` / `CF_ACCESS_CLIENT_SECRET` (self-hosted transcription behind Access) or the
+R2 presigning credentials afterwards with `npx wrangler secret put <NAME>` or in the dashboard.
+
+If the account already has a D1 database or R2 bucket with the default names (`read-podcast-edge`,
+`read-podcast-edge-raw`), the deploy page preselects it; choose **Create new** to keep instances
+separate. If repository creation fails with "Your GitHub authorization has expired", reinstall the
+Cloudflare Workers and Pages GitHub App as described in
+[Cloudflare's guide](https://developers.cloudflare.com/workers/ci-cd/builds/git-integration/github-integration/#reinstall-the-cloudflare-github-app).
+workers.dev never falls back to Access mode.
 
 ### D1
 
@@ -220,6 +241,23 @@ flowchart TD
    ```
 
 5. Click **Next** through additional settings (CORS and cookie settings keep default values) and click **Save application**.
+
+#### Login methods and sessions
+
+- **Identity providers.** One-time PIN works without extra setup. If you add a GitHub (or other
+  OAuth) login method, its OAuth app's callback URL must be
+  `https://<your-team-name>.cloudflareaccess.com/cdn-cgi/access/callback`. Renaming the Zero Trust
+  team domain does not update the OAuth app; GitHub then rejects the login with "The redirect_uri
+  is not associated with this application" until you update the callback URL there. Restricting
+  the application to the login methods you actually use, and enabling **Instant Auth** when only
+  one remains, skips the method picker.
+- **Other applications on the same team.** Login methods and sessions are per Access application;
+  a sibling hostname that runs its own OAuth login (not Access) does not share or affect the
+  `CF_Authorization` cookie on `your-domain.example`.
+- **Session expiry.** The workspace has no login of its own. When the Access session expires,
+  control-plane requests from an open `/manage` page fail instead of redirecting; reload `/manage`
+  to sign in again. Choose the application session duration with that in mind. The WebUI never
+  reads the Access cookie, so the **HttpOnly** cookie setting can stay enabled.
 
 | Public hostname path | Purpose |
 |---|---|

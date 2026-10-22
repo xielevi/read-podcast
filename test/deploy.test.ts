@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error 无类型声明
 import { communityConfig, communityDeploySteps } from "../scripts/deploy_community.mjs";
+// @ts-expect-error 无类型声明
+import { parseJsonc } from "../scripts/setup.mjs";
 
 const ROOT = new URL("../", import.meta.url);
 const read = (path: string) => readFileSync(new URL(path, ROOT), "utf-8");
@@ -99,9 +101,15 @@ describe("scripts/deploy.mjs", () => {
 describe("仓库不含部署者自己的值", () => {
   it("wrangler.jsonc 不写 custom domain、D1 database_id 与个人 vars", () => {
     const config = read("wrangler.jsonc");
-    for (const key of ["TRANSCRIPTION_SERVICE_URL", "GITHUB_OWNER", "GITHUB_REPO"]) {
-      expect(config).toMatch(new RegExp(`"${key}"\\s*:\\s*""`));
+    // 部署者自己的值根本不进 vars（生产 --var 注入，部署页从 .dev.vars.example 收集）：
+    // 部署页把 wrangler.jsonc 的每个 var 都设为必填，空字符串的 var 会挡住一键部署。
+    const vars = parseJsonc(config).vars as Record<string, string>;
+    // 部署页上改动的 var 不会写回新仓库，所以部署者要选的值（转录方式）也只能是 secret。
+    for (const key of ["TRANSCRIPTION_SERVICE_URL", "GITHUB_OWNER", "GITHUB_REPO", "TRANSCRIPTION_PROVIDER"]) {
+      expect(vars).not.toHaveProperty(key);
+      expect(read(".dev.vars.example")).toMatch(new RegExp(`^${key}=\\S`, "m"));
     }
+    for (const [key, value] of Object.entries(vars)) expect(value, key).not.toBe("");
     expect(config).toContain('"GITHUB_PODCAST_PATH": "podcasts/transcripts"');
     expect(config).not.toMatch(/"routes"\s*:/);
     expect(config).not.toMatch(/"database_id"\s*:/);

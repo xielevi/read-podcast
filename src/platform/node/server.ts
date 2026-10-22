@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import worker from "../../index";
 import { runMaintenance } from "../../tasks";
@@ -25,6 +25,24 @@ export function loadDotEnv(envFilePath = ".env"): void {
       process.env[key] = val;
     }
   }
+}
+
+// 签名下载 URL 的路径不带扩展名，转录服务（transcription_service/core/downloader.py）
+// 只能凭 Content-Type 识别音频格式，因此按对象键扩展名给出它能映射的音频类型。
+const AUDIO_CONTENT_TYPES: Record<string, string> = {
+  ".aac": "audio/aac",
+  ".flac": "audio/flac",
+  ".m4a": "audio/mp4",
+  ".mp3": "audio/mpeg",
+  ".mp4": "audio/mp4",
+  ".ogg": "audio/ogg",
+  ".opus": "audio/opus",
+  ".wav": "audio/wav",
+  ".webm": "audio/webm",
+};
+
+function storageContentType(key: string): string {
+  return AUDIO_CONTENT_TYPES[extname(key).toLowerCase()] ?? "application/octet-stream";
 }
 
 export interface ServerOptions extends NodeEnvOptions {
@@ -99,6 +117,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           return;
         }
 
+        const contentType = storageContentType(key);
         const rangeHeader = req.headers.range;
         if (rangeHeader && /^bytes=\d*-\d*$/.test(rangeHeader)) {
           const [rawStart, rawEnd] = rangeHeader.replace(/bytes=/, "").split("-");
@@ -123,7 +142,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
           }
 
           res.statusCode = 206;
-          res.setHeader("content-type", "application/octet-stream");
+          res.setHeader("content-type", contentType);
           res.setHeader("content-range", `bytes ${start}-${end}/${obj.size}`);
           res.setHeader("content-length", String(end - start + 1));
           res.setHeader("accept-ranges", "bytes");
@@ -150,7 +169,7 @@ export async function startServer(options: ServerOptions = {}): Promise<RunningS
         }
 
         res.statusCode = 200;
-        res.setHeader("content-type", "application/octet-stream");
+        res.setHeader("content-type", contentType);
         res.setHeader("content-length", String(obj.size));
         res.setHeader("accept-ranges", "bytes");
 

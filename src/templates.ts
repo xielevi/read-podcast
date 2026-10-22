@@ -91,8 +91,14 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 
 1. **零删减**：保留 100% 实质信息、论点、论据、案例和全部细节。绝对严禁摘要、提炼或压缩。
 2. **清洗卡顿**：仅剔除纯口头禅、重复卡顿语气词（如“呃、啊、这个、就是说”），修正明显听写错别字与错乱标点。
-3. **分段与发言者**：保持自然段落切分，标注发言人。保持说话人的原文人称与说话语序不变。
+3. **分段与发言者**：保持自然段落切分，每段发言以加粗的发言人标签开头（如 **主持人**：、**嘉宾**：，或识别出的姓名）。保持说话人的原文人称与说话语序不变。
 4. **字数门禁**：成稿字数必须达到原始转录字数的 90% 以上。
+
+## 输出格式
+
+**主持人**：整理后的发言。
+
+**嘉宾**：整理后的发言。
 
 直接输出整理后的 Markdown 对话正文，不要输出任何引言或解释。`,
     content_en: `# Clean Verbatim Transcript Prompt
@@ -154,15 +160,41 @@ Output only the finished Markdown body, with no extra commentary.`,
 ];
 
 /**
+ * 改版前的中文模板正文：任务的 custom_prompt 存的是创建当时的正文，升级后重试旧任务时仍要能识别并换版。
+ * 模板改版时把旧正文追加到这里（只追加，不删除）。
+ */
+const LEGACY_TEMPLATE_CONTENT: Record<string, string[]> = {
+  clean_verbatim: [`# 高保真清洁逐字稿整理 Prompt
+
+## 任务定位
+
+你是一位专业的速记与录音整理专家。你的任务是将原始转录稿整理成清晰通顺的清洁逐字稿。
+
+## 核心原则
+
+1. **零删减**：保留 100% 实质信息、论点、论据、案例和全部细节。绝对严禁摘要、提炼或压缩。
+2. **清洗卡顿**：仅剔除纯口头禅、重复卡顿语气词（如“呃、啊、这个、就是说”），修正明显听写错别字与错乱标点。
+3. **分段与发言者**：保持自然段落切分，标注发言人。保持说话人的原文人称与说话语序不变。
+4. **字数门禁**：成稿字数必须达到原始转录字数的 90% 以上。
+
+直接输出整理后的 Markdown 对话正文，不要输出任何引言或解释。`],
+};
+
+/**
  * 任务的 custom_prompt 若是（或以）某个内置模板的另一种语言版本（开头），换成转录语言的版本，其余补充要求原样保留。
  * 实测单句输出语言锁压不住整篇中文模板（英文音频仍会产出中文稿），只有送对语言的模板才可靠。
  */
 export function matchTemplateLanguage(customPrompt: string, lang: "zh" | "en"): string {
   for (const template of PROMPT_TEMPLATES) {
-    const wanted = lang === "en" ? template.content_en : template.content;
-    const other = (lang === "en" ? template.content : template.content_en).trim();
-    if (other && other !== wanted.trim() && customPrompt.startsWith(other)) {
-      return wanted.trim() + customPrompt.slice(other.length);
+    const wanted = (lang === "en" ? template.content_en : template.content).trim();
+    const others = lang === "en"
+      ? [template.content, ...(LEGACY_TEMPLATE_CONTENT[template.id] ?? [])]
+      : [template.content_en];
+    for (const raw of others) {
+      const other = raw.trim();
+      if (other && other !== wanted && customPrompt.startsWith(other)) {
+        return wanted + customPrompt.slice(other.length);
+      }
     }
   }
   return customPrompt;

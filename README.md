@@ -8,6 +8,7 @@
 [![License: MIT](https://img.shields.io/github/license/xielevi/read-podcast)](LICENSE)
 [![Runs on Cloudflare Workers](https://img.shields.io/badge/runs%20on-Cloudflare%20Workers-F38020?logo=cloudflare&logoColor=white)](docs/DEPLOYMENT.md#2-cloudflare-application)
 [![Self-host with Docker Compose](https://img.shields.io/badge/self--host-Docker%20Compose-2496ED?logo=docker&logoColor=white)](docs/DEPLOYMENT.md#7-local-docker-deployment)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/xielevi/read-podcast)
 
 **[Live demo → read-podcast.xielevi.cc](https://read-podcast.xielevi.cc)** · [How it works](#how-it-works) · [Quick start](#quick-start) · [How it compares](#how-it-compares)
 
@@ -134,26 +135,26 @@ Open `http://127.0.0.1:3000/manage` and set your provider's API base and model u
 
 ### Cloudflare — an edge-hosted reading site
 
-Runs on Workers, D1, Workflows and R2, and publishes manuscripts to your own GitHub repository. You need a domain on Cloudflare, a transcription backend (your own [Transcription Service](docs/DEPLOYMENT.md#3-transcription-service) behind a Tunnel, or [DashScope](docs/DEPLOYMENT.md#4-cloud-transcription-dashscope-paraformer)) and an LLM API key.
+Runs on Workers, D1, Workflows and R2, and publishes manuscripts to your own GitHub repository. You need a transcription backend (your own [Transcription Service](docs/DEPLOYMENT.md#3-transcription-service) behind a Tunnel, or [DashScope](docs/DEPLOYMENT.md#4-cloud-transcription-dashscope-paraformer), which needs no server) and an LLM API key.
+
+**One click on workers.dev.** [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/xielevi/read-podcast)
+
+The button copies this repository into your GitHub account, creates the D1 database and R2 bucket, applies the migrations and deploys to `*.workers.dev`. On the deploy page you set a Basic Auth user and password for `/manage`, your LLM API key, a GitHub token and repository for manuscripts, and the transcription backend. Then sign in at `/manage` and set the LLM API base and model under **Settings → Advanced**. Details: [one-click deployment](docs/DEPLOYMENT.md#deploy-to-cloudflare-template-one-click-deployment).
+
+**Your own domain with Cloudflare Access.** On a domain you manage in Cloudflare, the setup script provisions the same resources and walks you through Access:
 
 ```bash
 npm install
 npm run setup                     # idempotent: creates D1/R2, prompts for secrets, prints the Access checklist
 ```
 
-Then follow the [Cloudflare guide](docs/DEPLOYMENT.md#2-cloudflare-application) for Access, the Tunnel and deployment. A one-click **Deploy to Cloudflare** template is in review; the button will be added here only after a fresh-account deployment has been verified ([remaining checks](docs/DEPLOYMENT.md#deploy-to-cloudflare-template-one-click-deployment)).
+Then follow the [Cloudflare guide](docs/DEPLOYMENT.md#2-cloudflare-application) for Access, the Tunnel and deployment.
 
 The maintainer runs the Cloudflare application on Workers Free, but that does not establish spare CPU, subrequest or Workflow capacity for every workload. Check the [Free-plan limits](docs/DEPLOYMENT.md#resource-names-and-free-plan-boundary-checks) against your usage. LLM and cloud transcription providers may charge separately.
 
 ### Security boundary
 
 This is a single-owner workspace. Reading at `/` is public by default; protect the whole hostname if subscriptions and manuscripts should be private. On Cloudflare, `/manage*` and `/api/control/*` **must** be protected by Cloudflare Access on a custom domain or Basic Auth on workers.dev; without Basic Auth credentials, a workers.dev control plane refuses every request. Docker binds to localhost by default, with optional Basic Auth. See [Deployment](docs/DEPLOYMENT.md) and [Security](.github/SECURITY.md).
-
-## Roadmap
-
-In development, not yet released:
-
-- **Deploy to Cloudflare button** — pending fresh-account validation.
 
 ## Documentation
 
