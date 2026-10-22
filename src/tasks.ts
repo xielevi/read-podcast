@@ -124,7 +124,7 @@ export async function createTask(request: Request, env: Env, _ctx: ExecutionCont
 
 /** POST /tasks/custom —— 创建自定义上传音频任务。 */
 export async function createCustomTask(request: Request, env: Env, _ctx: ExecutionContext): Promise<Response> {
-  const body = await readJson<{ upload_id?: string; title?: string; prompt_template_id?: string; custom_prompt?: string }>(request);
+  const body = await readJson<{ upload_id?: string; title?: string; podcast_name?: string; prompt_template_id?: string; custom_prompt?: string }>(request);
   const uploadId = asNonEmpty(body.upload_id, "upload_id", 100);
 
   // 校验 R2 uploads/ 是否存在该上传文件
@@ -147,14 +147,16 @@ export async function createCustomTask(request: Request, env: Env, _ctx: Executi
   const rawTitle = (body.title || "").trim();
   const title = (rawTitle || originalFilename).replace(/\.(mp3|m4a|wav|flac|ogg|aac|opus|wma|webm|mp4)$/i, "").trim() || "未命名音频";
   const customPrompt = (body.custom_prompt || "").trim() || null;
+  // 上传音频的节目名：前端按界面语言给出（英文界面为 “Imported Audio”），缺省沿用旧值「本地音频」。
+  const podcastName = (typeof body.podcast_name === "string" ? body.podcast_name.trim().slice(0, 100) : "") || "本地音频";
 
   const id = crypto.randomUUID();
   const attemptId = crypto.randomUUID();
 
   await env.db.prepare(`INSERT INTO tasks
     (id, episode_id, source_type, podcast_name, episode_title, audio_url, status, message, current_attempt_id, custom_prompt)
-    VALUES (?, NULL, 'upload', '本地音频', ?, ?, 'queued', '已排队，等待转录', ?, ?)`)
-    .bind(id, title, `r2://${audioKey}`, attemptId, customPrompt)
+    VALUES (?, NULL, 'upload', ?, ?, ?, 'queued', '已排队，等待转录', ?, ?)`)
+    .bind(id, podcastName, title, `r2://${audioKey}`, attemptId, customPrompt)
     .run();
 
   await startProcessingSafely(env, id, attemptId);
