@@ -863,7 +863,6 @@ describe("稿件导读（渐进式阅读）", () => {
         renderBasicMarkdown: (markdown: string) => string;
         decorateManuscriptWithBrief: (body: Element, brief: unknown, taskId?: string) => void;
         setSectionSummaries: (mode: string) => void;
-        loadArticleBrief: (taskId: string) => Promise<unknown>;
       },
     };
   }
@@ -937,11 +936,25 @@ describe("稿件导读（渐进式阅读）", () => {
     expect(body.firstElementChild?.className).toBe("reader-brief");
   });
 
-  it("导读请求迟迟不返回时按 null 处理，不拖住正文", async () => {
+  it("导读晚于正文到达时再补到顶部；读者已切到别的稿件则不装饰", async () => {
     const { dom, win } = loadReader();
-    (dom.window as unknown as { fetch: () => Promise<never> }).fetch = () => new Promise<never>(() => {});
-    (dom.window as unknown as { setTimeout: (fn: () => void) => number }).setTimeout = (fn) => { fn(); return 0; };
-    await expect(win.loadArticleBrief("aaaaaaaa-1111-1111-1111-111111111111")).resolves.toBeNull();
+    const w = win as typeof win & { attachArticleBrief: (body: Element, req: Promise<unknown>, id: string) => Promise<void> };
+    const body = dom.window.document.getElementById("manuscript-body")!;
+    const setCurrent = (id: string | null) => dom.window.eval(`_currentReadingTaskId = ${JSON.stringify(id)}`);
+
+    setCurrent("aaaa");
+    body.innerHTML = win.renderBasicMarkdown(MARKDOWN);
+    let resolve!: (value: unknown) => void;
+    const pending = w.attachArticleBrief(body, new Promise(r => { resolve = r; }), "aaaa");
+    expect(body.querySelector(".reader-brief")).toBeNull(); // 正文已在，导读未到
+    resolve(BRIEF);
+    await pending;
+    expect(body.firstElementChild?.className).toBe("reader-brief");
+
+    setCurrent("bbbb");
+    body.innerHTML = win.renderBasicMarkdown(MARKDOWN);
+    await w.attachArticleBrief(body, Promise.resolve(BRIEF), "aaaa");
+    expect(body.querySelector(".reader-brief")).toBeNull();
   });
 
   it("旧稿件（brief = null）不渲染任何导读元素", () => {
