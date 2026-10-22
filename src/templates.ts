@@ -147,6 +147,21 @@ Output only the finished Markdown body, with no extra commentary.`,
   },
 ];
 
+/**
+ * 任务的 custom_prompt 若是（或以）某个内置模板的另一种语言版本（开头），换成转录语言的版本，其余补充要求原样保留。
+ * 实测单句输出语言锁压不住整篇中文模板（英文音频仍会产出中文稿），只有送对语言的模板才可靠。
+ */
+export function matchTemplateLanguage(customPrompt: string, lang: "zh" | "en"): string {
+  for (const template of PROMPT_TEMPLATES) {
+    const wanted = lang === "en" ? template.content_en : template.content;
+    const other = (lang === "en" ? template.content : template.content_en).trim();
+    if (other && other !== wanted.trim() && customPrompt.startsWith(other)) {
+      return wanted.trim() + customPrompt.slice(other.length);
+    }
+  }
+  return customPrompt;
+}
+
 export function listPromptTemplates(): Response {
   return json(PROMPT_TEMPLATES);
 }

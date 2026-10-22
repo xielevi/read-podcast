@@ -19,6 +19,7 @@ import {
   REFINER_SYSTEM_PROMPT,
   REFINER_SYSTEM_PROMPT_EN,
 } from "./defaults";
+import { matchTemplateLanguage } from "../templates";
 
 export type RefinerErrorCode = "refine_provider_auth" | "refine_provider_bad_request" | "refine_api_failed";
 
@@ -112,6 +113,7 @@ export function buildChatRequest(options: ChatRequestOptions): { headers: Record
 /**
  * 自定义 Prompt 的输出语言锁：模板或补充要求可能用另一种语言写成（例如中文界面上传英文音频），
  * 末尾按转录语言补一句，避免模型跟随指令语言改写成稿语言。默认 Prompt 本身已按语言选择，不追加。
+ * 内置模板先由 matchTemplateLanguage 换成转录语言版本；这句锁只兜底用户自写的指令（长篇异语指令下不保证生效）。
  */
 export const OUTPUT_LANGUAGE_LOCK = {
   zh: "输出语言：稿件必须使用中文（与转录稿语言一致），即使上面的要求是用其他语言写的。",
@@ -122,7 +124,7 @@ export const OUTPUT_LANGUAGE_LOCK = {
 export function buildRefinePrompt(summary: string, customPrompt?: string | null, template = DEFAULT_REFINE_PROMPT): string {
   const isEn = template === DEFAULT_REFINE_PROMPT_EN;
   const effectiveSummary = summary || (isEn ? "No official show notes" : "无官方简介");
-  const custom = (customPrompt ?? "").trim();
+  const custom = matchTemplateLanguage((customPrompt ?? "").trim(), isEn ? "en" : "zh");
   if (custom) {
     const filled = custom.includes("{summary}") ? custom.replaceAll("{summary}", effectiveSummary) : custom;
     return `${filled}\n\n${OUTPUT_LANGUAGE_LOCK[isEn ? "en" : "zh"]}`;
