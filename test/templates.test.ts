@@ -18,4 +18,9 @@ describe("Prompt Templates", () => {
     expect(PROMPT_TEMPLATES[0].content).toContain("75%–85%");
     expect(PROMPT_TEMPLATES[1].content).toContain("90%");
   });
+
+  it("clean_verbatim asks for bold speaker labels so plain dialogue clears the quality gate", () => {
+    const cleanVerbatim = PROMPT_TEMPLATES.find(t => t.id === "clean_verbatim")!;
+    expect(cleanVerbatim.content).toContain("**主持人**：");
+  });
 });
