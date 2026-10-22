@@ -105,8 +105,14 @@ You are a professional transcriptionist. Turn the raw transcript into a clean, r
 
 1. **Nothing removed**: keep 100% of the substance — every claim, argument, example and detail. Never summarize, condense or paraphrase.
 2. **Clean up disfluencies only**: remove pure fillers and stutters ("um", "uh", "you know", "like", repeated false starts); fix obvious mis-transcriptions and broken punctuation.
-3. **Paragraphs and speakers**: keep natural paragraph breaks and label each speaker. Keep each speaker's person and word order unchanged.
+3. **Paragraphs and speakers**: keep natural paragraph breaks; start each turn with a bold speaker label (such as **Host**:, **Guest**: or the speaker's name). Keep each speaker's person and word order unchanged.
 4. **Length gate**: the result must be at least 90% of the raw transcript's length.
+
+## Output format
+
+**Host**: The cleaned-up turn.
+
+**Guest**: The cleaned-up turn.
 
 Output only the cleaned Markdown dialogue, with no preamble or explanation.`
   },
