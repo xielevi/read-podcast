@@ -242,6 +242,23 @@ flowchart TD
 
 5. Click **Next** through additional settings (CORS and cookie settings keep default values) and click **Save application**.
 
+#### Login methods and sessions
+
+- **Identity providers.** One-time PIN works without extra setup. If you add a GitHub (or other
+  OAuth) login method, its OAuth app's callback URL must be
+  `https://<your-team-name>.cloudflareaccess.com/cdn-cgi/access/callback`. Renaming the Zero Trust
+  team domain does not update the OAuth app; GitHub then rejects the login with "The redirect_uri
+  is not associated with this application" until you update the callback URL there. Restricting
+  the application to the login methods you actually use, and enabling **Instant Auth** when only
+  one remains, skips the method picker.
+- **Other applications on the same team.** Login methods and sessions are per Access application;
+  a sibling hostname that runs its own OAuth login (not Access) does not share or affect the
+  `CF_Authorization` cookie on `your-domain.example`.
+- **Session expiry.** The workspace has no login of its own. When the Access session expires,
+  control-plane requests from an open `/manage` page fail instead of redirecting; reload `/manage`
+  to sign in again. Choose the application session duration with that in mind. The WebUI never
+  reads the Access cookie, so the **HttpOnly** cookie setting can stay enabled.
+
 | Public hostname path | Purpose |
 |---|---|
 | `your-domain.example/manage*` | workspace pages in Authenticated Control Mode |
