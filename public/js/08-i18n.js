@@ -762,6 +762,29 @@
       return str;
     }
 
+    // 服务端错误文案是中文（src/http.ts 的 {error: {code, message}}）：英文界面按 code 换成英文，
+    // 未收录的 code 与中文界面沿用服务端原文。
+    var API_ERRORS_EN = {
+      rss_unreachable: 'Could not reach the RSS feed. Please check the URL.',
+      invalid_feed: 'Could not find a show title in this feed.',
+      episode_not_found: 'Episode not found. Refresh the episode list and try again.',
+      already_processed: 'This episode already has a manuscript. Use "Regenerate" to redo it.',
+      upload_not_found: 'The uploaded audio was not found or has expired. Please upload it again.',
+      file_too_large: 'The audio is over the 200 MiB limit and was discarded. Compress or trim it, then upload again.',
+      task_completed: 'Completed manuscripts are kept in the library.',
+      task_not_retriable: 'Only failed or cancelled tasks can be retried.',
+      upload_expired: 'The original audio and the cached transcript have both expired. Please upload the audio again.',
+      retry_conflict: 'The task changed in the meantime. Refresh and try again.',
+      episode_active: 'This episode already has a task in progress.',
+      invalid_preferences: 'This preference value is not supported.',
+      invalid_settings: 'Invalid refinement settings: the API base must be an http(s) URL, the model at most 200 characters, temperature 0–2, max tokens 1–200000 and the quality gate above 0 and at most 1.',
+      unsupported_setting: 'This setting is not managed by Cloudflare.'
+    };
+    function localizeApiError(code, message) {
+      if (_currentLocale === 'en' && Object.prototype.hasOwnProperty.call(API_ERRORS_EN, code)) return API_ERRORS_EN[code];
+      return message;
+    }
+
     function applyLocale(locale) {
       _currentLocale = locale === 'en' ? 'en' : 'zh';
       document.documentElement.lang = _currentLocale === 'en' ? 'en' : 'zh-CN';

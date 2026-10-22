@@ -476,7 +476,9 @@ title: 袁长庚×胡安焉
       expect(JS_CORE).toContain("function readApiResponse(response)");
     });
 
-    function loadReadApiResponse(): (response: Response) => Promise<unknown> {
+    function loadReadApiResponse(
+      localizeApiError: (code: unknown, message: unknown) => unknown = (_code, message) => message,
+    ): (response: Response) => Promise<unknown> {
       const start = JS_CORE.indexOf("function readApiResponse(response) {");
       let depth = 0;
       let end = start;
@@ -487,8 +489,14 @@ title: 袁长庚×胡安焉
           break;
         }
       }
-      return new Function(`${JS_CORE.slice(start, end)}; return readApiResponse;`)();
+      return new Function("localizeApiError", `${JS_CORE.slice(start, end)}; return readApiResponse;`)(localizeApiError);
     }
+
+    it("readApiResponse：错误文案经 localizeApiError(code, message) 本地化", async () => {
+      const readApiResponse = loadReadApiResponse((code, message) => (code === "already_processed" ? "localized" : message));
+      const conflict = new Response(JSON.stringify({ error: { code: "already_processed", message: "该节目已转录完成" } }), { status: 409 });
+      await expect(readApiResponse(conflict)).rejects.toMatchObject({ message: "localized", status: 409 });
+    });
 
     it("readApiResponse：失败时抛出服务端 error.message 并带 status；204 空 body 视为成功", async () => {
       const readApiResponse = loadReadApiResponse();
@@ -1050,6 +1058,26 @@ describe("Locale: browser default, manual switch and persistence", () => {
     await new Promise(resolve => setTimeout(resolve, 20));
     expect(win.getLocale()).toBe("en");
     expect(dom.window.localStorage.getItem("app_locale")).toBe("en");
+  });
+
+  it("English UI shows English text for every server error code whose message is Chinese", () => {
+    const { win } = boot("https://example.com/manage", { languages: ["en-US"] });
+    const w = win as unknown as { localizeApiError: (code: string, message: string) => string; applyLocale: (l: string) => void };
+    const sources = readdirSync(resolve(ROOT, "src"), { recursive: true })
+      .map(String)
+      .filter(name => name.endsWith(".ts"))
+      .map(name => readFileSync(resolve(ROOT, "src", name), "utf-8"))
+      .join("\n");
+    const codes = new Set(
+      [...sources.matchAll(/(?:HttpError|error)\(\d+,\s*"([a-z_]+)",\s*["`][^"`]*[一-鿿]/g)].map(m => m[1]),
+    );
+    expect(codes.size).toBeGreaterThan(10);
+    for (const code of codes) {
+      expect(w.localizeApiError(code, "中文原文"), code).not.toMatch(/[一-鿿]/);
+    }
+    expect(w.localizeApiError("some_unknown_code", "original")).toBe("original");
+    w.applyLocale("zh");
+    expect(w.localizeApiError("already_processed", "该节目已转录完成")).toBe("该节目已转录完成");
   });
 
   it("prompt templates follow the UI language and swap untouched content on switch", () => {

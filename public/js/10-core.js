@@ -210,7 +210,8 @@
         var data = null;
         try { data = text ? JSON.parse(text) : null; } catch (ignore) { data = null; }
         if (!response.ok) {
-          var failure = new Error((data && data.error && data.error.message) || ('HTTP ' + response.status));
+          var apiError = data && data.error;
+          var failure = new Error(localizeApiError(apiError && apiError.code, apiError && apiError.message) || ('HTTP ' + response.status));
           failure.status = response.status;
           throw failure;
         }
