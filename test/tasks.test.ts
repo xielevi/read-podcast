@@ -173,6 +173,19 @@ describe("createCustomTask（POST /tasks/custom）与 200 MiB 硬上限", () => 
     });
     expect(cloud.workflow.created).toHaveLength(1);
     expect(cloud.service.log).toEqual([]);
+    expect(taskRow(cloud.d1, task_id)).toMatchObject({ podcast_name: "本地音频" });
+  });
+
+  it("上传音频的节目名取前端按界面语言给出的值（英文界面 Imported Audio），空白时回落「本地音频」", async () => {
+    const cloud = makeCloud();
+    cloud.r2.putSized("uploads/up-1/a.mp3", 1024);
+    cloud.r2.putSized("uploads/up-2/b.mp3", 1024);
+
+    const en = (await (await createCustomTask(custom("up-1", { podcast_name: "  Imported Audio  " }), cloud.env, ctxStub)).json()) as { task_id: string };
+    const blank = (await (await createCustomTask(custom("up-2", { podcast_name: "   " }), cloud.env, ctxStub)).json()) as { task_id: string };
+
+    expect(taskRow(cloud.d1, en.task_id)).toMatchObject({ podcast_name: "Imported Audio" });
+    expect(taskRow(cloud.d1, blank.task_id)).toMatchObject({ podcast_name: "本地音频" });
   });
 
   it("上传不存在 → 404 upload_not_found，不建任务", async () => {

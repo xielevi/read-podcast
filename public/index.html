@@ -20,16 +20,20 @@
       var meta = document.querySelector('meta[name="color-scheme"]');
       if (meta) meta.setAttribute('content', dark ? 'dark' : 'light');
 
-      var loc = 'zh';
+      var loc = null;
       try {
         var savedLoc = localStorage.getItem('app_locale');
-        if (savedLoc === 'zh' || savedLoc === 'en') {
-          loc = savedLoc;
-        } else {
-          var navLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
-          loc = navLang.startsWith('zh') ? 'zh' : 'en';
-        }
+        if (savedLoc === 'zh' || savedLoc === 'en') loc = savedLoc;
       } catch (ignore) {}
+      if (!loc) {
+        var navTags = [].concat(navigator.language || [], navigator.languages || [], navigator.userLanguage || []);
+        for (var i = 0; i < navTags.length && !loc; i++) {
+          var tag = String(navTags[i] || '').toLowerCase();
+          if (/^zh(?:$|[-_])/.test(tag)) loc = 'zh';
+          else if (/^en(?:$|[-_])/.test(tag)) loc = 'en';
+        }
+      }
+      loc = loc || 'en';
       document.documentElement.lang = loc === 'zh' ? 'zh-CN' : 'en';
       document.documentElement.dataset.locale = loc;
     }());

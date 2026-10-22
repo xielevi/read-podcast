@@ -362,7 +362,7 @@
       },
       en: {
         'skip.link': 'Skip to episode list',
-        'brand.kicker': 'Turn podcasts from sound into reading',
+        'brand.kicker': 'Podcasts, edited for reading',
         'lang.toggle': '中 / EN',
         'lang.toggle_label': 'Switch language',
         'appearance.theme': 'Theme',
@@ -379,7 +379,7 @@
 
         'nav.aria_label': 'Main navigation',
         'nav.workspace': 'Workspace',
-        'nav.podcast': 'Subscriptions',
+        'nav.podcast': 'Podcasts',
         'nav.custom': 'Import',
         'nav.library': 'Articles',
         'nav.add_podcast': 'Add Subscription',
@@ -410,16 +410,16 @@
         'custom.desc': 'Turn recordings, interviews, or other audio into readable manuscripts.',
         'custom.audio_file': 'Audio File',
         'custom.audio_hint': 'Supports common audio formats, max 200 MiB per file',
-        'custom.drop_hint': 'Click or drag & drop to upload audio',
+        'custom.drop_hint': 'Click or drag and drop to upload audio',
         'custom.choose_audio': 'Choose audio file',
-        'custom.drop_or_drag': 'or drag & drop here',
-        'custom.formats': 'Supports MP3, M4A, WAV, AAC, OGG formats',
+        'custom.drop_or_drag': 'or drag and drop it here',
+        'custom.formats': 'MP3, M4A, WAV, AAC, OGG and more',
         'custom.podcast_name': 'Show Name',
         'custom.podcast_placeholder': 'e.g., Hardcore History',
         'custom.episode_title': 'Episode Title',
         'custom.episode_placeholder': 'e.g., Episode 1: The Beginning',
         'custom.prompt': 'Additional Instructions',
-        'custom.prompt_placeholder': 'e.g., Preserve Q&A structure, standardize character names.',
+        'custom.prompt_placeholder': 'e.g., Keep the Q&A structure and spell names consistently.',
         'custom.prompt_template': 'Editorial Style',
         'custom.template_standard': 'Standard Refinement',
         'custom.advanced': 'Advanced Instructions',
@@ -450,9 +450,9 @@
 
         'inspector.select_title': 'Select an episode',
         'inspector.select_meta': 'Click an episode card to view details here.',
-        'inspector.select_summary': 'Select an episode to view introduction and generate manuscript.',
-        'inspector.summary_title': 'Episode Intro',
-        'inspector.close_summary': 'Close episode intro',
+        'inspector.select_summary': 'Select an episode to see its show notes and generate a manuscript.',
+        'inspector.summary_title': 'Show Notes',
+        'inspector.close_summary': 'Close show notes',
         'inspector.loading_desc': 'Loading description…',
         'inspector.load_failed': 'Could not load description. Please try again later.',
         'inspector.no_desc': 'No description available for this episode.',
@@ -470,7 +470,7 @@
         'tasks.processing_count': 'Processing {0}',
         'tasks.processing_default': 'Processing 0',
         'tasks.list_label': 'Task List',
-        'tasks.attention_count': '{0} task(s) require attention',
+        'tasks.attention_count': '{0} task(s) need attention',
         'tasks.default_title': 'Manuscript Generation',
         'tasks.cancel_aria': 'Stop "{0}"',
         'tasks.dismissed': 'Record dismissed.',
@@ -512,7 +512,7 @@
         'episode.duration_hour_min': '{0}h {1}m',
         'episode.no_desc': 'No description available',
         'episode.untitled': 'Untitled Episode',
-        'episode.status_readable': 'Readable',
+        'episode.status_readable': 'Ready to Read',
         'episode.status_unread': 'Not Generated',
         'episode.status_generating': 'Generating · ',
         'episode.status_failed': 'Failed',
@@ -588,13 +588,13 @@
         'concepts.title': 'Key Concepts',
         'concepts.extracting': 'Extracting key concepts…',
         'concepts.reading': 'Loading key concepts…',
-        'concepts.empty': 'No Wikipedia concepts found.',
+        'concepts.empty': 'No concepts with a Wikipedia article were found.',
         'concepts.failed': 'Failed to extract: ',
         'concepts.retry': 'Retry',
         'concepts.wiki_title': 'Wikipedia',
 
         'settings.title': 'Settings',
-        'settings.desc': 'Adjust appearance and text refinement.',
+        'settings.desc': 'Appearance, language and how manuscripts are edited.',
         'settings.close': 'Close settings',
         'settings.cancel': 'Cancel',
         'settings.save': 'Save',
@@ -605,14 +605,14 @@
         'settings.test_success': 'Connection OK.',
         'settings.test_failed': 'Test failed: ',
         'settings.lang': 'Language',
-        'settings.lang_desc': 'Choose interface and concept verification language.',
+        'settings.lang_desc': 'Interface language. Key concepts in the reader link to Wikipedia in this language.',
         'settings.lang_zh': '中文',
         'settings.lang_en': 'English',
         'settings.loading': 'Loading settings…',
 
         'drawer.title': 'Add Subscription',
-        'drawer.desc': 'Search podcast or enter RSS feed URL',
-        'drawer.search_placeholder': 'Search podcast or enter RSS feed URL',
+        'drawer.desc': 'Search by show name or paste an RSS feed URL',
+        'drawer.search_placeholder': 'Search by show name or paste an RSS feed URL',
         'drawer.close': 'Close Add Subscription',
         'drawer.subscribe': 'Subscribe',
         'drawer.subscribed': 'Subscribed',
@@ -639,7 +639,7 @@
         'custom.upload_failed': 'Upload failed',
         'custom.upload_failed_msg': 'File upload failed: {0}',
         'subscription.unsubscribed': 'Unsubscribed from "{0}"',
-        'subscription.timeline_desc': 'Showing all subscriptions chronologically',
+        'subscription.timeline_desc': 'All subscriptions, newest first',
         'subscription.delete_failed': 'Failed to unsubscribe: ',
         'subscription.untitled': 'Untitled podcast',
         'subscription.unsubscribe': 'Unsubscribe',
@@ -708,13 +708,13 @@
         'setting.refiner.max_tokens.placeholder': '65536',
         'setting.refiner.min_output_ratio.label': 'Length Quality Gate',
         'setting.refiner.min_output_ratio.placeholder': '0.7',
-        'setting.refiner.min_output_ratio.hint': 'Hard lower bound for publishing. Default prompt targets ~75–85% of transcript length.',
+        'setting.refiner.min_output_ratio.hint': 'Hard lower bound for publishing; the default prompt aims for about 80% of the transcript length.',
         'template.magazine.name': 'Magazine Refinement',
-        'template.magazine.desc': 'Magazine-style interview transcript preserving all substantive dialogue and nuances, sectioned by topic with outline and timeline.',
+        'template.magazine.desc': 'A magazine-style interview edit that keeps every substantive exchange, split into titled sections with an outline and timeline.',
         'template.clean_verbatim.name': 'Clean Verbatim',
-        'template.clean_verbatim.desc': 'High-fidelity verbatim transcript, removing filler words while strictly preserving speech order and complete statements.',
+        'template.clean_verbatim.desc': 'A high-fidelity verbatim transcript: fillers and stumbles removed, word order and complete statements kept.',
         'template.structured_interview.name': 'Structured Interview',
-        'template.structured_interview.desc': 'Emphasizes Q&A structure and key arguments, organized by in-depth topics.',
+        'template.structured_interview.desc': 'Clear question-and-answer turns and key arguments, organized by topic.',
         'appearance.summary_title': 'Appearance: {0}',
         'appearance.summary_aria': 'Select appearance, current {0}'
       }
@@ -722,17 +722,28 @@
 
     var _currentLocale = 'zh';
 
+    // 浏览器首选语言：先看 navigator.language，再按 navigator.languages 顺序，取第一个中文或英文标签；都不是时用英文。
+    // 与 index.html 首屏内联脚本同一规则（那里决定首帧的 <html lang>）。
+    function detectBrowserLocale(nav) {
+      nav = nav || {};
+      var tags = [nav.language];
+      if (nav.languages && nav.languages.length) tags = tags.concat(Array.prototype.slice.call(nav.languages));
+      tags.push(nav.userLanguage);
+      for (var i = 0; i < tags.length; i++) {
+        var tag = String(tags[i] || '').toLowerCase();
+        if (tag === 'zh' || tag.indexOf('zh-') === 0 || tag.indexOf('zh_') === 0) return 'zh';
+        if (tag === 'en' || tag.indexOf('en-') === 0 || tag.indexOf('en_') === 0) return 'en';
+      }
+      return 'en';
+    }
+
+    // 手动选择（localStorage app_locale）优先；否则跟随浏览器。读不到存储时同样跟随浏览器。
     function initLocale() {
-      var loc = 'zh';
-      try {
-        var savedLoc = localStorage.getItem('app_locale');
-        if (savedLoc === 'zh' || savedLoc === 'en') {
-          loc = savedLoc;
-        } else {
-          var navLang = (navigator.language || navigator.userLanguage || '').toLowerCase();
-          loc = navLang.startsWith('zh') ? 'zh' : 'en';
-        }
-      } catch (e) {}
+      var saved = null;
+      try { saved = localStorage.getItem('app_locale'); } catch (e) {}
+      var loc = saved === 'zh' || saved === 'en'
+        ? saved
+        : detectBrowserLocale(typeof navigator !== 'undefined' ? navigator : null);
       _currentLocale = loc;
       return loc;
     }
@@ -749,6 +760,29 @@
       if (arg0 !== undefined) str = str.replace('{0}', String(arg0));
       if (arg1 !== undefined) str = str.replace('{1}', String(arg1));
       return str;
+    }
+
+    // 服务端错误文案是中文（src/http.ts 的 {error: {code, message}}）：英文界面按 code 换成英文，
+    // 未收录的 code 与中文界面沿用服务端原文。
+    var API_ERRORS_EN = {
+      rss_unreachable: 'Could not reach the RSS feed. Please check the URL.',
+      invalid_feed: 'Could not find a show title in this feed.',
+      episode_not_found: 'Episode not found. Refresh the episode list and try again.',
+      already_processed: 'This episode already has a manuscript. Use "Regenerate" to redo it.',
+      upload_not_found: 'The uploaded audio was not found or has expired. Please upload it again.',
+      file_too_large: 'The audio is over the 200 MiB limit and was discarded. Compress or trim it, then upload again.',
+      task_completed: 'Completed manuscripts are kept in the library.',
+      task_not_retriable: 'Only failed or cancelled tasks can be retried.',
+      upload_expired: 'The original audio and the cached transcript have both expired. Please upload the audio again.',
+      retry_conflict: 'The task changed in the meantime. Refresh and try again.',
+      episode_active: 'This episode already has a task in progress.',
+      invalid_preferences: 'This preference value is not supported.',
+      invalid_settings: 'Invalid refinement settings: the API base must be an http(s) URL, the model at most 200 characters, temperature 0–2, max tokens 1–200000 and the quality gate above 0 and at most 1.',
+      unsupported_setting: 'This setting is not managed by Cloudflare.'
+    };
+    function localizeApiError(code, message) {
+      if (_currentLocale === 'en' && Object.prototype.hasOwnProperty.call(API_ERRORS_EN, code)) return API_ERRORS_EN[code];
+      return message;
     }
 
     function applyLocale(locale) {

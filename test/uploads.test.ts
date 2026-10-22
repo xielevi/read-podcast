@@ -323,8 +323,9 @@ describe("分片上传：complete 的权威复核", () => {
 
 describe("前端：立即拒绝超限文件，不进入上传流程", () => {
   const i18nSource = readFileSync(new URL("../public/js/08-i18n.js", import.meta.url), "utf-8");
-  const loadI18n = new Function("document", `${i18nSource}; return { t: t, applyLocale: applyLocale };`);
-  const { t: realT } = loadI18n({ documentElement: { dataset: {} } });
+  const loadI18n = new Function("document", "navigator", `${i18nSource}; return { t: t, applyLocale: applyLocale };`);
+  // 没有 localStorage 时界面语言跟随浏览器；这里固定为中文浏览器。
+  const { t: realT } = loadI18n({ documentElement: { dataset: {} } }, { language: "zh-CN" });
   const source = readFileSync(new URL("../public/js/20-subscriptions.js", import.meta.url), "utf-8");
   const start = source.indexOf("function doUploadAudio(file) {");
   let depth = 0;

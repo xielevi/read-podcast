@@ -746,6 +746,71 @@ describe("本地 Node HTTP 服务（Server & Basic Auth）", () => {
     expect(wrongRes.status).toBe(401);
     await wrongRes.text();
   });
+
+  it("签名下载按对象键扩展名返回转录服务可识别的音频 Content-Type（URL 路径不带扩展名）", async () => {
+    const srvDir = resolve(TEST_DIR, "srv-content-type");
+    mkdirSync(srvDir, { recursive: true });
+    running = await startServer({
+      port: 39103,
+      host: "127.0.0.1",
+      databasePath: ":memory:",
+      storageDir: srvDir,
+      signingSecret: "test-ct-secret",
+    });
+    const store = running.runtime.objectStore;
+    // 与 transcription_service/core/downloader.py 的 CONTENT_TYPE_EXTENSIONS 对齐
+    const cases: Array<[string, string]> = [
+      ["uploads/u1/episode.M4A", "audio/mp4"],
+      ["uploads/u1/episode.mp3", "audio/mpeg"],
+      ["uploads/u1/episode.wav", "audio/wav"],
+      ["uploads/u1/notes.bin", "application/octet-stream"],
+    ];
+    for (const [key, expected] of cases) {
+      await store.put(key, "fake audio bytes");
+      const url = await store.createPresignedUrl!(key, { expiresInSeconds: 60 });
+      expect(new URL(url).pathname).toBe("/storage/download");
+      const full = await fetch(url);
+      expect(full.headers.get("content-type"), key).toBe(expected);
+      await full.arrayBuffer();
+      const partial = await fetch(url, { headers: { range: "bytes=0-3" } });
+      expect(partial.status).toBe(206);
+      expect(partial.headers.get("content-type"), key).toBe(expected);
+      await partial.arrayBuffer();
+    }
+  });
+});
+
+describe("本地静态资源缓存（升级后前端立即生效）", () => {
+  it("app.js / app.css 使用 no-cache + ETag 重新验证，文件变化后 ETag 随之变化", async () => {
+    const publicDir = resolve(TEST_DIR, "assets-public");
+    mkdirSync(publicDir, { recursive: true });
+    writeFileSync(resolve(publicDir, "app.js"), "console.log(1);");
+    writeFileSync(resolve(publicDir, "app.css"), "body{}");
+    writeFileSync(resolve(publicDir, "logo.svg"), "<svg/>");
+    const assets = createLocalAssetFetcher(publicDir);
+
+    for (const name of ["app.js", "app.css"]) {
+      const first = await assets.fetch(new Request(`http://local/${name}`));
+      expect(first.status).toBe(200);
+      expect(first.headers.get("cache-control")).toBe("no-cache");
+      const etag = first.headers.get("etag");
+      expect(etag).toBeTruthy();
+
+      const revalidated = await assets.fetch(new Request(`http://local/${name}`, { headers: { "if-none-match": etag! } }));
+      expect(revalidated.status).toBe(304);
+      expect(await revalidated.text()).toBe("");
+    }
+
+    const before = (await assets.fetch(new Request("http://local/app.js"))).headers.get("etag")!;
+    writeFileSync(resolve(publicDir, "app.js"), "console.log(2); // upgraded");
+    const after = await assets.fetch(new Request("http://local/app.js", { headers: { "if-none-match": before } }));
+    expect(after.status).toBe(200);
+    expect(after.headers.get("etag")).not.toBe(before);
+    expect(await after.text()).toContain("upgraded");
+
+    const logo = await assets.fetch(new Request("http://local/logo.svg"));
+    expect(logo.headers.get("cache-control")).toBe("public, max-age=86400");
+  });
 });
 
 describe("稿件存储装配（ManuscriptStore，#28）", () => {

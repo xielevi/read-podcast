@@ -52,7 +52,7 @@
       setHidden(byId('download-result-wrap'), true);
       setHidden(byId('task-card'), false);
       setTaskStatus(t('inspector.generating_head'), 0);
-      var payload = { upload_id: uploadId, title: title };
+      var payload = { upload_id: uploadId, title: title, podcast_name: t('custom.local_audio') };
       if (prompt) payload.custom_prompt = prompt;
       fetch(appUrl('/api/control/tasks/custom'), {
         method: 'POST',
@@ -188,7 +188,8 @@
       var attentionCount = ids.filter(function (id) { return _taskCards[id].status === 'failed' || _taskCards[id].status === 'cancelled'; }).length;
 
       setHidden(byId('task-card'), !ids.length);
-      byId('task-queue-count').textContent = runningCount ? '（' + runningCount + '）' : (attentionCount ? '（' + attentionCount + '）' : '');
+      var queueCount = runningCount || attentionCount;
+      byId('task-queue-count').textContent = queueCount ? (getLocale() === 'en' ? ' (' + queueCount + ')' : '（' + queueCount + '）') : '';
 
       var triggerBtn = byId('task-panel-btn');
       var triggerLabel = byId('task-trigger-label');
@@ -297,7 +298,7 @@
       if (podcastName !== undefined && podcastName !== null && podcastName !== '') card.podcastName = String(podcastName).trim();
       if (title !== undefined && title !== null && title !== '') card.episodeTitle = String(title).trim();
       card.title = card.episodeTitle || card.title || t('tasks.default_title');
-      card.isCustomUpload = (card.podcastName === '本地音频' || card.podcastName === '自定义音频' || card.podcastName === t('custom.local_audio') || card.podcastName === t('custom.custom_audio') || id === 'local');
+      card.isCustomUpload = (card.podcastName === '本地音频' || card.podcastName === 'Imported Audio' || card.podcastName === '自定义音频' || card.podcastName === t('custom.local_audio') || card.podcastName === t('custom.custom_audio') || id === 'local');
       _taskStartedAt[id] = card.startedAt;
       return card;
     }

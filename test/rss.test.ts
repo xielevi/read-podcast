@@ -101,12 +101,12 @@ describe("parseFeed XML parser compatibility", () => {
       </item>
     </channel></rss>`, "News");
 
-    // With the existing options, numeric character references remain literal in v4 and v5.
-    expect(feed.channelTitle).toBe("News & Culture &#x4E2D;");
+    // 显示字段（频道标题、单集标题、简介）解码数字字符引用，与 feedparser 一致。
+    expect(feed.channelTitle).toBe("News & Culture 中");
     expect(feed.channelImage).toBe("https://cdn.example.com/cover?a=1&b=2");
     expect(feed.episodes).toHaveLength(1);
     expect(feed.episodes[0]).toMatchObject({
-      title: '"001" & &#20013;',
+      title: '"001" & 中',
       id: "00123",
       link: "https://example.com/episode?a=1&b=2",
       audio_url: "https://cdn.example.com/audio?a=1&b=2",
@@ -114,6 +114,18 @@ describe("parseFeed XML parser compatibility", () => {
       duration_seconds: 90,
       summary: "Tom & Jerry",
     });
+  });
+
+  it("decodes WordPress-style numeric references in titles but keeps guid identities byte-stable", () => {
+    const feed = parseFeed(`<rss><channel><title>Show</title><item>
+      <title>#501 – DHH: Programming &#038; Linux &#8217;s &#1114112;</title>
+      <guid isPermaLink="false">https://example.com/?p=1&#038;v=2</guid>
+      <description>Q&#038;A</description>
+      <enclosure url="https://cdn.example.com/a.mp3"/>
+    </item></channel></rss>`, "Show");
+    expect(feed.episodes[0].title).toBe("#501 – DHH: Programming & Linux ’s &#1114112;");
+    expect(feed.episodes[0].summary).toBe("Q&A");
+    expect(feed.episodes[0].id).toBe("https://example.com/?p=1&#038;v=2");
   });
 
   it("keeps CDATA entities literal and normalizes repeated enclosures", () => {

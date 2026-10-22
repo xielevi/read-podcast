@@ -22,6 +22,8 @@ const MIME_TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
 };
 
+const REVALIDATED_EXTENSIONS = new Set([".js", ".mjs", ".css"]);
+
 export interface LocalAssetFetcher {
   fetch(request: Request): Promise<Response>;
 }
@@ -43,6 +45,17 @@ export function createLocalAssetFetcher(publicDir: string): LocalAssetFetcher {
       if (existsSync(targetPath) && statSync(targetPath).isFile()) {
         const ext = extname(targetPath).toLowerCase();
         const contentType = MIME_TYPES[ext] || "application/octet-stream";
+        // 入口脚本与样式表以固定 URL 加载（public/index.html），升级后必须立即生效：
+        // no-cache + ETag 让浏览器每次重新验证，未变化时只回 304。
+        if (REVALIDATED_EXTENSIONS.has(ext)) {
+          const stat = statSync(targetPath);
+          const etag = `W/"${stat.size.toString(16)}-${Math.floor(stat.mtimeMs).toString(16)}"`;
+          const headers = { "content-type": contentType, "cache-control": "no-cache", etag };
+          if (request.headers.get("if-none-match") === etag) {
+            return new Response(null, { status: 304, headers });
+          }
+          return new Response(await readFile(targetPath), { status: 200, headers });
+        }
         const content = await readFile(targetPath);
         return new Response(content, {
           status: 200,

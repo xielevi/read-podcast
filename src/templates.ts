@@ -1,10 +1,13 @@
 import { json } from "./http";
+import { DEFAULT_REFINE_PROMPT_EN } from "./refinement/defaults";
 
 export interface PromptTemplate {
   id: string;
   name: string;
   description: string;
   content: string;
+  /** 英文界面使用的同一模板（英文播客用英文指令更自然；输出语言仍由 refine 步骤按转录语言锁定）。 */
+  content_en: string;
 }
 
 export const PROMPT_TEMPLATES: PromptTemplate[] = [
@@ -72,6 +75,7 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 **嘉宾**：整理后的发言。
 
 除正文外，不要输出任何解释。`,
+    content_en: DEFAULT_REFINE_PROMPT_EN,
   },
   {
     id: "clean_verbatim",
@@ -87,10 +91,36 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 
 1. **零删减**：保留 100% 实质信息、论点、论据、案例和全部细节。绝对严禁摘要、提炼或压缩。
 2. **清洗卡顿**：仅剔除纯口头禅、重复卡顿语气词（如“呃、啊、这个、就是说”），修正明显听写错别字与错乱标点。
-3. **分段与发言者**：保持自然段落切分，标注发言人。保持说话人的原文人称与说话语序不变。
+3. **分段与发言者**：保持自然段落切分，每段发言以加粗的发言人标签开头（如 **主持人**：、**嘉宾**：，或识别出的姓名）。保持说话人的原文人称与说话语序不变。
 4. **字数门禁**：成稿字数必须达到原始转录字数的 90% 以上。
 
+## 输出格式
+
+**主持人**：整理后的发言。
+
+**嘉宾**：整理后的发言。
+
 直接输出整理后的 Markdown 对话正文，不要输出任何引言或解释。`,
+    content_en: `# Clean Verbatim Transcript Prompt
+
+## Role
+
+You are a professional transcriptionist. Turn the raw transcript into a clean, readable verbatim transcript.
+
+## Principles
+
+1. **Nothing removed**: keep 100% of the substance — every claim, argument, example and detail. Never summarize, condense or paraphrase.
+2. **Clean up disfluencies only**: remove pure fillers and stutters ("um", "uh", "you know", "like", repeated false starts); fix obvious mis-transcriptions and broken punctuation.
+3. **Paragraphs and speakers**: keep natural paragraph breaks; start each turn with a bold speaker label (such as **Host**:, **Guest**: or the speaker's name). Keep each speaker's person and word order unchanged.
+4. **Length gate**: the result must be at least 90% of the raw transcript's length.
+
+## Output format
+
+**Host**: The cleaned-up turn.
+
+**Guest**: The cleaned-up turn.
+
+Output only the cleaned Markdown dialogue, with no preamble or explanation.`
   },
   {
     id: "structured_interview",
@@ -111,8 +141,64 @@ export const PROMPT_TEMPLATES: PromptTemplate[] = [
 5. **篇幅与完整度**：完整保留问答中的论证逻辑与案例细节，严禁把回答缩写为干瘪总结；成稿篇幅通常在原始转录的 75%–85% 以上。
 
 直接输出排版完成的 Markdown 正文，不附带多余分析。`,
+    content_en: `# Structured Interview Prompt
+
+## Role
+
+You are the editor of a collection of in-depth interviews. Turn the spoken transcript into a clearly structured, rigorous Q&A.
+
+## Requirements
+
+1. **Outline and timeline**: before the body, list the core topics with timestamps under \`### 📌 Episode Outline & Timeline\`.
+2. **Clear Q&A turns**: mark who asks and who answers, using real names where known (otherwise **[Q]** and **[A]**).
+3. **Structured headings**: add level-2 headings as the discussion moves on, formatted as \`## 01 | Topic\`, so readers can find their place quickly.
+4. **No outlining**: keep the reasoning and supporting detail inside each answer; never reduce an answer to a few dry bullet points.
+5. **Length and completeness**: keep the arguments and examples in full; the result is usually 75%–85% or more of the raw transcript's length.
+
+Output only the finished Markdown body, with no extra commentary.`,
   },
 ];
+
+/**
+ * 改版前的中文模板正文：任务的 custom_prompt 存的是创建当时的正文，升级后重试旧任务时仍要能识别并换版。
+ * 模板改版时把旧正文追加到这里（只追加，不删除）。
+ */
+const LEGACY_TEMPLATE_CONTENT: Record<string, string[]> = {
+  clean_verbatim: [`# 高保真清洁逐字稿整理 Prompt
+
+## 任务定位
+
+你是一位专业的速记与录音整理专家。你的任务是将原始转录稿整理成清晰通顺的清洁逐字稿。
+
+## 核心原则
+
+1. **零删减**：保留 100% 实质信息、论点、论据、案例和全部细节。绝对严禁摘要、提炼或压缩。
+2. **清洗卡顿**：仅剔除纯口头禅、重复卡顿语气词（如“呃、啊、这个、就是说”），修正明显听写错别字与错乱标点。
+3. **分段与发言者**：保持自然段落切分，标注发言人。保持说话人的原文人称与说话语序不变。
+4. **字数门禁**：成稿字数必须达到原始转录字数的 90% 以上。
+
+直接输出整理后的 Markdown 对话正文，不要输出任何引言或解释。`],
+};
+
+/**
+ * 任务的 custom_prompt 若是（或以）某个内置模板的另一种语言版本（开头），换成转录语言的版本，其余补充要求原样保留。
+ * 实测单句输出语言锁压不住整篇中文模板（英文音频仍会产出中文稿），只有送对语言的模板才可靠。
+ */
+export function matchTemplateLanguage(customPrompt: string, lang: "zh" | "en"): string {
+  for (const template of PROMPT_TEMPLATES) {
+    const wanted = (lang === "en" ? template.content_en : template.content).trim();
+    const others = lang === "en"
+      ? [template.content, ...(LEGACY_TEMPLATE_CONTENT[template.id] ?? [])]
+      : [template.content_en];
+    for (const raw of others) {
+      const other = raw.trim();
+      if (other && other !== wanted && customPrompt.startsWith(other)) {
+        return wanted + customPrompt.slice(other.length);
+      }
+    }
+  }
+  return customPrompt;
+}
 
 export function listPromptTemplates(): Response {
   return json(PROMPT_TEMPLATES);

@@ -27,6 +27,7 @@ import {
   extractMarkdown,
   isReasoningModel,
   usesOpencodeSession,
+  OUTPUT_LANGUAGE_LOCK,
 } from "../src/refinement/refiner";
 import { countMeaningfulChars, verifyRefinementQuality } from "../src/refinement/quality";
 import { formatLocalTimestamp, formatMarkdown, manuscriptTimeZone, stripLeadingFrontmatter } from "../src/refinement/formatter";
@@ -202,10 +203,10 @@ describe("refiner: extractMarkdown / prompt 组装", () => {
     expect(prompt).toContain("严禁摘要");
 
     const custom = buildRefinePrompt("某期节目简介", "自定义 {summary} 模板");
-    expect(custom).toBe("自定义 某期节目简介 模板");
+    expect(custom).toBe(`自定义 某期节目简介 模板\n\n${OUTPUT_LANGUAGE_LOCK.zh}`);
 
     const customNoPlaceholder = buildRefinePrompt("某期节目简介", "固定模板");
-    expect(customNoPlaceholder).toBe("固定模板");
+    expect(customNoPlaceholder).toBe(`固定模板\n\n${OUTPUT_LANGUAGE_LOCK.zh}`);
 
     const fallback = buildRefinePrompt("简介", null, "");
     expect(fallback).toBe("节目简介: 简介");
@@ -328,6 +329,28 @@ describe("quality gate: 70% 硬下限 + 独立结构门控", () => {
     const result = verifyRefinementQuality(plain, longRaw);
     expect(result.valid).toBe(false);
     expect(result.score).toBeLessThan(2);
+  });
+
+  it("清洁逐字稿：加粗发言人标签的纯对话（无标题/大纲）→ pass", () => {
+    const refined = `**主持人**：${longRaw.slice(0, longRaw.length / 2)}\n\n**嘉宾**：${longRaw.slice(longRaw.length / 2)}`;
+    const result = verifyRefinementQuality(refined, longRaw);
+    expect(result.features).toEqual(expect.arrayContaining(["has_bold", "has_speaker"]));
+    expect(result.valid).toBe(true);
+  });
+
+  it("清洁逐字稿：加粗发言人标签但被压缩 → fail", () => {
+    const refined = `**主持人**：${longRaw.slice(0, Math.floor(longRaw.length * 0.5))}`;
+    const result = verifyRefinementQuality(refined, longRaw);
+    expect(result.features.some(feature => feature.startsWith("too_short:"))).toBe(true);
+    expect(result.valid).toBe(false);
+  });
+
+  it("纯文本发言人标签（Speaker 1:）只命中 has_speaker → fail", () => {
+    const refined = `Speaker 1: ${longRaw}\n\nSpeaker 2: ok`;
+    const result = verifyRefinementQuality(refined, longRaw);
+    expect(result.features).toContain("has_speaker");
+    expect(result.features).not.toContain("has_bold");
+    expect(result.valid).toBe(false);
   });
 
   it("countMeaningfulChars 忽略空白", () => {
