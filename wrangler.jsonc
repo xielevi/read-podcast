@@ -56,9 +56,6 @@
   "triggers": { "crons": ["*/5 * * * *"] },
   "vars": {
     "APP_ENV": "production",
-    // 转录实现：self-hosted（默认，自托管 Transcription Service）| dashscope（百炼 Paraformer）。
-    // 部署时由 READ_PODCAST_TRANSCRIPTION_PROVIDER 注入；dashscope 需另注入 secret DASHSCOPE_API_KEY。
-    "TRANSCRIPTION_PROVIDER": "self-hosted",
     // 自定义上传音频的 presigned GET 目标桶（与上面 r2_buckets[].bucket_name 同一个值，不是机密）。
     "R2_BUCKET_NAME": "read-podcast-edge-raw",
     // ── 必须单独注入的 secret（刻意不写进仓库）──
@@ -72,8 +69,9 @@
     //   GITHUB_TOKEN / REFINER_API_KEY
     // 注入方式见 docs/DEPLOYMENT.md：npx wrangler secret put <NAME>
     // Canonical Manuscript Store 的 branch / path（可选）。部署者自己的值刻意不放在这里：
-    // TRANSCRIPTION_SERVICE_URL / GITHUB_OWNER / GITHUB_REPO 在生产由 scripts/deploy.mjs 以 --var 注入，
-    // 在 Deploy to Cloudflare 部署页从 .dev.vars.example 收集（部署页把这里的每个 var 都设为必填，空值会挡住部署）。
+    // TRANSCRIPTION_SERVICE_URL / GITHUB_OWNER / GITHUB_REPO / TRANSCRIPTION_PROVIDER 在生产由 scripts/deploy.mjs
+    // 以 --var 注入（TRANSCRIPTION_PROVIDER 未设即 self-hosted），在 Deploy to Cloudflare 部署页从 .dev.vars.example
+    // 以 secret 收集：部署页把这里的每个 var 都设为必填，空值会挡住部署；页面上改动的 var 也不会写回新仓库。
     "GITHUB_BRANCH": "main",
     "GITHUB_PODCAST_PATH": "podcasts/transcripts"
   }

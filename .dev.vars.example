@@ -11,6 +11,8 @@ GITHUB_OWNER=your-github-username
 GITHUB_REPO=your-manuscript-repository
 GITHUB_TOKEN=github-fine-grained-token-with-contents-write
 REFINER_API_KEY=replace-with-refiner-api-key
+# 转录实现：self-hosted（自托管 Transcription Service）| dashscope（百炼 Paraformer，无需自己跑服务）。
+TRANSCRIPTION_PROVIDER=self-hosted
 # 百炼 Paraformer 的 API key：只在 TRANSCRIPTION_PROVIDER=dashscope 时读取，self-hosted 时保留占位即可。
 DASHSCOPE_API_KEY=unused-with-self-hosted-transcription
 #
@@ -29,6 +31,3 @@ DASHSCOPE_API_KEY=unused-with-self-hosted-transcription
 # TRANSCRIPTION_LANGUAGE=zh
 # 可选：稿件 frontmatter 中 processed_at 使用的 IANA 时区（默认 Asia/Shanghai）。
 # MANUSCRIPT_TIME_ZONE=Asia/Shanghai
-# 可选：转录实现（self-hosted 默认 | dashscope 百炼 Paraformer，需上面的 DASHSCOPE_API_KEY）。
-# 部署到 Cloudflare 时它是 wrangler.jsonc 中的 var，在部署页或 dashboard 修改。
-# TRANSCRIPTION_PROVIDER=self-hosted

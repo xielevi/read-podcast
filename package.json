@@ -46,10 +46,10 @@
         "description": "Name of the GitHub repository where manuscripts are saved as Markdown."
       },
       "GITHUB_BRANCH": {
-        "description": "Branch in the manuscript repository (default: main)."
+        "description": "Branch of the manuscript repository (default `main`). Values typed on the deploy page are not saved for variables — to change it, edit `wrangler.jsonc` in your new repository."
       },
       "GITHUB_PODCAST_PATH": {
-        "description": "Directory path for manuscript Markdown files in the repository (default: podcasts/transcripts)."
+        "description": "Folder for manuscript Markdown files in the repository (default `podcasts/transcripts`). Values typed on the deploy page are not saved for variables — to change it, edit `wrangler.jsonc` in your new repository."
       },
       "TRANSCRIPTION_PROVIDER": {
         "description": "`self-hosted` (your own Transcription Service, see docs) or `dashscope` (Alibaba Cloud Paraformer — no server to run; also set DASHSCOPE_API_KEY)."
