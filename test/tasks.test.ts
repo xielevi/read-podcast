@@ -661,7 +661,7 @@ describe("recovery：完全由 Cloudflare 自己的 sweep 完成（没有 reclai
     await cloud.workflow.create({ id: wf, params: {} });
     cloud.workflow.instances.get(wf)!.status = "errored";
 
-    expect(await runMaintenance(cloud.env)).toEqual({ started: 1, lost: 1 });
+    expect(await runMaintenance(cloud.env)).toEqual({ started: 1, lost: 1, notion: 0 });
   });
 });
 

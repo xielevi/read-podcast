@@ -3,8 +3,8 @@ import type { Database, ManuscriptStore, ObjectStore, TaskWorkflowEngine } from 
 export interface Env {
   db: Database;
   storage: ObjectStore;
-  // Canonical Manuscript Store:成稿唯一长期事实源。CF = GitHub 仓库;Docker = 本地目录
-  // (默认)或 GitHub 回落。由平台装配层注入,业务层只经此读写,选择不在运行时发生。
+  // Canonical Manuscript Store:成稿唯一长期事实源。由平台装配层按 MANUSCRIPT_STORE
+  // （github | notion-r2 | local）注入,业务层只经此读写,选择不在运行时发生。
   manuscripts: ManuscriptStore;
   workflows?: TaskWorkflowEngine;
   assets?: { fetch: (request: Request) => Promise<Response> };
@@ -35,6 +35,23 @@ export interface Env {
   MANUSCRIPT_TIME_ZONE?: string;
   // 可选：GitHub API 根地址（GitHub Enterprise / 本地联调）；缺省 https://api.github.com。
   GITHUB_API_BASE?: string;
+  // 稿件后端：github（Cloudflare 默认）| notion-r2 | local（Docker 默认）。
+  MANUSCRIPT_STORE?: string;
+  NOTION_TOKEN?: string;
+  // 兼容别名：true → notion-r2，false → 该平台默认。新部署请用 MANUSCRIPT_STORE。
+  NOTION_MANUSCRIPT_STORE?: string;
+  NOTION_PODCAST_DATA_SOURCE_ID?: string;
+  NOTION_PODCAST_DATABASE_ID?: string;
+  NOTION_API_BASE?: string;
+  NOTION_SCHEMA?: string;
+  NOTION_SCHEMA_JSON?: string;
+  NOTION_PROPERTY_MAP?: string;
+  NOTION_SHOW_OPTIONS?: string;
+  NOTION_SHOW_OTHER?: string;
+  NOTION_STATUS_VALUES?: string;
+  NOTION_TRANSCRIPT_VALUES?: string;
+  // 可选：公开阅读站 origin（https://your-domain.example），写入 Notion 阅读页属性。
+  MANUSCRIPT_PUBLIC_ORIGIN?: string;
   // 转录服务前面由 Cloudflare Access 保护（Tunnel 入口的 service token）。
   // 生产路径必填；endpoint 指向本机（本地开发）时可以不配置。
   CF_ACCESS_CLIENT_ID?: string;

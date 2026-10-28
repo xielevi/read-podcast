@@ -521,8 +521,7 @@ describe("0022_i18n_support", () => {
 });
 
 describe("0023_article_brief", () => {
-  it("是最新一条迁移；articles 增加可空 brief 列，历史稿件保持 NULL", () => {
-    expect(migrationFiles().at(-1)).toBe("0023_article_brief.sql");
+  it("articles 增加可空 brief 列，历史稿件保持 NULL", () => {
     const db = new DatabaseSync(":memory:");
     db.exec("PRAGMA foreign_keys = ON;");
     migrate(db, { upTo: "0022_i18n_support.sql" });
@@ -538,5 +537,48 @@ describe("0023_article_brief", () => {
     expect((db.prepare("SELECT brief FROM articles WHERE task_id = 't1'").get() as { brief: unknown }).brief).toBeNull();
     db.prepare("UPDATE articles SET brief = ? WHERE task_id = 't1'").run('{"version":1}');
     expect((db.prepare("SELECT brief FROM articles WHERE task_id = 't1'").get() as { brief: string }).brief).toBe('{"version":1}');
+  });
+});
+
+describe("0024_notion_manuscript_sync", () => {
+  it("历史稿件 pending 为 0、synced_at 为 NULL", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec("PRAGMA foreign_keys = ON;");
+    migrate(db, { upTo: "0023_article_brief.sql" });
+    db.exec(`
+      INSERT INTO tasks (id, episode_id, source_type, podcast_name, episode_title, status)
+      VALUES ('t1', NULL, 'upload', 'P', 'A', 'success');
+      INSERT INTO articles (task_id, title, podcast_name, content_path, commit_sha)
+      VALUES ('t1', 'A', 'P', 'path/a.md', 'sha1');
+    `);
+
+    migrate(db, { from: "0024_notion_manuscript_sync.sql", upTo: "0024_notion_manuscript_sync.sql" });
+
+    const row = db.prepare("SELECT notion_sync_pending, notion_synced_at FROM articles WHERE task_id = 't1'").get() as {
+      notion_sync_pending: number;
+      notion_synced_at: string | null;
+    };
+    expect(row.notion_sync_pending).toBe(0);
+    expect(row.notion_synced_at).toBeNull();
+    db.prepare("UPDATE articles SET notion_sync_pending = 1 WHERE task_id = 't1'").run();
+    expect((db.prepare("SELECT notion_sync_pending FROM articles WHERE task_id = 't1'").get() as { notion_sync_pending: number }).notion_sync_pending).toBe(1);
+  });
+});
+
+describe("0025_notion_retry_at", () => {
+  it("是最新一条迁移；历史稿件 retry_at 为 NULL", () => {
+    expect(migrationFiles().at(-1)).toBe("0025_notion_retry_at.sql");
+    const db = new DatabaseSync(":memory:");
+    db.exec("PRAGMA foreign_keys = ON;");
+    migrate(db, { upTo: "0024_notion_manuscript_sync.sql" });
+    db.exec(`
+      INSERT INTO tasks (id, episode_id, source_type, podcast_name, episode_title, status)
+      VALUES ('t1', NULL, 'upload', 'P', 'A', 'success');
+      INSERT INTO articles (task_id, title, podcast_name, content_path, commit_sha)
+      VALUES ('t1', 'A', 'P', 'path/a.md', 'sha1');
+    `);
+    migrate(db, { from: "0025_notion_retry_at.sql", upTo: "0025_notion_retry_at.sql" });
+    const row = db.prepare("SELECT notion_retry_at FROM articles WHERE task_id = 't1'").get() as { notion_retry_at: string | null };
+    expect(row.notion_retry_at).toBeNull();
   });
 });

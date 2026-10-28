@@ -91,6 +91,41 @@ describe("scripts/deploy.mjs", () => {
     expect(JSON.parse(result.stdout)).toContain("TRANSCRIPTION_SERVICE_URL:https://transcribe.mydomain.net");
   });
 
+  it("MANUSCRIPT_STORE=notion-r2 后 GitHub 仓库改为可选，但必须有数据源或数据库 id", () => {
+    const missing = run({
+      READ_PODCAST_DOMAIN: VALID.READ_PODCAST_DOMAIN,
+      READ_PODCAST_TRANSCRIPTION_URL: VALID.READ_PODCAST_TRANSCRIPTION_URL,
+      READ_PODCAST_MANUSCRIPT_STORE: "notion-r2",
+    });
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("READ_PODCAST_NOTION_DATA_SOURCE_ID or READ_PODCAST_NOTION_DATABASE_ID is required");
+
+    const result = run({
+      READ_PODCAST_DOMAIN: VALID.READ_PODCAST_DOMAIN,
+      READ_PODCAST_TRANSCRIPTION_URL: VALID.READ_PODCAST_TRANSCRIPTION_URL,
+      READ_PODCAST_MANUSCRIPT_STORE: "notion-r2",
+      READ_PODCAST_NOTION_DATA_SOURCE_ID: "00000000-0000-4000-8000-000000000001",
+      READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN: "https://read.example",
+    });
+    expect(result.status).toBe(0);
+    const args = JSON.parse(result.stdout) as string[];
+    expect(args).toContain("MANUSCRIPT_STORE:notion-r2");
+    expect(args).toContain("NOTION_PODCAST_DATA_SOURCE_ID:00000000-0000-4000-8000-000000000001");
+    expect(args).toContain("MANUSCRIPT_PUBLIC_ORIGIN:https://read.example");
+    expect(args.join(" ")).not.toContain("GITHUB_OWNER");
+  });
+
+  it("Notion 文档占位 id 被拒绝", () => {
+    const result = run({
+      READ_PODCAST_DOMAIN: VALID.READ_PODCAST_DOMAIN,
+      READ_PODCAST_TRANSCRIPTION_URL: VALID.READ_PODCAST_TRANSCRIPTION_URL,
+      READ_PODCAST_MANUSCRIPT_STORE: "notion-r2",
+      READ_PODCAST_NOTION_DATA_SOURCE_ID: "your-notion-data-source-id",
+    });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("READ_PODCAST_NOTION_DATA_SOURCE_ID must be a Notion id");
+  });
+
   it("无效的 provider 值被拒绝", () => {
     const result = run({ ...VALID, READ_PODCAST_TRANSCRIPTION_PROVIDER: "openai" });
     expect(result.status).toBe(1);
@@ -123,6 +158,7 @@ describe("仓库不含部署者自己的值", () => {
       "DOMAIN", "TRANSCRIPTION_URL", "GITHUB_OWNER", "GITHUB_REPO",
       "GITHUB_BRANCH", "GITHUB_PATH", "TRANSCRIPTION_LANGUAGE",
       "TRANSCRIPTION_PROVIDER", "TIME_ZONE",
+      "MANUSCRIPT_STORE", "NOTION_MANUSCRIPT_STORE", "NOTION_DATA_SOURCE_ID", "NOTION_DATABASE_ID", "NOTION_SCHEMA", "NOTION_SHOW_OPTIONS", "MANUSCRIPT_PUBLIC_ORIGIN",
     ]) {
       expect(ci).toContain(`secrets.READ_PODCAST_${name}`);
       expect(ci).not.toContain(`vars.READ_PODCAST_${name}`);
@@ -151,6 +187,42 @@ describe("仓库不含部署者自己的值", () => {
     expect(curlLine).toBeDefined();
     expect(curlLine).not.toMatch(/curl -\w*S/);
     expect(curlLine).toContain("2>/dev/null");
+  });
+
+  it("仓库不含个人 Notion id、私有 writing 仓库路径或示例文件里的真实 UUID", () => {
+    const root = fileURLToPath(ROOT);
+    const needles = [
+      ["6a34", "6e94"].join(""),
+      ["157a", "c668"].join(""),
+      ["407e", "7e08"].join(""),
+      ["xielevi", "/writing"].join(""),
+    ];
+    const listed = execFileSync("git", ["ls-files", "-c", "-o", "--exclude-standard"], {
+      cwd: root,
+      encoding: "utf-8",
+    }).trim().split("\n").filter(Boolean);
+    const skip = /\.(png|jpe?g|webp|gif|ico|woff2?|ttf|eot|mp4|webm|wasm)$/i;
+    const hits: string[] = [];
+    for (const rel of listed) {
+      if (skip.test(rel)) continue;
+      let text: string;
+      try {
+        text = read(rel);
+      } catch {
+        continue;
+      }
+      for (const needle of needles) {
+        if (text.includes(needle)) hits.push(`${rel}: ${needle}`);
+      }
+    }
+    expect(hits).toEqual([]);
+
+    const uuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+    for (const file of [".deploy.env.example", ".dev.vars.example", ".env.example"]) {
+      expect(read(file), file).not.toMatch(uuid);
+      expect(read(file)).toMatch(/your-notion-data-source-id/);
+    }
+    expect(read(".dev.vars.example")).toMatch(/NOTION_TOKEN=secret_xxx/);
   });
 
   it("npm run deploy:production 走 scripts/deploy.mjs，通用 deploy 走 scripts/deploy_community.mjs", () => {

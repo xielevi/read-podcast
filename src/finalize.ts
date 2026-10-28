@@ -106,20 +106,33 @@ export async function persistFinalArticle(
   }
 
   const task = await env.db.prepare(
-    "SELECT episode_id, episode_title, podcast_name FROM tasks WHERE id = ?",
+    "SELECT episode_id, episode_title, podcast_name, audio_url FROM tasks WHERE id = ?",
   )
     .bind(input.taskId)
-    .first<{ episode_id: string | null; episode_title: string; podcast_name: string }>();
+    .first<{ episode_id: string | null; episode_title: string; podcast_name: string; audio_url: string | null }>();
   if (!task) throw new FinalizeError("task_not_found", "Task not found", false);
 
   // 顺序不可颠倒：先发布成稿到 Store（幂等），成功后才标记 D1 success 并建立成稿索引。原始转录不入 Store。
+  // Notion 写入失败时 Store 仍返回成功（R2 快照已在），notion_sync_pending = 1，由定时任务重试。
   try {
     const published = await env.manuscripts.publish({
       writingFilename: input.writingFilename,
       title: task.episode_title,
       markdown,
+      meta: {
+        taskId: input.taskId,
+        episodeId: task.episode_id,
+        podcastName: task.podcast_name,
+        audioUrl: task.audio_url,
+        briefSummary: input.brief?.tldr ?? null,
+        readingMinutes: input.brief?.reading_minutes ?? null,
+        refinementSuccess: true,
+        transcriptSource: env.TRANSCRIPTION_PROVIDER === "dashscope" ? "dashscope" : undefined,
+      },
     });
     const saved = { finalPath: published.path, commitSha: published.version };
+    const notionPending = published.notionPending === true ? 1 : 0;
+    const notionSyncedAt = published.notionPending === false ? new Date().toISOString() : null;
 
     const taskUpdateStmt = env.db.prepare(`UPDATE tasks SET status = 'success', progress = 100, message = '已完成',
       final_content_path = ?, content_commit_sha = ?, transcript_source = 'ai_refined', refinement_success = 1,
@@ -130,8 +143,8 @@ export async function persistFinalArticle(
 
     const briefJson = input.brief ? JSON.stringify(input.brief) : null;
     const articleUpsertStmt = task.episode_id
-      ? env.db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha, brief)
-          VALUES (?, ?, ?, ?, ?, ?, ?)
+      ? env.db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha, brief, notion_sync_pending, notion_synced_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(episode_id) WHERE episode_id IS NOT NULL DO UPDATE SET
             task_id = excluded.task_id,
             title = excluded.title,
@@ -139,18 +152,22 @@ export async function persistFinalArticle(
             content_path = excluded.content_path,
             commit_sha = excluded.commit_sha,
             brief = excluded.brief,
+            notion_sync_pending = excluded.notion_sync_pending,
+            notion_synced_at = excluded.notion_synced_at,
             updated_at = ${NOW}`)
-          .bind(input.taskId, task.episode_id, task.episode_title, task.podcast_name, saved.finalPath, saved.commitSha, briefJson)
-      : env.db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha, brief)
-          VALUES (?, NULL, ?, ?, ?, ?, ?)
+          .bind(input.taskId, task.episode_id, task.episode_title, task.podcast_name, saved.finalPath, saved.commitSha, briefJson, notionPending, notionSyncedAt)
+      : env.db.prepare(`INSERT INTO articles (task_id, episode_id, title, podcast_name, content_path, commit_sha, brief, notion_sync_pending, notion_synced_at)
+          VALUES (?, NULL, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(task_id) DO UPDATE SET
             title = excluded.title,
             podcast_name = excluded.podcast_name,
             content_path = excluded.content_path,
             commit_sha = excluded.commit_sha,
             brief = excluded.brief,
+            notion_sync_pending = excluded.notion_sync_pending,
+            notion_synced_at = excluded.notion_synced_at,
             updated_at = ${NOW}`)
-          .bind(input.taskId, task.episode_title, task.podcast_name, saved.finalPath, saved.commitSha, briefJson);
+          .bind(input.taskId, task.episode_title, task.podcast_name, saved.finalPath, saved.commitSha, briefJson, notionPending, notionSyncedAt);
 
     // D1 原子事务提交：任务更新与成稿建立同生共死
     const [updateRes] = await env.db.batch([taskUpdateStmt, articleUpsertStmt]);

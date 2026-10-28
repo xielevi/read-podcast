@@ -13,7 +13,7 @@ Browser / Mobile
 Cloudflare application
   ├─ D1                 durable business record
   ├─ ProcessingWorkflow execution owner + durable checkpoints
-  └─ R2                 raw / refined / upload payload checkpoints
+  └─ R2                 raw / refined / upload checkpoints, plus durable manuscript snapshots
       │        ▲
       ▼        │ raw transcript
 Transcription Service   replaceable external transcription compute
@@ -28,10 +28,10 @@ Canonical Manuscript Store   final manuscript persistence
 |---|---|---|
 | **D1** | user-visible durable business state: subscriptions, episodes, tasks, read state, article index (what Public Browse Mode lists), refinement settings, UI preferences, concept cache | Cloudflare D1 |
 | **ProcessingWorkflow** | execution of a task from creation to publication, with durable step checkpoints | Cloudflare Workflows |
-| **R2** | expensive intermediate payloads: uploaded audio, raw transcripts and refined text (temporary) | Cloudflare R2 |
+| **R2** | temporary checkpoints (uploads, raw transcripts, refined text) and, when `MANUSCRIPT_STORE=notion-r2`, durable manuscript snapshots at `manuscripts/<sha256>.md` | Cloudflare R2 |
 | **Transcription Service** | turning audio into a raw transcript; no business state, no credential, no user-maintained configuration | `transcription_service/` |
 | **Refinement Provider** | turning a raw transcript into refined text | any OpenAI-compatible API |
-| **Canonical Manuscript Store** | the durable, canonical published manuscript | a user-configured GitHub repository (Cloudflare deployment) or a local directory volume (Docker deployment, default) |
+| **Canonical Manuscript Store** | the durable, canonical published manuscript | GitHub repository (Cloudflare default), local directory (Docker default), or optional Notion database plus an immutable object-store snapshot (`MANUSCRIPT_STORE=notion-r2`) |
 
 Cloudflare owns the task lifecycle from creation to publication. The Transcription
 Service is a replaceable compute dependency used during the transcription stage; once the
@@ -40,12 +40,20 @@ raw transcript is in R2 it can be offline, restarted or replaced without affecti
 Readers always go through the application. The Canonical Manuscript Store is a
 persistence layer that the application reads internally, never a browser-facing entry point.
 A deployment has exactly one Canonical Manuscript Store per manuscript; any future export
-is a secondary copy, not a second source of truth. Two concrete stores exist — the GitHub
-repository and the Docker local directory — so they stand behind a single minimal
-`ManuscriptStore` interface (`src/platform/types.ts`). Which store a deployment uses is
-decided once at environment assembly (Cloudflare: GitHub; Docker: local directory by
-default, GitHub as an opt-in fallback). There is no runtime backend selector, no Settings
-switch and no D1 backend column.
+is a secondary copy, not a second source of truth. The stores stand behind a single minimal
+`ManuscriptStore` interface (`src/platform/types.ts`): the GitHub repository, the Docker
+local directory, and optional Notion plus immutable object-store snapshots.
+Which store a deployment uses for **new publishes** is decided once at environment
+assembly by `MANUSCRIPT_STORE=github|notion-r2|local`. Cloudflare defaults to `github`.
+Docker defaults to `local` when `MANUSCRIPT_PATH` is set. `NOTION_MANUSCRIPT_STORE=true|false`
+is a compatibility alias (`true` → `notion-r2`, `false` → that platform's default). A
+Notion token and data-source id do not switch the store by themselves. Rolling back the
+publish backend to GitHub does not hide already-published snapshots: a 64-hex `commit_sha`
+or `manuscripts/<sha256>.md` path still reads the object store, and an unversioned Notion
+page id still reads Notion when a token remains. While GitHub credentials remain, reads of
+a repository path and a 40-hex commit sha still go to GitHub.
+There is no runtime backend selector, no Settings switch and no D1 backend column.
+Notion ids and tokens belong in Worker secrets / git-ignored env, never in the repository.
 
 ## Platform Interfaces and Abstraction Boundary
 
@@ -77,9 +85,17 @@ The interface boundary is drawn strictly between platform runtimes and business 
   The Canonical Manuscript Store contract: `publish` (the only write path, idempotent on the
   same path and content, history preserved on overwrite), a versioned `read` (publish-snapshot
   semantics), and a minimal `list`. A version is an immutable snapshot identifier — a GitHub
-  commit sha (40-hex) or a local content hash (64-hex sha-256) — carried by the existing D1
-  `commit_sha` columns. Implemented by the GitHub Git Data API (`src/github.ts`) and by the
-  Docker local directory (`src/platform/node/manuscript.ts`).
+  commit sha (40-hex) or a content hash (64-hex sha-256) — carried by the existing D1
+  `commit_sha` columns. Implemented by the GitHub Git Data API (`src/github.ts`), the Docker
+  local directory (`src/platform/node/manuscript.ts`), and Notion + object-store snapshots
+  (`src/notion_manuscript.ts`, selected with `MANUSCRIPT_STORE=notion-r2`).
+  For Notion, `content_path` is the page id (or the snapshot key `manuscripts/<sha>.md` while a
+  sync is still pending) and `commit_sha` is the sha256 of the markdown. Public reads pass
+  that hash and load the snapshot object. Control-plane reads without a version load the current
+  Notion markdown. A failed Notion write after the snapshot put still returns success;
+  `articles.notion_sync_pending` stays 1 until the maintenance pass retries. Notion page
+  history is the only backup of edits made in Notion; there is no export job. Property
+  names come from a recommended zh/en template or an operator overlay (`src/notion_schema.ts`).
 
 **Boundary Rule & Thin Adapter**:
 Business layer code (`src/*` outside `src/platform/`) depends exclusively on these minimal interfaces
@@ -101,7 +117,7 @@ logic is executed by pairing the platform interfaces with local implementations:
 | `ObjectStore` | Cloudflare R2 | Local directory volume (`uploads/`, `raw/`, `refined/`), temporary HMAC-signed download URLs (`/storage/download`), automated lifecycle retention (1d uploads, 7d raw/refined) |
 | `TaskWorkflowEngine` | Cloudflare Workflows | In-process step runner with SQLite checkpoint tables (`_workflow_instances`, `_workflow_checkpoints`), matching replay, retry, backoff, and non-retryable semantics; recovers running workflows across process restarts |
 | `ScheduledHandler` | Cloudflare Cron Trigger (every 5 min) | In-process timer (every 5 min) invoking `runMaintenance` (recovery and liveness reconciliation) and object store retention sweep |
-| `ManuscriptStore` | GitHub repository (Git Data API, `src/github.ts`) | Local directory volume (`MANUSCRIPT_PATH`, e.g. `/data/manuscripts`): current file plus `.versions/` content-addressed snapshots, temp-file + rename atomic writes; durable — never swept by retention |
+| `ManuscriptStore` | GitHub (Git Data API, `src/github.ts`) by default; Notion database + R2 `manuscripts/<sha256>.md` when `MANUSCRIPT_STORE=notion-r2` (`src/notion_manuscript.ts`). Legacy GitHub paths stay readable while those credentials exist | Local directory volume (`MANUSCRIPT_PATH`, e.g. `/data/manuscripts`) by default: current file plus `.versions/` content-addressed snapshots, temp-file + rename atomic writes; durable — never swept by retention. `MANUSCRIPT_STORE=github` or `notion-r2` selects the other backends |
 | Static Assets | Cloudflare Assets | Node HTTP server serving `public/` files with MIME mapping and SPA fallback |
 | Access Control | Cloudflare Access | Optional HTTP Basic Auth on `/manage*` and `/api/control/*`; Public Browse Mode (`/` and `/api/public/*`) remains open and side-effect free; defaults to listening on `127.0.0.1` |
 | Secrets / Vars | Wrangler secrets / vars | Environment variables and `.env` |
@@ -111,8 +127,9 @@ Service (`transcription_service/docker-compose.yml`), communicating over an inte
 Manuscript persistence defaults to the local directory store (`./manuscripts` bind-mounted to
 `/data/manuscripts`): current Markdown files sit directly in the mounted directory (readable by
 Obsidian or any editor) and `.versions/` keeps content-addressed snapshots for publish-snapshot
-reads. Configuring the GitHub credentials instead of `MANUSCRIPT_PATH` falls back to the GitHub
-store, matching the Cloudflare deployment.
+reads. Set `MANUSCRIPT_STORE=github` (or omit `MANUSCRIPT_PATH`) for the GitHub store, or
+`MANUSCRIPT_STORE=notion-r2` with a Notion token and data-source id for Notion plus local
+snapshots. Those credentials stay in `.env`, never in the repository.
 
 ### Internal Service Topology and Security Boundaries
 
@@ -182,9 +199,9 @@ Cloudflare Access can enforce the boundary before a request reaches the applicat
   published article exists and its id — never task progress, status, failures, read state,
   settings, Store paths or commits.
 - Public reading serves the **publish snapshot**: the Store file at `articles.commit_sha` — a
-  GitHub commit sha or the local store's content-hash version identifier; both are immutable
-  publish-time snapshot keys (the same version key as `article_concepts`), not the current
-  head. A new version reaches readers
+  GitHub commit sha, the local store's content hash, or the Notion store's sha256 (the R2
+  object `manuscripts/<sha>.md`). All are immutable publish-time snapshot keys (the same
+  version key as `article_concepts`), not the current head. A new version reaches readers
   only by re-publishing. Because that content is immutable, it is edge-cached by
   `content_path@commit_sha`; search results and cover art are edge-cached as well, so anonymous
   traffic does not reach upstream origins or spend the Store's API quota. The edge cache is a
@@ -322,15 +339,23 @@ in R2 (retry, recovery). Each `N` is a submission number.
   prompt normally targets roughly 75–85%; the ratio setting is a safety floor, not the editing target.
 - **Finalization.** The manuscript is committed to the Canonical Manuscript Store first
   (same path and same content is a no-op — for the local store this means a content-addressed
-  snapshot plus an atomic overwrite), and only then is D1 marked `success`. A replay of
+  snapshot plus an atomic overwrite; for Notion + R2 the sha256 object is written first and
+  an existing Notion page with the same content-hash property is not rewritten), and only then is D1 marked
+  `success`. If the R2 snapshot is stored but the Notion API call fails, the task is still
+  marked `success` with `notion_sync_pending = 1` and a null `notion_synced_at`; the
+  five-minute maintenance pass retries the upsert. A missing Notion token is a configuration
+  error and stays retryable instead of being recorded as success. A replay of
   the publish step for the same attempt resumes finalization; a stale attempt is rejected.
   Cancellation is honored until finalization begins.
 - **Cancel.** Cancel marks the task `cancelled`, terminates the workflow, and best-effort
   asks the Transcription Service to release its compute; a `finalizing` task returns 409.
 - **Recovery** is owned by Cloudflare and needs no external node. A cron trigger runs
-  `recoverQueuedTasks` (start workflows for queued tasks that have none) and
-  `reconcileWorkflowLiveness` (fail tasks whose workflow ended unexpectedly). `GET /tasks`
-  is a pure read.
+  `recoverQueuedTasks` (start workflows for queued tasks that have none),
+  `reconcileWorkflowLiveness` (fail tasks whose workflow ended unexpectedly), and, when the
+  store is `notion-r2`, a retry of articles with `notion_sync_pending = 1`. Failed or
+  skipped rows get `notion_retry_at` so they move behind untried rows on the next pass.
+  Rows left at the default pending `0` (GitHub and local manuscripts, and Notion pages that
+  already synced) are not retried. `GET /tasks` is a pure read.
 
 ## Transcription Service contract
 
@@ -436,7 +461,8 @@ Facts that differ from the self-hosted path and are accepted by design:
 | Uploaded audio | R2 `uploads/*` | 1 day |
 | Raw transcript | R2 `raw/*` | 7 days |
 | Refined text checkpoint | R2 `refined/*` | 7 days |
-| Published manuscript | Canonical Manuscript Store (GitHub repo, or the local `MANUSCRIPT_PATH` directory with `.versions/` history on Docker) | durable |
+| Published manuscript snapshot | Object store `manuscripts/<sha256>.md` (and a sibling `.meta.json`) when `MANUSCRIPT_STORE=notion-r2`. No lifecycle rule — do not expire this prefix | durable |
+| Published manuscript | GitHub repository (Cloudflare default), local `MANUSCRIPT_PATH` directory with `.versions/` history (Docker default), or a Notion page plus the snapshot above | durable |
 
 Refined checkpoints are temporary execution payloads, never a reader-facing manuscript store.
 Published manuscripts remain canonical only in the Canonical Manuscript Store.

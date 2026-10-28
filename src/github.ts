@@ -213,6 +213,15 @@ export async function readPodcastContent(env: Env, path: string, ref: string = e
  * Canonical Manuscript Store 的 GitHub 实现（Cloudflare 部署装配；Docker 未配置本地目录时回落）。
  * publish / read 包装既有 Git Data API 与 Contents API 逻辑，一行不变；version = git commit sha。
  */
+/** GitHub 凭据齐全时，notion-r2 仍可用它读取仓库路径 + 40 位 commit 的旧快照。 */
+export function githubManuscriptConfigured(env: {
+  GITHUB_TOKEN?: string;
+  GITHUB_OWNER?: string;
+  GITHUB_REPO?: string;
+}): boolean {
+  return [env.GITHUB_TOKEN, env.GITHUB_OWNER, env.GITHUB_REPO].every(value => (value ?? "").trim().length > 0);
+}
+
 export function createGitHubManuscriptStore(env: Env): ManuscriptStore {
   return {
     async publish(input) {
@@ -220,6 +229,8 @@ export function createGitHubManuscriptStore(env: Env): ManuscriptStore {
       return { path: finalPath, version: commitSha };
     },
     async read(path, version) {
+      // 64-hex is a content hash (Notion+R2 / local), never a Git commit sha.
+      if (version && /^[0-9a-f]{64}$/i.test(version)) return null;
       const response = await readPodcastContent(env, path, version ?? env.GITHUB_BRANCH);
       if (response.status === 404) return null;
       if (!response.ok) throw new Error(`Manuscript store read failed: HTTP ${response.status}`);

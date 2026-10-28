@@ -31,3 +31,11 @@ DASHSCOPE_API_KEY=unused-with-self-hosted-transcription
 # TRANSCRIPTION_LANGUAGE=zh
 # 可选：稿件 frontmatter 中 processed_at 使用的 IANA 时区（默认 Asia/Shanghai）。
 # MANUSCRIPT_TIME_ZONE=Asia/Shanghai
+# 稿件后端（可选）。缺省 github。notion-r2 需要 token 与数据源 id，都放在 secret / 本地 .dev.vars，不要提交。
+# MANUSCRIPT_STORE=notion-r2
+# NOTION_TOKEN=secret_xxx
+# NOTION_PODCAST_DATA_SOURCE_ID=your-notion-data-source-id
+# NOTION_PODCAST_DATABASE_ID=your-notion-database-id
+# NOTION_SCHEMA=en
+# NOTION_SHOW_OPTIONS=Show One,Show Two
+# MANUSCRIPT_PUBLIC_ORIGIN=https://your-domain.example
