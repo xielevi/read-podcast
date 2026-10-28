@@ -43,12 +43,15 @@ A deployment has exactly one Canonical Manuscript Store per manuscript; any futu
 is a secondary copy, not a second source of truth. The stores stand behind a single minimal
 `ManuscriptStore` interface (`src/platform/types.ts`): the GitHub repository, the Docker
 local directory, and optional Notion plus immutable object-store snapshots.
-Which store a deployment uses is decided once at environment assembly by
-`MANUSCRIPT_STORE=github|notion-r2|local`. Cloudflare defaults to `github`. Docker
-defaults to `local` when `MANUSCRIPT_PATH` is set. `NOTION_MANUSCRIPT_STORE=true|false`
+Which store a deployment uses for **new publishes** is decided once at environment
+assembly by `MANUSCRIPT_STORE=github|notion-r2|local`. Cloudflare defaults to `github`.
+Docker defaults to `local` when `MANUSCRIPT_PATH` is set. `NOTION_MANUSCRIPT_STORE=true|false`
 is a compatibility alias (`true` → `notion-r2`, `false` → that platform's default). A
-Notion token and data-source id do not switch the store by themselves. While GitHub
-credentials remain, reads of a repository path and a 40-hex commit sha still go to GitHub.
+Notion token and data-source id do not switch the store by themselves. Rolling back the
+publish backend to GitHub does not hide already-published snapshots: a 64-hex `commit_sha`
+or `manuscripts/<sha256>.md` path still reads the object store, and an unversioned Notion
+page id still reads Notion when a token remains. While GitHub credentials remain, reads of
+a repository path and a 40-hex commit sha still go to GitHub.
 There is no runtime backend selector, no Settings switch and no D1 backend column.
 Notion ids and tokens belong in Worker secrets / git-ignored env, never in the repository.
 
@@ -349,9 +352,10 @@ in R2 (retry, recovery). Each `N` is a submission number.
 - **Recovery** is owned by Cloudflare and needs no external node. A cron trigger runs
   `recoverQueuedTasks` (start workflows for queued tasks that have none),
   `reconcileWorkflowLiveness` (fail tasks whose workflow ended unexpectedly), and, when the
-  store is `notion-r2`, a retry of articles with `notion_sync_pending = 1`. Rows left at
-  the default `0` (GitHub and local manuscripts, and Notion pages that already synced) are
-  not retried. `GET /tasks` is a pure read.
+  store is `notion-r2`, a retry of articles with `notion_sync_pending = 1`. Failed or
+  skipped rows get `notion_retry_at` so they move behind untried rows on the next pass.
+  Rows left at the default pending `0` (GitHub and local manuscripts, and Notion pages that
+  already synced) are not retried. `GET /tasks` is a pure read.
 
 ## Transcription Service contract
 

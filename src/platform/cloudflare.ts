@@ -1,12 +1,13 @@
 /**
  * Cloudflare 平台薄适配层：把 Cloudflare Workers 绑定（D1 / R2 / Workflows / Assets）
- * 包装为平台中立的最小接口。未开启 Notion 稿件库时行为与原先的 GitHub store 一致。
+ * 包装为平台中立的最小接口。未选择 notion-r2 时新稿仍写入 GitHub；已发布的 R2
+ * 快照（以及仍配置了 token 时的 Notion 正文）继续可读。
  *
  * 架构护栏：只有本文件与 src/index.ts 允许直接导入 cloudflare:* 或引用 CF 绑定类型。
  */
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
 import { createGitHubManuscriptStore, githubManuscriptConfigured } from "../github";
-import { resolveManuscriptBackend, withLegacyGitHubReads } from "../manuscript_backend";
+import { resolveManuscriptBackend, withLegacyGitHubReads, withSnapshotReads } from "../manuscript_backend";
 import { createNotionR2ManuscriptStore, isManuscriptObjectKey, isNotionPageId } from "../notion_manuscript";
 import { presignR2Get, type R2SigningCredentials } from "../transcription/r2_presign";
 import { r2Credentials } from "../transcription/source";
@@ -231,10 +232,14 @@ export class ProcessingWorkflow extends WorkflowEntrypoint<CloudflareEnv, Proces
 
 export function assembleManuscriptStore(env: Env): ManuscriptStore {
   const backend = resolveManuscriptBackend(env, { platform: "cloudflare" });
-  if (backend !== "notion-r2") return createGitHubManuscriptStore(env);
   const notion = createNotionR2ManuscriptStore(env);
-  if (!githubManuscriptConfigured(env)) return notion;
-  return withLegacyGitHubReads(notion, createGitHubManuscriptStore(env), isManuscriptObjectKey, isNotionPageId);
+  const github = createGitHubManuscriptStore(env);
+  if (backend === "notion-r2") {
+    return githubManuscriptConfigured(env)
+      ? withLegacyGitHubReads(notion, github, isManuscriptObjectKey, isNotionPageId)
+      : notion;
+  }
+  return withSnapshotReads(github, notion, isManuscriptObjectKey, isNotionPageId);
 }
 
 export function adaptCloudflareEnv(raw: CloudflareEnv | Env): Env {

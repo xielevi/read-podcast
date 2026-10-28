@@ -229,6 +229,8 @@ export function createGitHubManuscriptStore(env: Env): ManuscriptStore {
       return { path: finalPath, version: commitSha };
     },
     async read(path, version) {
+      // 64-hex is a content hash (Notion+R2 / local), never a Git commit sha.
+      if (version && /^[0-9a-f]{64}$/i.test(version)) return null;
       const response = await readPodcastContent(env, path, version ?? env.GITHUB_BRANCH);
       if (response.status === 404) return null;
       if (!response.ok) throw new Error(`Manuscript store read failed: HTTP ${response.status}`);

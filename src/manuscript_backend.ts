@@ -66,6 +66,34 @@ export function notionManuscriptStoreEnabled(env: ManuscriptBackendEnv): boolean
 
 const SHA256_VERSION = /^[0-9a-f]{64}$/i;
 
+export function isSnapshotVersion(version: string | undefined): boolean {
+  return Boolean(version && SHA256_VERSION.test(version));
+}
+
+/**
+ * 新稿写入 `writer`（github / local / notion-r2）。sha256 快照、`manuscripts/` 对象键、
+ * Notion 页 id 先读 `snapshots`（对象存储 + 仍在的 Notion token）。这样回切到 GitHub
+ * 发布后端后，已经用 notion-r2 发布的公开页仍能按 commit_sha 读到快照。
+ */
+export function withSnapshotReads(
+  writer: ManuscriptStore,
+  snapshots: ManuscriptStore,
+  isSnapshotPath: (path: string) => boolean,
+  isPageId: (path: string) => boolean,
+): ManuscriptStore {
+  return {
+    publish: input => writer.publish(input),
+    list: () => writer.list(),
+    async read(path, version) {
+      if (isSnapshotVersion(version) || isSnapshotPath(path) || isPageId(path)) {
+        const hit = await snapshots.read(path, version);
+        if (hit !== null || isSnapshotPath(path) || isPageId(path)) return hit;
+      }
+      return writer.read(path, version);
+    },
+  };
+}
+
 /**
  * notion-r2 写新稿。sha256 快照只读主 store。仓库路径 / 40 位 commit 仍可读 GitHub。
  */
@@ -75,13 +103,16 @@ export function withLegacyGitHubReads(
   isSnapshotPath: (path: string) => boolean,
   isPrimaryPath: (path: string) => boolean,
 ): ManuscriptStore {
+  const snapshots = withSnapshotReads(primary, primary, isSnapshotPath, isPrimaryPath);
   return {
     publish: input => primary.publish(input),
     list: () => primary.list(),
     async read(path, version) {
-      if ((version && SHA256_VERSION.test(version)) || isSnapshotPath(path)) return primary.read(path, version);
+      if (isSnapshotVersion(version) || isSnapshotPath(path) || isPrimaryPath(path)) {
+        return snapshots.read(path, version);
+      }
       const current = await primary.read(path, version);
-      if (current !== null || isPrimaryPath(path)) return current;
+      if (current !== null) return current;
       return legacy.read(path, version);
     },
   };

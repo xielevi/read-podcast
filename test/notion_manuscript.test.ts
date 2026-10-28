@@ -4,6 +4,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { assembleManuscriptStore } from "../src/platform/cloudflare";
 import { notionManuscriptStoreEnabled, resolveManuscriptBackend } from "../src/manuscript_backend";
+import { createD1 } from "./helpers/sqlite-d1";
 import { NOTION_SCHEMA_EN, NOTION_SCHEMA_ZH, resolveNotionSchema } from "../src/notion_schema";
 import {
   NOTION_CHUNK_BYTES,
@@ -347,9 +348,50 @@ describe("retryPendingNotionManuscripts", () => {
     expect(await retryPendingNotionManuscripts(env)).toBe(1);
     expect(updates.some(sql => sql.includes("notion_sync_pending = 0") && sql.includes(PAGE))).toBe(true);
   });
+
+  it("失败的待同步行写入 retry_at，下一轮改选尚未尝试的行", async () => {
+    const d1 = createD1();
+    const { objects, storage } = memoryStorage();
+    const hashes = ["aa", "bb", "cc", "dd"].map(prefix => prefix.repeat(32));
+    for (const [index, hash] of hashes.entries()) {
+      objects.set(`manuscripts/${hash}.md`, `# body ${index}`);
+      d1.raw.prepare(
+        `INSERT INTO tasks (id, episode_id, source_type, podcast_name, episode_title, status)
+         VALUES (?, NULL, 'upload', 'P', 'E', 'success')`,
+      ).run(`t${index}`);
+      d1.raw.prepare(
+        `INSERT INTO articles (task_id, title, podcast_name, content_path, commit_sha, notion_sync_pending, updated_at)
+         VALUES (?, ?, 'P', ?, ?, 1, ?)`,
+      ).run(`t${index}`, `Title ${index}`, `manuscripts/${hash}.md`, hash, `2026-01-0${index + 1}T00:00:00.000Z`);
+    }
+    installFetch(() => ({ status: 503, body: { message: "down" } }));
+    const env = notionEnv(storage, { db: d1 as Env["db"], MANUSCRIPT_STORE: "notion-r2" });
+
+    expect(await retryPendingNotionManuscripts(env, 2)).toBe(0);
+    const afterFirst = d1.raw.prepare(
+      "SELECT task_id, notion_retry_at IS NOT NULL AS tried FROM articles ORDER BY task_id",
+    ).all() as Array<{ task_id: string; tried: number }>;
+    expect(afterFirst.map(row => [row.task_id, row.tried])).toEqual([
+      ["t0", 1], ["t1", 1], ["t2", 0], ["t3", 0],
+    ]);
+
+    expect(await retryPendingNotionManuscripts(env, 2)).toBe(0);
+    const afterSecond = d1.raw.prepare(
+      "SELECT task_id, notion_retry_at IS NOT NULL AS tried FROM articles ORDER BY task_id",
+    ).all() as Array<{ task_id: string; tried: number }>;
+    expect(afterSecond.every(row => row.tried === 1)).toBe(true);
+  });
 });
 
 describe("GitHub 旧快照回落", () => {
+  const githubVars = {
+    GITHUB_TOKEN: "gh",
+    GITHUB_OWNER: "OWNER",
+    GITHUB_REPO: "REPO",
+    GITHUB_BRANCH: "main",
+    GITHUB_PODCAST_PATH: "podcasts/transcripts",
+  } as const;
+
   it("64 位哈希只读对象存储；仓库路径仍读 GitHub", async () => {
     const { objects, storage } = memoryStorage();
     objects.set(`manuscripts/${"ab".repeat(32)}.md`, "# snapshot");
@@ -357,16 +399,44 @@ describe("GitHub 旧快照回落", () => {
       if (call.url.includes("api.github.com")) return new Response("# legacy", { status: 200 });
       throw new Error(`unexpected ${call.url}`);
     });
-    const store = assembleManuscriptStore(notionEnv(storage, {
-      GITHUB_TOKEN: "gh",
-      GITHUB_OWNER: "OWNER",
-      GITHUB_REPO: "REPO",
-      GITHUB_BRANCH: "main",
-      GITHUB_PODCAST_PATH: "podcasts/transcripts",
-    }));
+    const store = assembleManuscriptStore(notionEnv(storage, githubVars));
     expect(await store.read("ignored", "ab".repeat(32))).toBe("# snapshot");
     expect(calls).toEqual([]);
     expect(await store.read("podcasts/transcripts/old.md", "c".repeat(40))).toBe("# legacy");
     expect(calls[0].url).toContain("api.github.com");
+  });
+
+  it("回切到 github 发布后端后仍可读 R2 快照和 Notion 正文", async () => {
+    const { objects, storage } = memoryStorage();
+    const hash = "ab".repeat(32);
+    objects.set(`manuscripts/${hash}.md`, "# snapshot");
+    const calls = installFetch(call => {
+      if (call.url.includes("api.github.com")) return new Response("# legacy", { status: 200 });
+      if (call.url.endsWith("/markdown") && call.method === "GET") return { body: { object: "page_markdown", markdown: "# edited" } };
+      throw new Error(`unexpected ${call.url}`);
+    });
+    const store = assembleManuscriptStore(notionEnv(storage, { MANUSCRIPT_STORE: "github", ...githubVars }));
+    expect(await store.read(PAGE, hash)).toBe("# snapshot");
+    expect(await store.read(`manuscripts/${hash}.md`)).toBe("# snapshot");
+    expect(await store.read(PAGE)).toBe("# edited");
+    expect(calls.some(call => call.url.includes("api.github.com"))).toBe(false);
+    expect(await store.read("podcasts/transcripts/old.md", "c".repeat(40))).toBe("# legacy");
+    expect(calls.some(call => call.url.includes("api.github.com"))).toBe(true);
+  });
+
+  it("回切后没有 Notion token 时公开快照仍可读，页正文返回 null", async () => {
+    const { objects, storage } = memoryStorage();
+    const hash = "cd".repeat(32);
+    objects.set(`manuscripts/${hash}.md`, "# snapshot");
+    installFetch(() => {
+      throw new Error("Notion must not be called without a token");
+    });
+    const store = assembleManuscriptStore(notionEnv(storage, {
+      MANUSCRIPT_STORE: "github",
+      NOTION_TOKEN: "",
+      ...githubVars,
+    }));
+    expect(await store.read(PAGE, hash)).toBe("# snapshot");
+    expect(await store.read(PAGE)).toBeNull();
   });
 });

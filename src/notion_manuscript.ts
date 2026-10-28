@@ -530,6 +530,7 @@ export function createNotionR2ManuscriptStore(env: Env): ManuscriptStore {
         return object ? object.text() : null;
       }
       if (!version && isNotionPageId(path)) {
+        if (!(env.NOTION_TOKEN ?? "").trim()) return null;
         try {
           const page = await notion(env, "GET", `/v1/pages/${encodeURIComponent(normalizeNotionId(path))}/markdown`);
           return typeof page?.markdown === "string" ? page.markdown : null;
@@ -577,7 +578,8 @@ interface PendingArticle {
 
 /**
  * 重试 notion_sync_pending = 1 的稿件。未开启 Notion store 时立即返回 0，
- * 因此 GitHub 部署与历史行都不会被导入。
+ * 因此 GitHub 部署与历史行都不会被导入。失败或跳过的行写入 notion_retry_at，
+ * 下一轮排到队列后面，避免同一批永久失败的稿件占满 LIMIT。
  */
 export async function retryPendingNotionManuscripts(env: Env, limit = 3): Promise<number> {
   if (!notionManuscriptStoreEnabled(env)) return 0;
@@ -585,7 +587,7 @@ export async function retryPendingNotionManuscripts(env: Env, limit = 3): Promis
     `SELECT a.task_id, a.episode_id, a.title, a.podcast_name, a.content_path, a.commit_sha, a.brief, t.audio_url
      FROM articles a JOIN tasks t ON t.id = a.task_id
      WHERE a.notion_sync_pending = 1
-     ORDER BY a.updated_at ASC
+     ORDER BY a.notion_retry_at IS NOT NULL, a.notion_retry_at ASC, a.updated_at ASC
      LIMIT ?`,
   ).bind(limit).all<PendingArticle>();
 
@@ -593,11 +595,16 @@ export async function retryPendingNotionManuscripts(env: Env, limit = 3): Promis
   let synced = 0;
   for (const row of pending.results) {
     const version = (row.commit_sha ?? "").toLowerCase();
-    if (!SHA256.test(version)) continue;
     try {
+      if (!SHA256.test(version)) {
+        console.error("Notion retry skipped; commit_sha is not a sha256 snapshot", row.task_id);
+        await markNotionRetry(env, row);
+        continue;
+      }
       const object = await env.storage.get(manuscriptObjectKey(version));
       if (!object) {
         console.error("Notion retry skipped; R2 snapshot missing", row.task_id);
+        await markNotionRetry(env, row);
         continue;
       }
       const markdown = await object.text();
@@ -622,7 +629,7 @@ export async function retryPendingNotionManuscripts(env: Env, limit = 3): Promis
       const previousPath = row.content_path;
       await env.db.batch([
         env.db.prepare(
-          `UPDATE articles SET content_path = ?, notion_sync_pending = 0, notion_synced_at = ${NOW}
+          `UPDATE articles SET content_path = ?, notion_sync_pending = 0, notion_synced_at = ${NOW}, notion_retry_at = NULL
            WHERE task_id = ? AND commit_sha = ? AND notion_sync_pending = 1`,
         ).bind(pageId, row.task_id, row.commit_sha),
         env.db.prepare(
@@ -635,9 +642,17 @@ export async function retryPendingNotionManuscripts(env: Env, limit = 3): Promis
       synced += 1;
     } catch (error) {
       console.error("Notion manuscript retry failed", row.task_id, error instanceof Error ? error.message : "error");
+      await markNotionRetry(env, row);
     }
   }
   return synced;
+}
+
+async function markNotionRetry(env: Env, row: PendingArticle): Promise<void> {
+  await env.db.prepare(
+    `UPDATE articles SET notion_retry_at = ${NOW}
+     WHERE task_id = ? AND commit_sha = ? AND notion_sync_pending = 1`,
+  ).bind(row.task_id, row.commit_sha).run();
 }
 
 async function readSidecar(env: Env, version: string): Promise<ManuscriptSnapshot | null> {

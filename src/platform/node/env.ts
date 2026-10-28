@@ -5,7 +5,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createGitHubManuscriptStore, githubManuscriptConfigured } from "../../github";
-import { resolveManuscriptBackend, withLegacyGitHubReads } from "../../manuscript_backend";
+import { resolveManuscriptBackend, withLegacyGitHubReads, withSnapshotReads } from "../../manuscript_backend";
 import { createNotionR2ManuscriptStore, isManuscriptObjectKey, isNotionPageId } from "../../notion_manuscript";
 import type { Env } from "../../types";
 import { runProcessingPipeline } from "../../workflows/pipeline";
@@ -125,18 +125,20 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
 
   const manuscriptDir = options.manuscriptDir || rawEnv.MANUSCRIPT_PATH || "";
   const backend = resolveManuscriptBackend(rawEnv, { platform: "node", localDir: manuscriptDir });
+  const notion = createNotionR2ManuscriptStore(platformEnv);
+  const github = createGitHubManuscriptStore(platformEnv);
   if (backend === "local") {
     if (!manuscriptDir) {
       console.warn("MANUSCRIPT_STORE=local requires MANUSCRIPT_PATH. Publishing will fail until it is set.");
     }
-    platformEnv.manuscripts = createLocalManuscriptStore({
+    const local = createLocalManuscriptStore({
       rootDir: manuscriptDir || "./manuscripts",
       podcastPath: rawEnv.GITHUB_PODCAST_PATH,
     });
+    platformEnv.manuscripts = withSnapshotReads(local, notion, isManuscriptObjectKey, isNotionPageId);
   } else if (backend === "notion-r2") {
-    const notion = createNotionR2ManuscriptStore(platformEnv);
     platformEnv.manuscripts = githubManuscriptConfigured(platformEnv)
-      ? withLegacyGitHubReads(notion, createGitHubManuscriptStore(platformEnv), isManuscriptObjectKey, isNotionPageId)
+      ? withLegacyGitHubReads(notion, github, isManuscriptObjectKey, isNotionPageId)
       : notion;
   } else {
     if (!githubManuscriptConfigured(platformEnv)) {
@@ -147,7 +149,7 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
         + "Publishing will fail until one is set.",
       );
     }
-    platformEnv.manuscripts = createGitHubManuscriptStore(platformEnv);
+    platformEnv.manuscripts = withSnapshotReads(github, notion, isManuscriptObjectKey, isNotionPageId);
   }
 
   return {
