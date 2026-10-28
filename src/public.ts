@@ -12,7 +12,7 @@ import type { Env } from "./types";
 
 const SEARCH_CACHE_SECONDS = 60 * 60;
 // 已发布正文在边缘的缓存时长。正文按发布时的版本读取、以 content_path@commit_sha 为键
-// （commit_sha = Store 的不可变版本标识:GitHub commit sha 或本地内容哈希），
+// （commit_sha = Store 的不可变版本标识:GitHub commit sha、本地内容哈希或 R2 快照 sha256），
 // 内容不可变，这个时长只影响边缘存储占用，不影响正确性。
 const MANUSCRIPT_CACHE_SECONDS = 24 * 60 * 60;
 const MAX_SEARCH_QUERY_LENGTH = 100;
@@ -168,7 +168,8 @@ async function publishedContent(taskId: string, env: Env): Promise<PublishedCont
 /**
  * 已发布正文 = 发布快照：按 articles.commit_sha（Store 的不可变版本标识，与 article_concepts
  * 同一版本键）读取 Store 中那个版本的文件，而不是当前版本。内容不可变，因此以
- * content_path@commit_sha 为键在边缘缓存，匿名阅读不再逐次消耗 Store（GitHub API）配额；
+ * content_path@commit_sha 为键在边缘缓存，匿名阅读不再逐次打到 Store（GitHub API 或 Notion）；
+ * R2 上的 sha256 快照由 Worker 自己的存储读出。
  * 换版本只能通过重新发布（commit_sha 更新）。
  * 缓存只在公共面这一层；控制面与发布流程仍直接读取当前版本。
  */

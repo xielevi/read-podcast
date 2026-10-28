@@ -183,5 +183,5 @@ export default {
   },
 };
 
-// Cloudflare Workflows 入口：任务从创建到成稿（转录 → raw 落库 → 精修 → 质量门禁 → Formatter → GitHub）的唯一执行体。
+// Cloudflare Workflows 入口：任务从创建到成稿（转录 → raw 落库 → 精修 → 质量门禁 → Formatter → Manuscript Store）的唯一执行体。
 export { ProcessingWorkflow } from "./platform/cloudflare";

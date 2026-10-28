@@ -1,7 +1,8 @@
 # Deployment
 
-Choose Cloudflare for an edge-hosted reading site with a GitHub manuscript repository,
-or [Docker](#7-local-docker-deployment) for a single-host installation with local manuscripts.
+Choose Cloudflare for an edge-hosted reading site. Manuscripts go to a GitHub repository,
+or to a Notion database plus an immutable R2 snapshot when that store is enabled.
+[Docker](#7-local-docker-deployment) keeps manuscripts in a local directory.
 This guide uses a macOS host running MLX Whisper as the Cloudflare transcription example.
 For the component boundaries, see [ARCHITECTURE.md](ARCHITECTURE.md).
 
@@ -24,8 +25,9 @@ When you are done you will have two hostnames:
   [Free-plan boundary checks](#resource-names-and-free-plan-boundary-checks).
 - A Transcription Service host (reference: Apple Silicon Mac, macOS 14+, Xcode Command Line
   Tools, `uv`, `cloudflared`).
-- A private GitHub repository for manuscripts, and a fine-grained token with
-  **Contents: Read and write** on that repository only.
+- A manuscript store: either a private GitHub repository and a fine-grained token with
+  **Contents: Read and write** on that repository only, or a Notion integration with access
+  to the podcast database (see [Notion manuscript store](#notion-manuscript-store)).
 - A Refinement Provider account (any OpenAI-compatible API).
 - An R2 API token limited to reading the bucket, used only to sign presigned upload URLs.
 
@@ -123,6 +125,10 @@ The `refined/` rule is required before deploying the refined-checkpoint pipeline
 when upgrading an existing bucket. Refined payloads remain for 7 days even after success so
 publish replay can read them; the application does not delete them on completion.
 
+Do not add a lifecycle rule for `manuscripts/`. That prefix holds the immutable publish
+snapshots (`manuscripts/<sha256>.md`) used by public pages when the Notion store is on.
+Expiring it would make already-published articles unreadable.
+
 When upgrading from the durable-stream pipeline, let active workflows finish first. Its
 completed `refine` steps contain streams, while the new pipeline expects R2 keys; do not
 resume those old checkpoints under the new code. If an old workflow cannot finish, cancel
@@ -141,17 +147,68 @@ environment variables, which take precedence:
 |---|---|---|
 | `READ_PODCAST_DOMAIN` | yes | the Worker's custom domain, for example `your-domain.example` |
 | `READ_PODCAST_TRANSCRIPTION_URL` | yes | `TRANSCRIPTION_SERVICE_URL`, for example `https://transcribe.your-domain.example` |
-| `READ_PODCAST_GITHUB_OWNER` | yes | `GITHUB_OWNER` (`your-github-username`) |
-| `READ_PODCAST_GITHUB_REPO` | yes | `GITHUB_REPO` (`your-manuscript-repository`) |
+| `READ_PODCAST_GITHUB_OWNER` | yes, unless Notion store is on | `GITHUB_OWNER` (`your-github-username`) |
+| `READ_PODCAST_GITHUB_REPO` | yes, unless Notion store is on | `GITHUB_REPO` (`your-manuscript-repository`) |
 | `READ_PODCAST_GITHUB_BRANCH` | no | `GITHUB_BRANCH`, default `main` |
 | `READ_PODCAST_GITHUB_PATH` | no | `GITHUB_PODCAST_PATH`, default `podcasts/transcripts` |
+| `READ_PODCAST_NOTION_MANUSCRIPT_STORE` | no | `NOTION_MANUSCRIPT_STORE`. `true` selects Notion + R2 and makes the GitHub owner/repo optional. `false` forces GitHub even if a Notion token is present. Unset: the store turns on when `NOTION_TOKEN` and a data-source or database id are both set |
+| `READ_PODCAST_NOTION_DATA_SOURCE_ID` | when the flag is `true` | `NOTION_PODCAST_DATA_SOURCE_ID`, the collection id of the podcast database |
+| `READ_PODCAST_NOTION_DATABASE_ID` | alternative to the data-source id | `NOTION_PODCAST_DATABASE_ID`. Used only to look up `data_sources[0]` when the data-source id is omitted |
+| `READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN` | no | `MANUSCRIPT_PUBLIC_ORIGIN`, `https://your-domain.example`, written to the Notion 阅读页 URL |
 | `READ_PODCAST_TRANSCRIPTION_LANGUAGE` | no | `TRANSCRIPTION_LANGUAGE`, for example `zh`, to pin the language instead of auto-detection |
 | `READ_PODCAST_TRANSCRIPTION_PROVIDER` | no | `TRANSCRIPTION_PROVIDER`, `self-hosted` (default) or `dashscope` — see [Cloud transcription (DashScope Paraformer)](#cloud-transcription-dashscope-paraformer) |
 | `READ_PODCAST_TIME_ZONE` | no | `MANUSCRIPT_TIME_ZONE`, the IANA time zone of `processed_at` in manuscript front matter, default `Asia/Shanghai` |
 
 `node scripts/deploy.mjs --print-args` shows the resulting `wrangler deploy` arguments without
 deploying. `npm run setup` writes `.deploy.env` for you (existing values are kept as defaults).
-`GITHUB_API_BASE` (GitHub Enterprise) can still be set as a var in `wrangler.jsonc`.
+`GITHUB_API_BASE` (GitHub Enterprise or the 525 relay) and `NOTION_API_BASE` (default
+`https://api.notion.com`) can still be set as vars in `wrangler.jsonc`. The Worker calls
+Notion directly. A zone that already reaches `api.notion.com` does not need a relay.
+
+### Notion manuscript store
+
+Turn this on to stop publishing new manuscripts to GitHub. Existing GitHub pages keep
+working until you import them: with `GITHUB_TOKEN` / `GITHUB_OWNER` / `GITHUB_REPO` still
+set, a read of a repository path and a 40-hex commit sha uses GitHub. New publishes write
+R2 `manuscripts/<sha256>.md` (no expiry) and upsert a Notion page. Public article pages
+read the R2 object at `articles.commit_sha`. The control plane, with no version, reads the
+current Notion markdown. D1 keeps `content_path` = Notion page id and `commit_sha` = sha256.
+If the Notion call fails after the R2 put, the task is still success and
+`articles.notion_sync_pending = 1`; the existing `*/5 * * * *` cron retries it and then sets
+`notion_synced_at`. Historical rows stay at pending `0` and are not imported by that cron.
+
+Share the database with the same integration that owns `NOTION_TOKEN` (the Worker secret).
+The maintainer's 播客转录 database:
+
+| | |
+|---|---|
+| Database page | `https://www.notion.so/157ac668cc01467bb1012971dd934477` |
+| Database id | `157ac668-cc01-467b-b101-2971dd934477` |
+| Data source id | `6a346e94-e6f1-4e1b-b818-29645e793234` |
+| Parent hub (知识库) | `https://www.notion.so/407e7e08fb97811a953eed026efb5241` |
+
+Pages are parented by the data source, not by the hub. Property names the Worker writes:
+标题, 文件名, 节目 (`忽左忽右` / `东腔西调` / `知行小酒馆` / `naive理想国` / `其他`),
+发布日期, 时长 (seconds), 音频链接, 节目页, 导读摘要, 阅读分钟, 处理时间,
+转录来源 (`whisper-mlx` / `dashscope` / `其他`; `dashscope` when `TRANSCRIPTION_PROVIDER=dashscope`, otherwise `其他` unless the value is already `whisper-mlx`),
+精修成功, `task_id`, `episode_id`, 内容哈希, 阅读页, 状态 (`已发布` on publish).
+Those select options must already exist on the database. Version history of edits made in
+Notion is Notion's own page history; there is no weekly export. API version `2026-03-11`.
+Bodies around 80KB and up are chunked; a chunk of 48KB or more uses `allow_async`.
+
+Rollout:
+
+1. Create the integration, invite it to the database, and `npx wrangler secret put NOTION_TOKEN`.
+2. Put the ids in `.deploy.env` (`READ_PODCAST_NOTION_MANUSCRIPT_STORE=true`,
+   `READ_PODCAST_NOTION_DATA_SOURCE_ID`, optional `READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN`)
+   and redeploy. Leave the GitHub secrets in place until a later import of older articles.
+3. Publish one episode. Confirm an R2 object under `manuscripts/` and a Notion row whose
+   内容哈希 matches `articles.commit_sha`. Open `/a/<task_id>` and confirm the text matches
+   that snapshot, not a later hand-edit in Notion.
+4. To roll back, set `READ_PODCAST_NOTION_MANUSCRIPT_STORE=false` and redeploy. New publishes
+   go to GitHub again. Pages already stored as Notion ids keep reading R2 by their sha256.
+
+Importing the existing GitHub manuscripts is a follow-up. This deployment does not copy them.
 
 Changing the transcription machine only requires changing `READ_PODCAST_TRANSCRIPTION_URL`,
 redeploying and, if the new hostname has its own Access service token, the `CF_ACCESS_*` secrets.
@@ -163,6 +220,7 @@ written to a file); press Enter to keep an existing value.
 
 ```bash
 npx wrangler secret put GITHUB_TOKEN
+npx wrangler secret put NOTION_TOKEN          # only for the Notion manuscript store; press Enter in setup to skip
 npx wrangler secret put REFINER_API_KEY
 npx wrangler secret put R2_ACCOUNT_ID         # read-only R2 credentials for presigned URLs
 npx wrangler secret put R2_ACCESS_KEY_ID

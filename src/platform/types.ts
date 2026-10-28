@@ -88,13 +88,46 @@ export interface ObjectStore {
 // ── 稿件存储接口（Canonical Manuscript Store：成稿唯一长期事实源）──
 
 /**
- * 一次发布对应的不可变版本。path 为 Store 内相对路径（如 podcasts/transcripts/xxx.md）；
- * version 为版本标识：GitHub commit sha（40 位 hex）或本地内容哈希（sha-256，64 位 hex），
+ * 一次发布对应的不可变版本。
+ * path 为 Store 内定位：GitHub / 本地相对路径（如 podcasts/transcripts/xxx.md），
+ * Notion 页 id，或 Notion 尚未同步时的 R2 key（manuscripts/<sha256>.md）。
+ * version 为版本标识：GitHub commit sha（40 位 hex）或内容哈希（sha-256，64 位 hex），
  * 写入 D1 的 commit_sha 列（列名不变，语义 = Store 的不可变发布快照标识）。
  */
 export interface ManuscriptVersion {
   path: string;
   version: string;
+  /**
+   * 仅 Notion + R2 store 设置。true = R2 快照已落盘，但 Notion 写入失败；
+   * 调用方仍可把任务记为 success，由定时维护重试。GitHub / 本地目录不设置此字段。
+   */
+  notionPending?: boolean;
+}
+
+/** Notion 稿件库的目录字段。GitHub 与本地目录实现忽略它。 */
+export interface ManuscriptPublishMeta {
+  taskId?: string;
+  episodeId?: string | null;
+  podcastName?: string;
+  publishedAt?: string | null;
+  durationSeconds?: number | null;
+  audioUrl?: string | null;
+  episodePageUrl?: string | null;
+  briefSummary?: string | null;
+  readingMinutes?: number | null;
+  processedAt?: string | null;
+  /** whisper-mlx / dashscope / 其他；缺省时由 Store 按 TRANSCRIPTION_PROVIDER 推断。 */
+  transcriptSource?: string | null;
+  refinementSuccess?: boolean;
+  readingPageUrl?: string | null;
+  status?: "已发布" | "待复核" | "已撤下";
+}
+
+export interface ManuscriptPublishInput {
+  writingFilename: string;
+  title: string;
+  markdown: string;
+  meta?: ManuscriptPublishMeta;
 }
 
 export interface ManuscriptStore {
@@ -102,7 +135,7 @@ export interface ManuscriptStore {
    * 发布成稿（唯一写入口）。同路径 + 同内容幂等（publish step 重放 / durable retry 安全）；
    * 覆盖不同内容时保留全部历史版本。
    */
-  publish(input: { writingFilename: string; title: string; markdown: string }): Promise<ManuscriptVersion>;
+  publish(input: ManuscriptPublishInput): Promise<ManuscriptVersion>;
   /**
    * 读取稿件正文。version 缺省 = 当前版本（控制面用途）；指定 version 时按发布快照读取
    * （公开页语义）。文件或版本不存在返回 null；其余失败抛错。

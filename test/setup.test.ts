@@ -189,7 +189,7 @@ describe("生命周期规则", () => {
 describe("secrets 与部署值", () => {
   it("SECRET_PROMPTS 与 docs/DEPLOYMENT.md 的 secret 清单一致", () => {
     expect(setup.SECRET_PROMPTS.map(secret => secret.name)).toEqual([
-      "GITHUB_TOKEN", "REFINER_API_KEY", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET", "DASHSCOPE_API_KEY",
+      "GITHUB_TOKEN", "REFINER_API_KEY", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET", "DASHSCOPE_API_KEY", "NOTION_TOKEN",
     ]);
     for (const secret of setup.SECRET_PROMPTS) {
       expect(deploymentDoc).toContain(`wrangler secret put ${secret.name}`);

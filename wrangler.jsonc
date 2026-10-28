@@ -33,6 +33,7 @@
   //   npx wrangler r2 bucket lifecycle add read-podcast-edge-raw refined-7d refined/ --expire-days 7
   //   npx wrangler r2 bucket lifecycle add read-podcast-edge-raw uploads-1d uploads/ --expire-days 1 --abort-multipart-days 1
   //   npx wrangler r2 bucket lifecycle list read-podcast-edge-raw
+  // manuscripts/ 是 Notion 稿件库的不可变快照（manuscripts/<sha256>.md），没有过期规则。不要给这个前缀加 lifecycle。
   "r2_buckets": [
     {
       "binding": "RAW_BUCKET",
@@ -66,7 +67,11 @@
     //   R2_ACCOUNT_ID                签发 presigned GET 用的最小权限 R2 凭据（account id）
     //   R2_ACCESS_KEY_ID             ── 同上（access key id）
     //   R2_SECRET_ACCESS_KEY         ── 同上（secret access key）
-    //   GITHUB_TOKEN / REFINER_API_KEY
+    //   GITHUB_TOKEN / NOTION_TOKEN / REFINER_API_KEY
+    //   NOTION_TOKEN 只在 Notion 稿件库开启时需要（见 docs/DEPLOYMENT.md）。
+    //   开启后用 --var 注入 NOTION_MANUSCRIPT_STORE、NOTION_PODCAST_DATA_SOURCE_ID
+    //   （或 NOTION_PODCAST_DATABASE_ID）和可选的 MANUSCRIPT_PUBLIC_ORIGIN。
+    //   GITHUB_* 在该模式下可选，仅用于读取尚未导入的旧快照。
     // 注入方式见 docs/DEPLOYMENT.md：npx wrangler secret put <NAME>
     // Canonical Manuscript Store 的 branch / path（可选）。部署者自己的值刻意不放在这里：
     // TRANSCRIPTION_SERVICE_URL / GITHUB_OWNER / GITHUB_REPO / TRANSCRIPTION_PROVIDER 在生产由 scripts/deploy.mjs

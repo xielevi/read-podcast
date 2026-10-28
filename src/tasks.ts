@@ -8,6 +8,7 @@ import { uploadIdFromAudioUrl } from "./transcription/source";
 import { deleteUploadObjects } from "./uploads";
 import { processingWorkflowId, processingWorkflowStatus, startProcessingWorkflow, terminateProcessingWorkflow } from "./workflows/processing";
 import { NOW, loadTaskRow, type TaskRow } from "./db";
+import { retryPendingNotionManuscripts } from "./notion_manuscript";
 import type { Env, TaskStatus } from "./types";
 
 export { STAGE_PROGRESS_RANGES, mapGlobalProgress };
@@ -412,11 +413,15 @@ export async function reconcileWorkflowLiveness(env: Env, limit = 20): Promise<n
   return lost;
 }
 
-/** Cron Trigger 入口：两类 Cloudflare 自有的收敛动作，互相独立、逐个 best-effort。 */
-export async function runMaintenance(env: Env): Promise<{ started: number; lost: number }> {
-  const result = { started: 0, lost: 0 };
+/**
+ * Cron Trigger 入口：Cloudflare 自有的收敛，加上 Notion 稿件同步重试。
+ * 未开启 Notion store 时重试立即返回 0，不会扫描历史 GitHub 稿件。
+ */
+export async function runMaintenance(env: Env): Promise<{ started: number; lost: number; notion: number }> {
+  const result = { started: 0, lost: 0, notion: 0 };
   result.started = await recoverQueuedTasks(env).catch(() => 0);
   result.lost = await reconcileWorkflowLiveness(env).catch(() => 0);
+  result.notion = await retryPendingNotionManuscripts(env).catch(() => 0);
   return result;
 }
 

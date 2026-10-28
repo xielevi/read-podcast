@@ -37,6 +37,7 @@ export const SECRET_PROMPTS = [
   { name: "CF_ACCESS_CLIENT_ID", hint: "Client ID of the Access service token for the transcription hostname" },
   { name: "CF_ACCESS_CLIENT_SECRET", hint: "Client Secret of the same token" },
   { name: "DASHSCOPE_API_KEY", hint: "only for READ_PODCAST_TRANSCRIPTION_PROVIDER=dashscope; press Enter to skip otherwise" },
+  { name: "NOTION_TOKEN", hint: "Notion integration token for the podcast database; press Enter to skip when keeping the GitHub manuscript store" },
 ];
 
 const REQUIRED_DEPLOY_KEYS = Object.keys(REQUIRED);

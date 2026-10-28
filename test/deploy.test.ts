@@ -91,6 +91,30 @@ describe("scripts/deploy.mjs", () => {
     expect(JSON.parse(result.stdout)).toContain("TRANSCRIPTION_SERVICE_URL:https://transcribe.mydomain.net");
   });
 
+  it("Notion 稿件库开启后 GitHub 仓库改为可选，但必须有数据源或数据库 id", () => {
+    const missing = run({
+      READ_PODCAST_DOMAIN: VALID.READ_PODCAST_DOMAIN,
+      READ_PODCAST_TRANSCRIPTION_URL: VALID.READ_PODCAST_TRANSCRIPTION_URL,
+      READ_PODCAST_NOTION_MANUSCRIPT_STORE: "true",
+    });
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain("READ_PODCAST_NOTION_DATA_SOURCE_ID or READ_PODCAST_NOTION_DATABASE_ID is required");
+
+    const result = run({
+      READ_PODCAST_DOMAIN: VALID.READ_PODCAST_DOMAIN,
+      READ_PODCAST_TRANSCRIPTION_URL: VALID.READ_PODCAST_TRANSCRIPTION_URL,
+      READ_PODCAST_NOTION_MANUSCRIPT_STORE: "true",
+      READ_PODCAST_NOTION_DATA_SOURCE_ID: "6a346e94-e6f1-4e1b-b818-29645e793234",
+      READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN: "https://read.example",
+    });
+    expect(result.status).toBe(0);
+    const args = JSON.parse(result.stdout) as string[];
+    expect(args).toContain("NOTION_MANUSCRIPT_STORE:true");
+    expect(args).toContain("NOTION_PODCAST_DATA_SOURCE_ID:6a346e94-e6f1-4e1b-b818-29645e793234");
+    expect(args).toContain("MANUSCRIPT_PUBLIC_ORIGIN:https://read.example");
+    expect(args.join(" ")).not.toContain("GITHUB_OWNER");
+  });
+
   it("无效的 provider 值被拒绝", () => {
     const result = run({ ...VALID, READ_PODCAST_TRANSCRIPTION_PROVIDER: "openai" });
     expect(result.status).toBe(1);
@@ -123,6 +147,7 @@ describe("仓库不含部署者自己的值", () => {
       "DOMAIN", "TRANSCRIPTION_URL", "GITHUB_OWNER", "GITHUB_REPO",
       "GITHUB_BRANCH", "GITHUB_PATH", "TRANSCRIPTION_LANGUAGE",
       "TRANSCRIPTION_PROVIDER", "TIME_ZONE",
+      "NOTION_MANUSCRIPT_STORE", "NOTION_DATA_SOURCE_ID", "NOTION_DATABASE_ID", "MANUSCRIPT_PUBLIC_ORIGIN",
     ]) {
       expect(ci).toContain(`secrets.READ_PODCAST_${name}`);
       expect(ci).not.toContain(`vars.READ_PODCAST_${name}`);

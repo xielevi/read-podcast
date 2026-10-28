@@ -29,7 +29,17 @@ export const OPTIONAL = {
   READ_PODCAST_TRANSCRIPTION_LANGUAGE: "TRANSCRIPTION_LANGUAGE",
   READ_PODCAST_TRANSCRIPTION_PROVIDER: "TRANSCRIPTION_PROVIDER",
   READ_PODCAST_TIME_ZONE: "MANUSCRIPT_TIME_ZONE",
+  READ_PODCAST_NOTION_MANUSCRIPT_STORE: "NOTION_MANUSCRIPT_STORE",
+  READ_PODCAST_NOTION_DATA_SOURCE_ID: "NOTION_PODCAST_DATA_SOURCE_ID",
+  READ_PODCAST_NOTION_DATABASE_ID: "NOTION_PODCAST_DATABASE_ID",
+  READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN: "MANUSCRIPT_PUBLIC_ORIGIN",
 };
+
+const NOTION_ID = /^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function notionStoreRequested(value) {
+  return /^(1|true|yes|on)$/i.test(value("READ_PODCAST_NOTION_MANUSCRIPT_STORE"));
+}
 
 const TRANSCRIPTION_PROVIDERS = new Set(["self-hosted", "dashscope"]);
 
@@ -61,11 +71,28 @@ export function buildDeployArgs(input, passthrough = []) {
   const value = key => (input[key] ?? "").trim();
   const provider = (value("READ_PODCAST_TRANSCRIPTION_PROVIDER") || "self-hosted").toLowerCase();
 
+  const notionOn = notionStoreRequested(value);
   for (const key of Object.keys(REQUIRED)) {
     // 转录地址只在自托管路径下必需：dashscope 由 Worker 直连百炼，没有转录主机。
     if (key === "READ_PODCAST_TRANSCRIPTION_URL" && provider === "dashscope") continue;
-    if (!value(key)) errors.push(`${key} is required`);
-    else if (isPlaceholder(value(key).replace(/^https?:\/\//, "").replace(/\/.*$/, ""))) errors.push(`${key} is still a documentation placeholder (${value(key)})`);
+    // Notion 稿件库开启后，GitHub 仓库只作为旧快照的可选回落。
+    const optionalGithub = notionOn && (key === "READ_PODCAST_GITHUB_OWNER" || key === "READ_PODCAST_GITHUB_REPO");
+    if (!value(key)) {
+      if (!optionalGithub) errors.push(`${key} is required`);
+      continue;
+    }
+    if (isPlaceholder(value(key).replace(/^https?:\/\//, "").replace(/\/.*$/, ""))) errors.push(`${key} is still a documentation placeholder (${value(key)})`);
+  }
+  if (notionOn) {
+    const source = value("READ_PODCAST_NOTION_DATA_SOURCE_ID");
+    const database = value("READ_PODCAST_NOTION_DATABASE_ID");
+    if (!source && !database) errors.push("READ_PODCAST_NOTION_DATA_SOURCE_ID or READ_PODCAST_NOTION_DATABASE_ID is required when READ_PODCAST_NOTION_MANUSCRIPT_STORE is true");
+    if (source && !NOTION_ID.test(source)) errors.push("READ_PODCAST_NOTION_DATA_SOURCE_ID must be a Notion id");
+    if (database && !NOTION_ID.test(database)) errors.push("READ_PODCAST_NOTION_DATABASE_ID must be a Notion id");
+  }
+  const origin = value("READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN");
+  if (origin && !/^https:\/\/\S+$/i.test(origin)) {
+    errors.push(`READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN must be an https:// origin (got ${origin})`);
   }
 
   const domain = value("READ_PODCAST_DOMAIN");

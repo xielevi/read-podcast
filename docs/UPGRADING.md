@@ -13,7 +13,7 @@ steps are in [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Read Podcast has two supported deployment paths:
 
-1. **Cloudflare**: Worker + D1 + Workflows + R2, with a GitHub manuscript store and either self-hosted or cloud transcription.
+1. **Cloudflare**: Worker + D1 + Workflows + R2, with a GitHub manuscript store (or Notion plus R2 snapshots when `NOTION_MANUSCRIPT_STORE` is enabled) and either self-hosted or cloud transcription. Migration `0024` adds `articles.notion_sync_pending` / `notion_synced_at`. Existing rows stay at pending `0`, so the cron does not import them. The store does not switch until the flag or Notion credentials are set. Apply migrations before deploying the Worker.
 2. **Docker / Node**: Node.js + SQLite + local object storage + a local manuscript directory by default, with the same application code and an in-process checkpointed workflow runner.
 
 The Cloudflare procedure below applies only to the first path; Docker has its own procedure later in this guide.

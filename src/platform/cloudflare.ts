@@ -1,11 +1,12 @@
 /**
  * Cloudflare 平台薄适配层：把 Cloudflare Workers 绑定（D1 / R2 / Workflows / Assets）
- * 包装为平台中立的最小接口，保持现有线上与测试行为 100% 不变。
+ * 包装为平台中立的最小接口。未开启 Notion 稿件库时行为与原先的 GitHub store 一致。
  *
  * 架构护栏：只有本文件与 src/index.ts 允许直接导入 cloudflare:* 或引用 CF 绑定类型。
  */
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep } from "cloudflare:workers";
-import { createGitHubManuscriptStore } from "../github";
+import { createGitHubManuscriptStore, githubManuscriptConfigured } from "../github";
+import { createNotionR2ManuscriptStore, isManuscriptObjectKey, isNotionPageId, notionManuscriptStoreEnabled } from "../notion_manuscript";
 import { presignR2Get, type R2SigningCredentials } from "../transcription/r2_presign";
 import { r2Credentials } from "../transcription/source";
 import type { ProcessingWorkflowParams } from "../workflows/common";
@@ -13,6 +14,7 @@ import { runProcessingPipeline } from "../workflows/pipeline";
 import type { Env } from "../types";
 import type {
   Database,
+  ManuscriptStore,
   MultipartUpload,
   ObjectListing,
   ObjectMetadata,
@@ -47,6 +49,12 @@ export interface CloudflareEnv {
   GITHUB_PODCAST_PATH?: string;
   MANUSCRIPT_TIME_ZONE?: string;
   GITHUB_API_BASE?: string;
+  NOTION_TOKEN?: string;
+  NOTION_MANUSCRIPT_STORE?: string;
+  NOTION_PODCAST_DATA_SOURCE_ID?: string;
+  NOTION_PODCAST_DATABASE_ID?: string;
+  NOTION_API_BASE?: string;
+  MANUSCRIPT_PUBLIC_ORIGIN?: string;
   CF_ACCESS_CLIENT_ID?: string;
   CF_ACCESS_CLIENT_SECRET?: string;
   CONTROL_AUTH_USER?: string;
@@ -212,6 +220,32 @@ export class ProcessingWorkflow extends WorkflowEntrypoint<CloudflareEnv, Proces
 
 // ── 全量 Env 适配函数 ──
 
+const SHA256_VERSION = /^[0-9a-f]{64}$/i;
+
+/**
+ * Notion 是新稿的写入口。公开快照（64 位内容哈希）只读 R2。
+ * 仓库相对路径与 40 位 commit sha 仍走 GitHub，直到历史稿导入完成。
+ */
+function withLegacyGitHubReads(primary: ManuscriptStore, legacy: ManuscriptStore): ManuscriptStore {
+  return {
+    publish: input => primary.publish(input),
+    list: () => primary.list(),
+    async read(path, version) {
+      if ((version && SHA256_VERSION.test(version)) || isManuscriptObjectKey(path)) return primary.read(path, version);
+      const current = await primary.read(path, version);
+      if (current !== null || isNotionPageId(path)) return current;
+      return legacy.read(path, version);
+    },
+  };
+}
+
+export function assembleManuscriptStore(env: Env): ManuscriptStore {
+  if (!notionManuscriptStoreEnabled(env)) return createGitHubManuscriptStore(env);
+  const notion = createNotionR2ManuscriptStore(env);
+  if (!githubManuscriptConfigured(env)) return notion;
+  return withLegacyGitHubReads(notion, createGitHubManuscriptStore(env));
+}
+
 export function adaptCloudflareEnv(raw: CloudflareEnv | Env): Env {
   const result: any = { ...raw };
   const db = result.db ?? (result.DB ? adaptD1Database(result.DB) : undefined);
@@ -223,9 +257,10 @@ export function adaptCloudflareEnv(raw: CloudflareEnv | Env): Env {
   result.storage = storage;
   result.workflows = workflows;
   result.assets = assets;
-  // Canonical Manuscript Store:Cloudflare 部署固定 GitHub 实现(惰性闭包,未配置凭据时在
-  // publish 时明确失败,与既有行为一致);测试装置可预挂自己的 store。
-  result.manuscripts = result.manuscripts ?? createGitHubManuscriptStore(result as Env);
+  // Canonical Manuscript Store 在装配时选定一次。Notion 开关开启时用 Notion + R2；
+  // GitHub 凭据仍在时，旧的仓库路径 / 40 位 commit sha 继续从 GitHub 读取。
+  // 测试装置可预挂自己的 store。
+  result.manuscripts = result.manuscripts ?? assembleManuscriptStore(result as Env);
 
   return result as Env;
 }

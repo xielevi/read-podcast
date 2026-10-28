@@ -101,7 +101,7 @@ Read full results on the live demo, the maintainer's own instance, open read-onl
 - **Three-minute brief first** — each new manuscript gets a best-effort brief (TL;DR, key points, verbatim quotes, who should read on, reading time) and a one-line summary under each section, so you can decide before committing to the full text.
 - **A reader built for long text** — outline navigation, reading settings, and key concepts linked to Wikipedia in the reader's language.
 - **English and Chinese** — the UI follows your browser language and remembers a manual switch; editing, brief and section-summary prompts follow the episode's spoken language, so English shows produce English manuscripts.
-- **Markdown you own** — each manuscript is a Markdown file with YAML front matter in your GitHub repository (Cloudflare) or a local folder ready for Obsidian (Docker). Download any piece from the reader.
+- **Markdown you own** — each manuscript is a Markdown file with YAML front matter. On Cloudflare it is committed to your GitHub repository, or, when the Notion store is enabled, to a Notion database you can edit plus an immutable R2 snapshot. On Docker it is a local folder ready for Obsidian. Download any piece from the reader.
 - **Public read-only browsing** — visitors at `/` can browse subscriptions and published manuscripts; everything that changes state lives under `/manage`.
 - **Shareable and followable** — every manuscript has a permanent link at `/a/<id>` with link previews; `/feed.xml` is an Atom feed of new manuscripts with their briefs, for any feed reader.
 - **Self-hosted, bring your own models** — Cloudflare Workers or a single Docker host; transcription with local Whisper (MLX on Apple Silicon, Faster-Whisper in Docker), an OpenAI-compatible upload proxy, or DashScope; editing with any OpenAI-compatible LLM API.
@@ -114,7 +114,7 @@ A category-level comparison; individual products vary.
 |---|---|---|---|---|
 | What you get | A short recap or chapter notes | A verbatim transcript | Clips and notes on moments you mark | An edited, full-length manuscript |
 | Fidelity to the argument | Conclusions, little reasoning | Everything, including fillers and false starts | Only what you highlighted | Reasoning and examples kept; ≥ 70% of transcript length by default |
-| Where your text lives | Inside the app | Files you export | In the app, with exports | Markdown in your GitHub repository or local folder |
+| Where your text lives | Inside the app | Files you export | In the app, with exports | Markdown in your GitHub repository, a Notion database with an R2 snapshot, or a local folder |
 | Self-hostable | No | Usually hosted only | Typically no | Yes — Cloudflare or Docker, MIT licensed |
 | Cost model | Bundled with the app or its subscription | Per minute or subscription | Freemium or subscription | Your hosting plus your LLM usage; local transcription has no API fees |
 | Setup | None | None | None | You deploy it and bring an LLM API key |
@@ -135,7 +135,7 @@ Open `http://127.0.0.1:3000/manage` and set your provider's API base and model u
 
 ### Cloudflare — an edge-hosted reading site
 
-Runs on Workers, D1, Workflows and R2, and publishes manuscripts to your own GitHub repository. You need a transcription backend (your own [Transcription Service](docs/DEPLOYMENT.md#3-transcription-service) behind a Tunnel, or [DashScope](docs/DEPLOYMENT.md#4-cloud-transcription-dashscope-paraformer), which needs no server) and an LLM API key.
+Runs on Workers, D1, Workflows and R2, and publishes manuscripts to your own GitHub repository (or to Notion plus an R2 snapshot when that store is enabled). You need a transcription backend (your own [Transcription Service](docs/DEPLOYMENT.md#3-transcription-service) behind a Tunnel, or [DashScope](docs/DEPLOYMENT.md#4-cloud-transcription-dashscope-paraformer), which needs no server) and an LLM API key.
 
 **One click on workers.dev.** [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/xielevi/read-podcast)
 
@@ -174,7 +174,7 @@ npm run db:migrate:local
 npm run dev                       # http://localhost:8787; owner view at /manage
 ```
 
-Local development has no Access gate. To generate a manuscript you also need a transcription service, an LLM key and a GitHub manuscript repository configured in `.dev.vars`; the example points to a local transcription service at `http://127.0.0.1:28100`.
+Local development has no Access gate. To generate a manuscript you also need a transcription service, an LLM key and a manuscript store in `.dev.vars` (a GitHub repository, or Notion when `NOTION_MANUSCRIPT_STORE` is on); the example points to a local transcription service at `http://127.0.0.1:28100`.
 
 If Read Podcast saves you a re-listen, **a ⭐ on GitHub** helps other people find it.
 
