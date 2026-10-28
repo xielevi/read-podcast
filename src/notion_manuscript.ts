@@ -157,7 +157,7 @@ export function resolveManuscriptSnapshot(env: Env, input: ManuscriptPublishInpu
     transcriptSource: meta.transcriptSource || frontmatter.transcript_source || null,
     refinementSuccess: meta.refinementSuccess ?? frontmatter.refinement_success !== "false",
     readingPageUrl: meta.readingPageUrl || readingPage(env, taskId),
-    status: meta.status ?? "已发布",
+    status: meta.status ?? "published",
   };
 }
 

@@ -17,6 +17,9 @@ export const MANUSCRIPT_BACKENDS: readonly ManuscriptBackend[] = ["github", "not
 export interface ManuscriptBackendEnv {
   MANUSCRIPT_STORE?: string;
   NOTION_MANUSCRIPT_STORE?: string;
+  /** 凭据不是选择器：出现在此仅方便测试证明它们不会自动开启 Notion。 */
+  NOTION_TOKEN?: string;
+  NOTION_PODCAST_DATA_SOURCE_ID?: string;
 }
 
 function normalizeBackend(value: string | undefined): ManuscriptBackend | "" {
