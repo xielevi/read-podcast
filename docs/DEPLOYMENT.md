@@ -1,10 +1,11 @@
 # Deployment
 
-Choose Cloudflare for an edge-hosted reading site. Manuscripts go to a GitHub repository,
-or to a Notion database plus an immutable R2 snapshot when that store is enabled.
-[Docker](#7-local-docker-deployment) keeps manuscripts in a local directory.
-This guide uses a macOS host running MLX Whisper as the Cloudflare transcription example.
-For the component boundaries, see [ARCHITECTURE.md](ARCHITECTURE.md).
+Choose Cloudflare for an edge-hosted reading site. Manuscripts go to a GitHub
+repository by default, or to an optional Notion database plus an immutable object-store
+snapshot when `MANUSCRIPT_STORE=notion-r2`. [Docker](#7-local-docker-deployment) keeps
+manuscripts in a local directory by default. This guide uses a macOS host running MLX
+Whisper as the Cloudflare transcription example. For the component boundaries, see
+[ARCHITECTURE.md](ARCHITECTURE.md).
 
 When you are done you will have two hostnames:
 
@@ -13,8 +14,10 @@ When you are done you will have two hostnames:
 | `your-domain.example` | the WebUI: public reading at `/`, the owner workspace at `/manage` | Cloudflare Access on `/manage*` and `/api/control/*` only |
 | `transcribe.your-domain.example` | the Transcription Service, through a Cloudflare Tunnel | Cloudflare Access (service token), whole hostname |
 
-`your-domain.example`, `your-github-username`, `your-manuscript-repository` and
-`podcasts/transcripts` below are placeholders — use your own values.
+`your-domain.example`, `your-github-username`, `your-manuscript-repository`,
+`podcasts/transcripts`, `your-notion-data-source-id` and `secret_xxx` below are
+placeholders — use your own values. Real Notion ids, tokens and private repository
+names belong in git-ignored env files and Worker secrets, never in this repository.
 
 ## 1. Prerequisites
 
@@ -25,9 +28,10 @@ When you are done you will have two hostnames:
   [Free-plan boundary checks](#resource-names-and-free-plan-boundary-checks).
 - A Transcription Service host (reference: Apple Silicon Mac, macOS 14+, Xcode Command Line
   Tools, `uv`, `cloudflared`).
-- A manuscript store: either a private GitHub repository and a fine-grained token with
-  **Contents: Read and write** on that repository only, or a Notion integration with access
-  to the podcast database (see [Notion manuscript store](#notion-manuscript-store)).
+- A manuscript store. Cloudflare defaults to a private GitHub repository and a
+  fine-grained token with **Contents: Read and write** on that repository only. Notion
+  plus object-store snapshots is an optional backend; see
+  [Notion + R2 manuscript store](#notion--r2-manuscript-store).
 - A Refinement Provider account (any OpenAI-compatible API).
 - An R2 API token limited to reading the bucket, used only to sign presigned upload URLs.
 
@@ -81,7 +85,7 @@ come from `package.json` → `cloudflare.bindings`. Fill in:
 |---|---|
 | `CONTROL_AUTH_USER` / `CONTROL_AUTH_PASSWORD` | Basic Auth for `/manage*` and `/api/control/*`; without them the control plane answers 401 |
 | `REFINER_API_KEY` | key for your OpenAI-compatible LLM (API base and model are set later in Settings → Advanced) |
-| `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO` | fine-grained token with Contents read/write on an existing manuscript repository |
+| `GITHUB_TOKEN`, `GITHUB_OWNER`, `GITHUB_REPO` | fine-grained token with Contents read/write on an existing manuscript repository (`OWNER/REPO`). The one-click path keeps the GitHub store; Notion is configured after deploy |
 | `TRANSCRIPTION_PROVIDER` | `self-hosted` (then `TRANSCRIPTION_SERVICE_URL`) or `dashscope` (then `DASHSCOPE_API_KEY`); leave the other one's placeholder |
 
 Variables (`APP_ENV`, `R2_BUCKET_NAME`, `GITHUB_BRANCH`, `GITHUB_PODCAST_PATH`) keep the values in
@@ -126,7 +130,7 @@ when upgrading an existing bucket. Refined payloads remain for 7 days even after
 publish replay can read them; the application does not delete them on completion.
 
 Do not add a lifecycle rule for `manuscripts/`. That prefix holds the immutable publish
-snapshots (`manuscripts/<sha256>.md`) used by public pages when the Notion store is on.
+snapshots (`manuscripts/<sha256>.md`) used by public pages when `MANUSCRIPT_STORE=notion-r2`.
 Expiring it would make already-published articles unreadable.
 
 When upgrading from the durable-stream pipeline, let active workflows finish first. Its
@@ -147,14 +151,17 @@ environment variables, which take precedence:
 |---|---|---|
 | `READ_PODCAST_DOMAIN` | yes | the Worker's custom domain, for example `your-domain.example` |
 | `READ_PODCAST_TRANSCRIPTION_URL` | yes | `TRANSCRIPTION_SERVICE_URL`, for example `https://transcribe.your-domain.example` |
-| `READ_PODCAST_GITHUB_OWNER` | yes, unless Notion store is on | `GITHUB_OWNER` (`your-github-username`) |
-| `READ_PODCAST_GITHUB_REPO` | yes, unless Notion store is on | `GITHUB_REPO` (`your-manuscript-repository`) |
+| `READ_PODCAST_GITHUB_OWNER` | yes, unless `MANUSCRIPT_STORE=notion-r2` | `GITHUB_OWNER` (`your-github-username`) |
+| `READ_PODCAST_GITHUB_REPO` | yes, unless `MANUSCRIPT_STORE=notion-r2` | `GITHUB_REPO` (`your-manuscript-repository`) |
 | `READ_PODCAST_GITHUB_BRANCH` | no | `GITHUB_BRANCH`, default `main` |
 | `READ_PODCAST_GITHUB_PATH` | no | `GITHUB_PODCAST_PATH`, default `podcasts/transcripts` |
-| `READ_PODCAST_NOTION_MANUSCRIPT_STORE` | no | `NOTION_MANUSCRIPT_STORE`. `true` selects Notion + R2 and makes the GitHub owner/repo optional. `false` forces GitHub even if a Notion token is present. Unset: the store turns on when `NOTION_TOKEN` and a data-source or database id are both set |
-| `READ_PODCAST_NOTION_DATA_SOURCE_ID` | when the flag is `true` | `NOTION_PODCAST_DATA_SOURCE_ID`, the collection id of the podcast database |
-| `READ_PODCAST_NOTION_DATABASE_ID` | alternative to the data-source id | `NOTION_PODCAST_DATABASE_ID`. Used only to look up `data_sources[0]` when the data-source id is omitted |
-| `READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN` | no | `MANUSCRIPT_PUBLIC_ORIGIN`, `https://your-domain.example`, written to the Notion 阅读页 URL |
+| `READ_PODCAST_MANUSCRIPT_STORE` | no | `MANUSCRIPT_STORE`: `github` (Cloudflare default), `notion-r2`, or `local` (Docker only). A Notion token and data-source id do **not** switch the store by themselves |
+| `READ_PODCAST_NOTION_MANUSCRIPT_STORE` | no | alias for the store: `true` → `notion-r2`, `false` → the platform default. Prefer `READ_PODCAST_MANUSCRIPT_STORE` |
+| `READ_PODCAST_NOTION_DATA_SOURCE_ID` | when the store is `notion-r2` | `NOTION_PODCAST_DATA_SOURCE_ID` (`your-notion-data-source-id`). Put the real id in `.deploy.env` or a GitHub Actions secret, never in the repository |
+| `READ_PODCAST_NOTION_DATABASE_ID` | alternative to the data-source id | `NOTION_PODCAST_DATABASE_ID` (`your-notion-database-id`). Used only to look up `data_sources[0]` when the data-source id is omitted |
+| `READ_PODCAST_NOTION_SCHEMA` | no | `NOTION_SCHEMA`, `zh` (default recommended template) or `en` |
+| `READ_PODCAST_NOTION_SHOW_OPTIONS` | no | `NOTION_SHOW_OPTIONS`, comma-separated Notion select names for the show property (`Show One,Show Two`) |
+| `READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN` | no | `MANUSCRIPT_PUBLIC_ORIGIN`, `https://your-domain.example`, written to the Notion reading-page URL |
 | `READ_PODCAST_TRANSCRIPTION_LANGUAGE` | no | `TRANSCRIPTION_LANGUAGE`, for example `zh`, to pin the language instead of auto-detection |
 | `READ_PODCAST_TRANSCRIPTION_PROVIDER` | no | `TRANSCRIPTION_PROVIDER`, `self-hosted` (default) or `dashscope` — see [Cloud transcription (DashScope Paraformer)](#cloud-transcription-dashscope-paraformer) |
 | `READ_PODCAST_TIME_ZONE` | no | `MANUSCRIPT_TIME_ZONE`, the IANA time zone of `processed_at` in manuscript front matter, default `Asia/Shanghai` |
@@ -165,50 +172,95 @@ deploying. `npm run setup` writes `.deploy.env` for you (existing values are kep
 `https://api.notion.com`) can still be set as vars in `wrangler.jsonc`. The Worker calls
 Notion directly. A zone that already reaches `api.notion.com` does not need a relay.
 
-### Notion manuscript store
+### Notion + R2 manuscript store
 
-Turn this on to stop publishing new manuscripts to GitHub. Existing GitHub pages keep
-working until you import them: with `GITHUB_TOKEN` / `GITHUB_OWNER` / `GITHUB_REPO` still
-set, a read of a repository path and a 40-hex commit sha uses GitHub. New publishes write
-R2 `manuscripts/<sha256>.md` (no expiry) and upsert a Notion page. Public article pages
-read the R2 object at `articles.commit_sha`. The control plane, with no version, reads the
-current Notion markdown. D1 keeps `content_path` = Notion page id and `commit_sha` = sha256.
-If the Notion call fails after the R2 put, the task is still success and
-`articles.notion_sync_pending = 1`; the existing `*/5 * * * *` cron retries it and then sets
-`notion_synced_at`. Historical rows stay at pending `0` and are not imported by that cron.
+Optional Canonical Manuscript Store. Cloudflare stays on GitHub until you set
+`MANUSCRIPT_STORE=notion-r2` (or the alias `NOTION_MANUSCRIPT_STORE=true`) at deploy time.
+A Notion token or data-source id in the environment is not enough on its own.
 
-Share the database with the same integration that owns `NOTION_TOKEN` (the Worker secret).
-The maintainer's 播客转录 database:
+New publishes then write two things: an editable Notion page in a database you create, and
+an immutable snapshot at `manuscripts/<sha256>.md` in the object store (R2 on Cloudflare;
+the local volume on Docker). Do not put a lifecycle expiry on that prefix. Public article
+pages read the snapshot at `articles.commit_sha`. The control plane, with no version, reads
+the current Notion markdown. D1 stores `content_path` as the Notion page id and `commit_sha`
+as the sha256. If the Notion call fails after the snapshot is stored, the task is still
+success and `articles.notion_sync_pending = 1`; the existing `*/5 * * * *` cron retries it
+and then sets `notion_synced_at`. Rows that were never published through this backend stay
+at pending `0` and the cron does not copy them into Notion.
 
-| | |
-|---|---|
-| Database page | `https://www.notion.so/157ac668cc01467bb1012971dd934477` |
-| Database id | `157ac668-cc01-467b-b101-2971dd934477` |
-| Data source id | `6a346e94-e6f1-4e1b-b818-29645e793234` |
-| Parent hub (知识库) | `https://www.notion.so/407e7e08fb97811a953eed026efb5241` |
+While `GITHUB_TOKEN` / `GITHUB_OWNER` / `GITHUB_REPO` remain set, a read of a repository
+path and a 40-hex commit sha still uses GitHub, so older GitHub manuscripts stay readable.
 
-Pages are parented by the data source, not by the hub. Property names the Worker writes:
-标题, 文件名, 节目 (`忽左忽右` / `东腔西调` / `知行小酒馆` / `naive理想国` / `其他`),
-发布日期, 时长 (seconds), 音频链接, 节目页, 导读摘要, 阅读分钟, 处理时间,
-转录来源 (`whisper-mlx` / `dashscope` / `其他`; `dashscope` when `TRANSCRIPTION_PROVIDER=dashscope`, otherwise `其他` unless the value is already `whisper-mlx`),
-精修成功, `task_id`, `episode_id`, 内容哈希, 阅读页, 状态 (`已发布` on publish).
-Those select options must already exist on the database. Version history of edits made in
-Notion is Notion's own page history; there is no weekly export. API version `2026-03-11`.
-Bodies around 80KB and up are chunked; a chunk of 48KB or more uses `allow_async`.
+**Credentials live only in secrets and git-ignored env files.** Create a Notion internal
+integration, invite it to your database, then:
+
+```bash
+npx wrangler secret put NOTION_TOKEN          # paste secret_xxx; never commit the token
+```
+
+Put the collection id in `.deploy.env` (or a GitHub Actions secret of the same name):
+
+```bash
+READ_PODCAST_MANUSCRIPT_STORE=notion-r2
+READ_PODCAST_NOTION_DATA_SOURCE_ID=your-notion-data-source-id
+# READ_PODCAST_NOTION_DATABASE_ID=your-notion-database-id   # only if you omit the data-source id
+# READ_PODCAST_NOTION_SCHEMA=en                             # default is the zh template
+# READ_PODCAST_NOTION_SHOW_OPTIONS=Show One,Show Two
+# READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN=https://your-domain.example
+```
+
+Copy the data-source id from Notion (database → ⋯ → Copy link to view, or the
+`data_sources` entry on the database object). The values above are placeholders;
+`npm run deploy:production` refuses `your-notion-data-source-id` and any other
+documentation stub. Real ids look like a UUID and must not appear in this repository.
+
+Pages are parented by the data source. Property names are not hard-wired: `NOTION_SCHEMA=zh`
+(default) or `en` selects a recommended template in `src/notion_schema.ts`. Operators who
+already have a database can overlay names with `NOTION_PROPERTY_MAP` / `NOTION_SCHEMA_JSON`.
+Required logical fields are title, task_id, episode_id, content hash and status; any other
+mapped property that is empty is skipped. Show-select options default to none — unknown
+show names map to the template's "other" value (`其他` / `Other`) unless you set
+`NOTION_SHOW_OPTIONS`. Create matching select options on the database before the first
+publish. API version `2026-03-11`. Bodies around 80KB and up are chunked; a chunk of 48KB
+or more uses `allow_async`. Edits made in Notion use Notion's own page history; there is
+no export job.
+
+Recommended `zh` template (create these properties, or pick `en` / a JSON overlay instead):
+
+| Logical field | zh property | Type |
+|---|---|---|
+| title | 标题 | title |
+| filename | 文件名 | rich_text |
+| show | 节目 | select (`NOTION_SHOW_OPTIONS`, plus 其他) |
+| published | 发布日期 | date |
+| duration | 时长 | number (seconds) |
+| audio | 音频链接 | url |
+| episodePage | 节目页 | url |
+| summary | 导读摘要 | rich_text |
+| readingMinutes | 阅读分钟 | number |
+| processed | 处理时间 | date |
+| transcript | 转录来源 | select (`whisper-mlx` / `dashscope` / 其他) |
+| refined | 精修成功 | checkbox |
+| taskId | task_id | rich_text |
+| episodeId | episode_id | rich_text |
+| hash | 内容哈希 | rich_text |
+| readingPage | 阅读页 | url |
+| status | 状态 | select (`已发布` on publish) |
 
 Rollout:
 
 1. Create the integration, invite it to the database, and `npx wrangler secret put NOTION_TOKEN`.
-2. Put the ids in `.deploy.env` (`READ_PODCAST_NOTION_MANUSCRIPT_STORE=true`,
-   `READ_PODCAST_NOTION_DATA_SOURCE_ID`, optional `READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN`)
-   and redeploy. Leave the GitHub secrets in place until a later import of older articles.
-3. Publish one episode. Confirm an R2 object under `manuscripts/` and a Notion row whose
-   内容哈希 matches `articles.commit_sha`. Open `/a/<task_id>` and confirm the text matches
+2. Set `READ_PODCAST_MANUSCRIPT_STORE=notion-r2` and `READ_PODCAST_NOTION_DATA_SOURCE_ID` in
+   `.deploy.env` (optional `READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN`) and redeploy. GitHub
+   credentials can stay in place so older path+sha reads still work.
+3. Publish one episode. Confirm an object under `manuscripts/` and a Notion row whose hash
+   property matches `articles.commit_sha`. Open `/a/<task_id>` and confirm the text matches
    that snapshot, not a later hand-edit in Notion.
-4. To roll back, set `READ_PODCAST_NOTION_MANUSCRIPT_STORE=false` and redeploy. New publishes
-   go to GitHub again. Pages already stored as Notion ids keep reading R2 by their sha256.
+4. To use GitHub again, set `READ_PODCAST_MANUSCRIPT_STORE=github` and redeploy. New
+   publishes go to GitHub. Pages already stored as Notion ids keep reading the snapshot by
+   sha256.
 
-Importing the existing GitHub manuscripts is a follow-up. This deployment does not copy them.
+This backend does not copy manuscripts that already live in another store.
 
 Changing the transcription machine only requires changing `READ_PODCAST_TRANSCRIPTION_URL`,
 redeploying and, if the new hostname has its own Access service token, the `CF_ACCESS_*` secrets.
@@ -220,7 +272,7 @@ written to a file); press Enter to keep an existing value.
 
 ```bash
 npx wrangler secret put GITHUB_TOKEN
-npx wrangler secret put NOTION_TOKEN          # only for the Notion manuscript store; press Enter in setup to skip
+npx wrangler secret put NOTION_TOKEN          # only for MANUSCRIPT_STORE=notion-r2; press Enter in setup to skip
 npx wrangler secret put REFINER_API_KEY
 npx wrangler secret put R2_ACCOUNT_ID         # read-only R2 credentials for presigned URLs
 npx wrangler secret put R2_ACCESS_KEY_ID
@@ -633,8 +685,9 @@ fetch('/api/control/settings/test', { method: 'POST', headers: { 'content-type':
    control plane answers an anonymous request (see [Continuous deployment](#continuous-deployment)).
 2. Open `https://your-domain.example/manage`, sign in through Access, subscribe to a podcast
    and process an episode. Progress increases monotonically through fetching audio, transcribing, refining and saving.
-3. Confirm `raw/<task>/<attempt>.txt` appears in R2 and a `<YYYYMMDD_podcast_episode>.md`
-   manuscript appears under `podcasts/transcripts/` in your manuscript repository.
+3. Confirm `raw/<task>/<attempt>.txt` appears in R2 and a manuscript appears in the
+   configured store: `podcasts/transcripts/` in the GitHub repository, or a Notion page
+   plus `manuscripts/<sha256>.md` when `MANUSCRIPT_STORE=notion-r2`.
 4. Upload a local `.mp3` / `.m4a` (under 200 MiB) and confirm it completes.
 5. Open the article in the Library and confirm concepts load; open it again from the public
    `https://your-domain.example/` in a private window.
@@ -667,7 +720,7 @@ Cloudflare services (#27). The same application codebase runs on Node.js 22 with
 | Object storage | Cloudflare R2 | Local volume (`/data/storage`), automated 1d/7d retention |
 | Task execution | Cloudflare Workflows | In-process step runner with SQLite checkpoints and restart resume |
 | Maintenance | Cloudflare Cron Trigger | In-process 5-minute timer (reconciliation + storage sweep) |
-| Manuscript store | GitHub repository (required) | Local directory (default, `./manuscripts` bind-mounted to `MANUSCRIPT_PATH=/data/manuscripts`, with `.versions/` history) or GitHub fallback |
+| Manuscript store | GitHub repository (default) or Notion + R2 when `MANUSCRIPT_STORE=notion-r2` | Local directory (default, `./manuscripts` bind-mounted to `MANUSCRIPT_PATH=/data/manuscripts`, with `.versions/` history), GitHub, or Notion + local snapshots |
 | Access control | Cloudflare Access | Optional Basic Auth on `/manage*` and `/api/control/*` (bound to `127.0.0.1`) |
 | Transcription | Mac host or DashScope | Containerized Faster-Whisper (`transcription` service) or DashScope |
 
@@ -681,9 +734,10 @@ Cloudflare services (#27). The same application codebase runs on Node.js 22 with
    - `REFINER_API_KEY`: Your OpenAI-compatible LLM API key
    - Manuscript storage is zero-configuration by default: published manuscripts land in the
      local `./manuscripts/` directory on the host (plain Markdown with YAML front matter, ready
-     for Obsidian or any editor). To store manuscripts in a GitHub repository instead, remove
-     the `MANUSCRIPT_PATH` entry and the `./manuscripts` mount from `docker-compose.yml`, then
-     set `GITHUB_TOKEN`, `GITHUB_OWNER` and `GITHUB_REPO` in `.env`.
+     for Obsidian or any editor). To use GitHub instead, set `MANUSCRIPT_STORE=github` (or
+     remove `MANUSCRIPT_PATH`) and set `GITHUB_TOKEN`, `GITHUB_OWNER` and `GITHUB_REPO`. To
+     use Notion plus local snapshots, set `MANUSCRIPT_STORE=notion-r2`, `NOTION_TOKEN` and
+     `NOTION_PODCAST_DATA_SOURCE_ID` in `.env` — never commit those values.
    - Optional: set `CONTROL_AUTH_USER` and `CONTROL_AUTH_PASSWORD` to protect the control plane with Basic Auth.
 3. Start the services:
    ```bash

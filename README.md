@@ -101,10 +101,22 @@ Read full results on the live demo, the maintainer's own instance, open read-onl
 - **Three-minute brief first** — each new manuscript gets a best-effort brief (TL;DR, key points, verbatim quotes, who should read on, reading time) and a one-line summary under each section, so you can decide before committing to the full text.
 - **A reader built for long text** — outline navigation, reading settings, and key concepts linked to Wikipedia in the reader's language.
 - **English and Chinese** — the UI follows your browser language and remembers a manual switch; editing, brief and section-summary prompts follow the episode's spoken language, so English shows produce English manuscripts.
-- **Markdown you own** — each manuscript is a Markdown file with YAML front matter. On Cloudflare it is committed to your GitHub repository, or, when the Notion store is enabled, to a Notion database you can edit plus an immutable R2 snapshot. On Docker it is a local folder ready for Obsidian. Download any piece from the reader.
+- **Markdown you own** — each manuscript is a Markdown file with YAML front matter. On Cloudflare it is committed to your GitHub repository by default, or, when you set `MANUSCRIPT_STORE=notion-r2`, to a Notion database you can edit plus an immutable R2 snapshot. On Docker it is a local folder ready for Obsidian. Download any piece from the reader.
 - **Public read-only browsing** — visitors at `/` can browse subscriptions and published manuscripts; everything that changes state lives under `/manage`.
 - **Shareable and followable** — every manuscript has a permanent link at `/a/<id>` with link previews; `/feed.xml` is an Atom feed of new manuscripts with their briefs, for any feed reader.
 - **Self-hosted, bring your own models** — Cloudflare Workers or a single Docker host; transcription with local Whisper (MLX on Apple Silicon, Faster-Whisper in Docker), an OpenAI-compatible upload proxy, or DashScope; editing with any OpenAI-compatible LLM API.
+
+## Manuscript backends
+
+A deployment has one Canonical Manuscript Store, chosen at environment assembly (`MANUSCRIPT_STORE`), not from a Settings switch. Credentials that identify your Notion workspace or GitHub repository belong in secrets and git-ignored env files.
+
+| `MANUSCRIPT_STORE` | Where it writes | Default |
+|---|---|---|
+| `github` | Markdown files in a repository you own (`OWNER/REPO`) | Cloudflare |
+| `local` | A directory on the host (`MANUSCRIPT_PATH`) | Docker, when that path is set |
+| `notion-r2` | An editable Notion page plus an immutable snapshot in object storage | Off until you set it |
+
+`NOTION_MANUSCRIPT_STORE=true` is an alias for `notion-r2`. A Notion token and data-source id do not turn the store on by themselves. Put `NOTION_TOKEN` and `NOTION_PODCAST_DATA_SOURCE_ID` in Worker secrets / `.deploy.env` / `.env` using placeholders like `secret_xxx` and `your-notion-data-source-id` in committed examples. Details: [Notion + R2 manuscript store](docs/DEPLOYMENT.md#notion--r2-manuscript-store).
 
 ## How it compares
 
@@ -114,7 +126,7 @@ A category-level comparison; individual products vary.
 |---|---|---|---|---|
 | What you get | A short recap or chapter notes | A verbatim transcript | Clips and notes on moments you mark | An edited, full-length manuscript |
 | Fidelity to the argument | Conclusions, little reasoning | Everything, including fillers and false starts | Only what you highlighted | Reasoning and examples kept; ≥ 70% of transcript length by default |
-| Where your text lives | Inside the app | Files you export | In the app, with exports | Markdown in your GitHub repository, a Notion database with an R2 snapshot, or a local folder |
+| Where your text lives | Inside the app | Files you export | In the app, with exports | Markdown in your GitHub repository, an optional Notion database with an R2 snapshot, or a local folder |
 | Self-hostable | No | Usually hosted only | Typically no | Yes — Cloudflare or Docker, MIT licensed |
 | Cost model | Bundled with the app or its subscription | Per minute or subscription | Freemium or subscription | Your hosting plus your LLM usage; local transcription has no API fees |
 | Setup | None | None | None | You deploy it and bring an LLM API key |
@@ -135,11 +147,11 @@ Open `http://127.0.0.1:3000/manage` and set your provider's API base and model u
 
 ### Cloudflare — an edge-hosted reading site
 
-Runs on Workers, D1, Workflows and R2, and publishes manuscripts to your own GitHub repository (or to Notion plus an R2 snapshot when that store is enabled). You need a transcription backend (your own [Transcription Service](docs/DEPLOYMENT.md#3-transcription-service) behind a Tunnel, or [DashScope](docs/DEPLOYMENT.md#4-cloud-transcription-dashscope-paraformer), which needs no server) and an LLM API key.
+Runs on Workers, D1, Workflows and R2, and publishes manuscripts to your own GitHub repository by default (or to Notion plus an R2 snapshot when you set `MANUSCRIPT_STORE=notion-r2`). You need a transcription backend (your own [Transcription Service](docs/DEPLOYMENT.md#3-transcription-service) behind a Tunnel, or [DashScope](docs/DEPLOYMENT.md#4-cloud-transcription-dashscope-paraformer), which needs no server) and an LLM API key.
 
 **One click on workers.dev.** [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/xielevi/read-podcast)
 
-The button copies this repository into your GitHub account, creates the D1 database and R2 bucket, applies the migrations and deploys to `*.workers.dev`. On the deploy page you set a Basic Auth user and password for `/manage`, your LLM API key, a GitHub token and repository for manuscripts, and the transcription backend. Then sign in at `/manage` and set the LLM API base and model under **Settings → Advanced**. Details: [one-click deployment](docs/DEPLOYMENT.md#deploy-to-cloudflare-template-one-click-deployment).
+The button copies this repository into your GitHub account, creates the D1 database and R2 bucket, applies the migrations and deploys to `*.workers.dev`. On the deploy page you set a Basic Auth user and password for `/manage`, your LLM API key, a GitHub token and repository for manuscripts, and the transcription backend. Then sign in at `/manage` and set the LLM API base and model under **Settings → Advanced**. Notion as the manuscript store is configured after deploy (`MANUSCRIPT_STORE=notion-r2` plus a Worker secret for `NOTION_TOKEN`). Details: [one-click deployment](docs/DEPLOYMENT.md#deploy-to-cloudflare-template-one-click-deployment).
 
 **Your own domain with Cloudflare Access.** On a domain you manage in Cloudflare, the setup script provisions the same resources and walks you through Access:
 
@@ -160,6 +172,7 @@ This is a single-owner workspace. Reading at `/` is public by default; protect t
 
 - [Deployment](docs/DEPLOYMENT.md) — setup, credentials, security boundaries, smoke tests and Free-plan limits
 - [Architecture](docs/ARCHITECTURE.md) — task lifecycle, checkpoints and manuscript storage
+- [Manuscript backends](#manuscript-backends) — GitHub (default on Cloudflare), local directory (default on Docker), optional Notion + R2
 - [Upgrading](docs/UPGRADING.md) — backups and schema migrations
 - [Changelog](CHANGELOG.md)
 
@@ -174,7 +187,7 @@ npm run db:migrate:local
 npm run dev                       # http://localhost:8787; owner view at /manage
 ```
 
-Local development has no Access gate. To generate a manuscript you also need a transcription service, an LLM key and a manuscript store in `.dev.vars` (a GitHub repository, or Notion when `NOTION_MANUSCRIPT_STORE` is on); the example points to a local transcription service at `http://127.0.0.1:28100`.
+Local development has no Access gate. To generate a manuscript you also need a transcription service, an LLM key and a manuscript store in `.dev.vars` (a GitHub repository by default, or Notion when `MANUSCRIPT_STORE=notion-r2`); the example points to a local transcription service at `http://127.0.0.1:28100`.
 
 If Read Podcast saves you a re-listen, **a ⭐ on GitHub** helps other people find it.
 

@@ -4,7 +4,9 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { createGitHubManuscriptStore } from "../../github";
+import { createGitHubManuscriptStore, githubManuscriptConfigured } from "../../github";
+import { resolveManuscriptBackend, withLegacyGitHubReads } from "../../manuscript_backend";
+import { createNotionR2ManuscriptStore, isManuscriptObjectKey, isNotionPageId } from "../../notion_manuscript";
 import type { Env } from "../../types";
 import { runProcessingPipeline } from "../../workflows/pipeline";
 import { createLocalAssetFetcher, type LocalAssetFetcher } from "./assets";
@@ -99,6 +101,20 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
     GITHUB_PODCAST_PATH: rawEnv.GITHUB_PODCAST_PATH || "podcasts/transcripts",
     MANUSCRIPT_TIME_ZONE: rawEnv.MANUSCRIPT_TIME_ZONE || "Asia/Shanghai",
     GITHUB_API_BASE: rawEnv.GITHUB_API_BASE,
+    MANUSCRIPT_STORE: rawEnv.MANUSCRIPT_STORE,
+    NOTION_TOKEN: rawEnv.NOTION_TOKEN,
+    NOTION_MANUSCRIPT_STORE: rawEnv.NOTION_MANUSCRIPT_STORE,
+    NOTION_PODCAST_DATA_SOURCE_ID: rawEnv.NOTION_PODCAST_DATA_SOURCE_ID,
+    NOTION_PODCAST_DATABASE_ID: rawEnv.NOTION_PODCAST_DATABASE_ID,
+    NOTION_API_BASE: rawEnv.NOTION_API_BASE,
+    NOTION_SCHEMA: rawEnv.NOTION_SCHEMA,
+    NOTION_SCHEMA_JSON: rawEnv.NOTION_SCHEMA_JSON,
+    NOTION_PROPERTY_MAP: rawEnv.NOTION_PROPERTY_MAP,
+    NOTION_SHOW_OPTIONS: rawEnv.NOTION_SHOW_OPTIONS,
+    NOTION_SHOW_OTHER: rawEnv.NOTION_SHOW_OTHER,
+    NOTION_STATUS_VALUES: rawEnv.NOTION_STATUS_VALUES,
+    NOTION_TRANSCRIPT_VALUES: rawEnv.NOTION_TRANSCRIPT_VALUES,
+    MANUSCRIPT_PUBLIC_ORIGIN: rawEnv.MANUSCRIPT_PUBLIC_ORIGIN,
     DASHSCOPE_API_KEY: rawEnv.DASHSCOPE_API_KEY,
     CF_ACCESS_CLIENT_ID: rawEnv.CF_ACCESS_CLIENT_ID,
     CF_ACCESS_CLIENT_SECRET: rawEnv.CF_ACCESS_CLIENT_SECRET,
@@ -107,21 +123,27 @@ export function createNodeEnv(options: NodeEnvOptions = {}): NodePlatformRuntime
     TRUSTED_INTERNAL_TRANSCRIPTION: rawEnv.TRUSTED_INTERNAL_TRANSCRIPTION ?? "true",
   } as unknown as Env;
 
-  // Canonical Manuscript Store:本地目录优先(Docker 默认),未配置 MANUSCRIPT_PATH 时
-  // 回落 GitHub(与 Cloudflare 部署同构)。选择只在装配层发生一次,没有运行时切换。
   const manuscriptDir = options.manuscriptDir || rawEnv.MANUSCRIPT_PATH || "";
-  if (manuscriptDir) {
+  const backend = resolveManuscriptBackend(rawEnv, { platform: "node", localDir: manuscriptDir });
+  if (backend === "local") {
+    if (!manuscriptDir) {
+      console.warn("MANUSCRIPT_STORE=local requires MANUSCRIPT_PATH. Publishing will fail until it is set.");
+    }
     platformEnv.manuscripts = createLocalManuscriptStore({
-      rootDir: manuscriptDir,
+      rootDir: manuscriptDir || "./manuscripts",
       podcastPath: rawEnv.GITHUB_PODCAST_PATH,
     });
+  } else if (backend === "notion-r2") {
+    const notion = createNotionR2ManuscriptStore(platformEnv);
+    platformEnv.manuscripts = githubManuscriptConfigured(platformEnv)
+      ? withLegacyGitHubReads(notion, createGitHubManuscriptStore(platformEnv), isManuscriptObjectKey, isNotionPageId)
+      : notion;
   } else {
-    const githubConfigured = [rawEnv.GITHUB_TOKEN, rawEnv.GITHUB_OWNER, rawEnv.GITHUB_REPO]
-      .every(value => (value ?? "").trim().length > 0);
-    if (!githubConfigured) {
+    if (!githubManuscriptConfigured(platformEnv)) {
       console.warn(
-        "No manuscript store configured: set MANUSCRIPT_PATH (local directory, default for Docker) "
-        + "or GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO (GitHub fallback). "
+        "No manuscript store configured: set MANUSCRIPT_PATH (local directory, default for Docker), "
+        + "MANUSCRIPT_STORE=notion-r2 with a Notion token, "
+        + "or GITHUB_TOKEN / GITHUB_OWNER / GITHUB_REPO. "
         + "Publishing will fail until one is set.",
       );
     }

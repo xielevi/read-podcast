@@ -1,22 +1,26 @@
 /**
- * Canonical Manuscript Store 的 Notion + R2 实现（Cloudflare，由装配层按开关注入）。
+ * Canonical Manuscript Store 的 Notion + 对象存储实现（`MANUSCRIPT_STORE=notion-r2`）。
  *
- * - R2 `manuscripts/<sha256>.md` 是不可变发布快照（与本地目录的 `.versions/` 同一思路）。
+ * - `manuscripts/<sha256>.md` 是不可变发布快照（与本地目录的 `.versions/` 同一思路）。
  *   前缀不参与 raw/refined/uploads 的生命周期过期，对象永久保留。
- * - Notion 数据库「播客转录」是可编辑的正文事实源。页 id 写入 D1 content_path，
- *   sha256 写入 commit_sha。公开页按 commit_sha 读 R2，不读 Notion 的当前正文。
- * - Notion 写入失败不回滚 R2：publish 仍返回成功并带 notionPending，由 runMaintenance 重试。
+ * - Notion 数据库是可编辑的正文事实源。页 id 写入 D1 content_path，sha256 写入 commit_sha。
+ *   公开页按 commit_sha 读快照，不读 Notion 的当前正文。
+ * - Notion 写入失败不回滚快照：publish 仍返回成功并带 notionPending，由 runMaintenance 重试。
  * - 版本备份只依赖 Notion 自己的页面历史，没有额外的导出任务。
  *
- * Notion-Version: 2026-03-11。正文走 Markdown API（创建 / replace_content / insert_content）。
- * 超过约 80KB 的正文按段拆开；单段 ≥ 48KB 时 allow_async 并短轮询。Worker 直连
- * api.notion.com（可用 NOTION_API_BASE 改指向）。同区域已有 Worker 能调用 Notion 时，
- * 这里不需要 GitHub 那种 525 中继。
+ * 字段名与 select 选项由推荐模板（zh / en）或运算符配置给出，见 src/notion_schema.ts。
+ * Notion-Version: 2026-03-11。正文走 Markdown API。约 80KB 以上拆段；单段 ≥ 48KB 时
+ * allow_async。Worker 直连 api.notion.com（可用 NOTION_API_BASE）。
  */
 import { sha256Hex } from "./crypto";
 import { NOW } from "./db";
+import { notionManuscriptStoreEnabled } from "./manuscript_backend";
+import { notionPropertyName, resolveNotionSchema, type NotionSchema } from "./notion_schema";
 import type { ManuscriptPublishInput, ManuscriptPublishMeta, ManuscriptStore, ManuscriptVersion } from "./platform/types";
 import type { Env } from "./types";
+
+export { notionManuscriptStoreEnabled } from "./manuscript_backend";
+export { resolveNotionSchema } from "./notion_schema";
 
 export const NOTION_VERSION = "2026-03-11";
 /** 单次 Markdown 请求的字节上限。约 125KB 的成稿会拆成多段，避免触发 validation_error。 */
@@ -27,30 +31,6 @@ const NOTION_POLL_BUDGET_MS = 30_000;
 const NOTION_LIST_PAGES = 10;
 
 export const MANUSCRIPT_R2_PREFIX = "manuscripts/";
-
-export const NOTION_PROPS = {
-  title: "标题",
-  filename: "文件名",
-  show: "节目",
-  published: "发布日期",
-  duration: "时长",
-  audio: "音频链接",
-  episodePage: "节目页",
-  summary: "导读摘要",
-  readingMinutes: "阅读分钟",
-  processed: "处理时间",
-  transcript: "转录来源",
-  refined: "精修成功",
-  taskId: "task_id",
-  episodeId: "episode_id",
-  hash: "内容哈希",
-  readingPage: "阅读页",
-  status: "状态",
-} as const;
-
-const SHOW_OPTIONS = ["忽左忽右", "东腔西调", "知行小酒馆", "naive理想国"] as const;
-const TRANSCRIPT_OPTIONS = ["whisper-mlx", "dashscope", "其他"] as const;
-const STATUS_OPTIONS = ["已发布", "待复核", "已撤下"] as const;
 
 const PAGE_ID = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32})$/i;
 const SHA256 = /^[0-9a-f]{64}$/i;
@@ -69,22 +49,6 @@ export function isManuscriptObjectKey(path: string): boolean {
 
 export function isNotionPageId(path: string): boolean {
   return PAGE_ID.test(path.trim());
-}
-
-/** 显式 true 开启；显式 false 关闭；否则 token 与数据源（或数据库）id 同时存在即开启。 */
-export function notionManuscriptStoreEnabled(env: {
-  NOTION_MANUSCRIPT_STORE?: string;
-  NOTION_TOKEN?: string;
-  NOTION_PODCAST_DATA_SOURCE_ID?: string;
-  NOTION_PODCAST_DATABASE_ID?: string;
-}): boolean {
-  const flag = (env.NOTION_MANUSCRIPT_STORE ?? "").trim().toLowerCase();
-  if (flag === "false" || flag === "0" || flag === "off" || flag === "no") return false;
-  if (flag === "true" || flag === "1" || flag === "on" || flag === "yes") return true;
-  const token = (env.NOTION_TOKEN ?? "").trim();
-  const dataSource = (env.NOTION_PODCAST_DATA_SOURCE_ID ?? "").trim();
-  const database = (env.NOTION_PODCAST_DATABASE_ID ?? "").trim();
-  return Boolean(token && (dataSource || database));
 }
 
 export function normalizeNotionId(value: string): string {
@@ -253,20 +217,23 @@ function httpUrl(value: string | null | undefined): string | null {
   }
 }
 
-function showName(podcast: string | undefined): (typeof SHOW_OPTIONS)[number] | "其他" {
+function showName(schema: NotionSchema, podcast: string | undefined): string {
   const name = (podcast ?? "").trim();
-  return (SHOW_OPTIONS as readonly string[]).includes(name) ? name as (typeof SHOW_OPTIONS)[number] : "其他";
+  if (name && schema.shows.includes(name)) return name;
+  return schema.showOther;
 }
 
-function transcriptSource(explicit: string | null | undefined, provider: string | undefined): (typeof TRANSCRIPT_OPTIONS)[number] {
+function transcriptSource(schema: NotionSchema, explicit: string | null | undefined, provider: string | undefined): string {
   const value = (explicit ?? "").trim().toLowerCase();
-  if (value === "whisper-mlx" || value === "mlx") return "whisper-mlx";
-  if (value === "dashscope" || (provider ?? "").trim().toLowerCase() === "dashscope") return "dashscope";
-  return "其他";
+  if (value === "whisper-mlx" || value === "mlx") return schema.transcript["whisper-mlx"];
+  if (value === "dashscope" || (provider ?? "").trim().toLowerCase() === "dashscope") return schema.transcript.dashscope;
+  return schema.transcript.other;
 }
 
-function statusName(value: ManuscriptPublishMeta["status"] | undefined): (typeof STATUS_OPTIONS)[number] {
-  return value && (STATUS_OPTIONS as readonly string[]).includes(value) ? value : "已发布";
+function statusName(schema: NotionSchema, value: ManuscriptPublishMeta["status"] | undefined): string {
+  if (value === "review") return schema.status.review;
+  if (value === "withdrawn") return schema.status.withdrawn;
+  return schema.status.published;
 }
 
 function manuscriptFilename(writingFilename: string): string {
@@ -288,41 +255,40 @@ function textOf(prop: unknown): string {
   return items.map(item => item.plain_text ?? item.text?.content ?? "").join("");
 }
 
+function setOptional(properties: Record<string, unknown>, name: string, value: unknown): void {
+  if (!name || value === undefined) return;
+  properties[name] = value;
+}
+
 export function buildNotionProperties(env: Env, snapshot: ManuscriptSnapshot, hash?: string): Record<string, unknown> {
+  const schema = resolveNotionSchema(env);
+  const name = (key: Parameters<typeof notionPropertyName>[1]) => notionPropertyName(schema, key);
+  const untitled = env.NOTION_SCHEMA?.trim().toLowerCase() === "en" ? "Untitled episode" : "未命名单集";
   const properties: Record<string, unknown> = {
-    [NOTION_PROPS.title]: { title: [{ type: "text", text: { content: snapshot.title.trim().slice(0, 2000) || "未命名单集" } }] },
-    [NOTION_PROPS.filename]: richText(manuscriptFilename(snapshot.writingFilename)),
-    [NOTION_PROPS.show]: { select: { name: showName(snapshot.podcastName) } },
-    [NOTION_PROPS.transcript]: { select: { name: transcriptSource(snapshot.transcriptSource, env.TRANSCRIPTION_PROVIDER) } },
-    [NOTION_PROPS.refined]: { checkbox: snapshot.refinementSuccess !== false },
-    [NOTION_PROPS.status]: { select: { name: statusName(snapshot.status) } },
+    [name("title")]: { title: [{ type: "text", text: { content: snapshot.title.trim().slice(0, 2000) || untitled } }] },
+    [name("status")]: { select: { name: statusName(schema, snapshot.status) } },
   };
-  const filename = properties[NOTION_PROPS.filename];
-  if (!filename) delete properties[NOTION_PROPS.filename];
-  const task = richText(snapshot.taskId ?? "");
-  if (task) properties[NOTION_PROPS.taskId] = task;
-  const episode = richText(snapshot.episodeId ?? "");
-  if (episode) properties[NOTION_PROPS.episodeId] = episode;
-  const summary = richText(snapshot.briefSummary ?? "");
-  if (summary) properties[NOTION_PROPS.summary] = summary;
-  const hashProp = hash ? richText(hash) : undefined;
-  if (hashProp) properties[NOTION_PROPS.hash] = hashProp;
+  setOptional(properties, name("filename"), richText(manuscriptFilename(snapshot.writingFilename)));
+  setOptional(properties, name("show"), { select: { name: showName(schema, snapshot.podcastName) } });
+  setOptional(properties, name("transcript"), { select: { name: transcriptSource(schema, snapshot.transcriptSource, env.TRANSCRIPTION_PROVIDER) } });
+  setOptional(properties, name("refined"), { checkbox: snapshot.refinementSuccess !== false });
+  setOptional(properties, name("taskId"), richText(snapshot.taskId ?? ""));
+  setOptional(properties, name("episodeId"), richText(snapshot.episodeId ?? ""));
+  setOptional(properties, name("summary"), richText(snapshot.briefSummary ?? ""));
+  setOptional(properties, name("hash"), hash ? richText(hash) : undefined);
   const published = notionDate(snapshot.publishedAt);
-  if (published) properties[NOTION_PROPS.published] = { date: { start: published } };
+  if (published) setOptional(properties, name("published"), { date: { start: published } });
   const processed = notionDate(snapshot.processedAt);
-  if (processed) properties[NOTION_PROPS.processed] = { date: { start: processed } };
+  if (processed) setOptional(properties, name("processed"), { date: { start: processed } });
   if (typeof snapshot.durationSeconds === "number" && Number.isFinite(snapshot.durationSeconds)) {
-    properties[NOTION_PROPS.duration] = { number: Math.round(snapshot.durationSeconds) };
+    setOptional(properties, name("duration"), { number: Math.round(snapshot.durationSeconds) });
   }
   if (typeof snapshot.readingMinutes === "number" && Number.isFinite(snapshot.readingMinutes)) {
-    properties[NOTION_PROPS.readingMinutes] = { number: Math.round(snapshot.readingMinutes) };
+    setOptional(properties, name("readingMinutes"), { number: Math.round(snapshot.readingMinutes) });
   }
-  const audio = httpUrl(snapshot.audioUrl);
-  if (audio) properties[NOTION_PROPS.audio] = { url: audio };
-  const episodePage = httpUrl(snapshot.episodePageUrl);
-  if (episodePage) properties[NOTION_PROPS.episodePage] = { url: episodePage };
-  const page = httpUrl(snapshot.readingPageUrl);
-  if (page) properties[NOTION_PROPS.readingPage] = { url: page };
+  setOptional(properties, name("audio"), httpUrl(snapshot.audioUrl) ? { url: httpUrl(snapshot.audioUrl) } : undefined);
+  setOptional(properties, name("episodePage"), httpUrl(snapshot.episodePageUrl) ? { url: httpUrl(snapshot.episodePageUrl) } : undefined);
+  setOptional(properties, name("readingPage"), httpUrl(snapshot.readingPageUrl) ? { url: httpUrl(snapshot.readingPageUrl) } : undefined);
   return properties;
 }
 
@@ -456,9 +422,13 @@ async function findExistingPage(
   dataSourceId: string,
   snapshot: ManuscriptSnapshot,
 ): Promise<{ id: string; hash: string } | null> {
+  const schema = resolveNotionSchema(env);
+  const taskName = notionPropertyName(schema, "taskId");
+  const episodeName = notionPropertyName(schema, "episodeId");
+  const hashName = notionPropertyName(schema, "hash");
   const filters: unknown[] = [];
-  if (snapshot.taskId) filters.push({ property: NOTION_PROPS.taskId, rich_text: { equals: snapshot.taskId } });
-  if (snapshot.episodeId) filters.push({ property: NOTION_PROPS.episodeId, rich_text: { equals: snapshot.episodeId } });
+  if (snapshot.taskId) filters.push({ property: taskName, rich_text: { equals: snapshot.taskId } });
+  if (snapshot.episodeId) filters.push({ property: episodeName, rich_text: { equals: snapshot.episodeId } });
   if (!filters.length) return null;
   const body = await notion(env, "POST", `/v1/data_sources/${encodeURIComponent(dataSourceId)}/query`, {
     filter: filters.length === 1 ? filters[0] : { or: filters },
@@ -466,11 +436,11 @@ async function findExistingPage(
   });
   const pages = (body?.results ?? []).filter((page: { object?: string; archived?: boolean }) => page.object === "page" && !page.archived);
   const byTask = snapshot.taskId
-    ? pages.find((page: { properties?: Record<string, unknown> }) => textOf(page.properties?.[NOTION_PROPS.taskId]) === snapshot.taskId)
+    ? pages.find((page: { properties?: Record<string, unknown> }) => textOf(page.properties?.[taskName]) === snapshot.taskId)
     : undefined;
   const chosen = byTask ?? pages[0];
   if (!chosen?.id) return null;
-  return { id: String(chosen.id), hash: textOf(chosen.properties?.[NOTION_PROPS.hash]).toLowerCase() };
+  return { id: String(chosen.id), hash: textOf(chosen.properties?.[hashName]).toLowerCase() };
 }
 
 async function writeMarkdown(env: Env, pageId: string, markdown: string, replace: boolean): Promise<void> {
@@ -572,6 +542,7 @@ export function createNotionR2ManuscriptStore(env: Env): ManuscriptStore {
     },
 
     async list(): Promise<Array<{ path: string; version: string }>> {
+      const schema = resolveNotionSchema(env);
       const dataSourceId = await resolveDataSourceId(env, cache);
       const pages: Array<{ path: string; version: string }> = [];
       let cursor: string | undefined;
@@ -579,11 +550,11 @@ export function createNotionR2ManuscriptStore(env: Env): ManuscriptStore {
         const body = await notion(env, "POST", `/v1/data_sources/${encodeURIComponent(dataSourceId)}/query`, {
           page_size: 100,
           ...(cursor ? { start_cursor: cursor } : {}),
-          filter: { property: NOTION_PROPS.status, select: { equals: "已发布" } },
+          filter: { property: notionPropertyName(schema, "status"), select: { equals: schema.status.published } },
         });
         for (const item of body?.results ?? []) {
           if (item.object !== "page" || item.archived || typeof item.id !== "string") continue;
-          pages.push({ path: item.id, version: textOf(item.properties?.[NOTION_PROPS.hash]).toLowerCase() });
+          pages.push({ path: item.id, version: textOf(item.properties?.[notionPropertyName(schema, "hash")]).toLowerCase() });
         }
         if (!body?.has_more || typeof body.next_cursor !== "string" || !body.next_cursor) break;
         cursor = body.next_cursor;

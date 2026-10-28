@@ -51,20 +51,20 @@
       "GITHUB_PODCAST_PATH": {
         "description": "Folder for manuscript Markdown files in the repository (default `podcasts/transcripts`). Values typed on the deploy page are not saved for variables — to change it, edit `wrangler.jsonc` in your new repository."
       },
-      "NOTION_TOKEN": {
-        "description": "Notion internal integration token for the podcast manuscript database. Optional. Leave unset to keep publishing to GitHub. Invite the integration to the database before the first publish."
+      "MANUSCRIPT_STORE": {
+        "description": "Manuscript backend: `github` (default on Cloudflare) or `notion-r2` (Notion page plus an immutable R2 snapshot). Docker also supports `local`. Leave unset for the platform default."
       },
-      "NOTION_MANUSCRIPT_STORE": {
-        "description": "Set to `true` to publish manuscripts to Notion plus an immutable R2 snapshot (`manuscripts/<sha256>.md`) instead of GitHub. `false` forces GitHub. Requires NOTION_TOKEN and a data-source or database id."
+      "NOTION_TOKEN": {
+        "description": "Notion internal integration token. Required only when MANUSCRIPT_STORE=notion-r2. Invite the integration to your database before the first publish. Put this in a Worker secret, not in the repository."
       },
       "NOTION_PODCAST_DATA_SOURCE_ID": {
-        "description": "Notion data source id of the podcast manuscript database (the collection the Worker upserts into)."
+        "description": "Your Notion data source id (the collection the Worker upserts into). Required when MANUSCRIPT_STORE=notion-r2 unless you set NOTION_PODCAST_DATABASE_ID instead. Put this in env/secrets, not in the repository."
       },
       "NOTION_PODCAST_DATABASE_ID": {
-        "description": "Notion database id. Used only when NOTION_PODCAST_DATA_SOURCE_ID is omitted; the Worker reads data_sources[0] from it."
+        "description": "Your Notion database id. Used only when NOTION_PODCAST_DATA_SOURCE_ID is omitted; the Worker reads data_sources[0] from it."
       },
       "MANUSCRIPT_PUBLIC_ORIGIN": {
-        "description": "Optional https origin of the public reading site, written to the Notion 阅读页 property as `<origin>/a/<task_id>`."
+        "description": "Optional https origin of the public reading site, written to the Notion reading-page URL property as `<origin>/a/<task_id>`."
       },
       "TRANSCRIPTION_PROVIDER": {
         "description": "`self-hosted` (your own Transcription Service, see docs) or `dashscope` (Alibaba Cloud Paraformer — no server to run; also set DASHSCOPE_API_KEY)."

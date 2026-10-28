@@ -120,7 +120,7 @@ export interface ManuscriptPublishMeta {
   transcriptSource?: string | null;
   refinementSuccess?: boolean;
   readingPageUrl?: string | null;
-  status?: "已发布" | "待复核" | "已撤下";
+  status?: "published" | "review" | "withdrawn";
 }
 
 export interface ManuscriptPublishInput {

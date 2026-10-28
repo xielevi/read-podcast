@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- Optional Canonical Manuscript Store backend `MANUSCRIPT_STORE=notion-r2`: publish an editable Notion page plus an immutable object-store snapshot. Cloudflare still defaults to GitHub; Docker still defaults to a local directory. Notion tokens and data-source ids live in Worker secrets / git-ignored env only.
+
 ## [1.0.0] - 2026-09-28
 
 > Cloudflare production runs on Workers Free, but spare CPU/subrequest capacity

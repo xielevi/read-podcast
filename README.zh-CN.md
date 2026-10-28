@@ -101,10 +101,22 @@ Read Podcast 发布的是这样的 *（[在线体验](https://read-podcast.xiele
 - **先读三分钟导读**：每篇新稿件会尽力生成一份导读（一句话结论、要点、原话金句、适合谁读、阅读时长），并在每个小节标题下附一句摘要，读完再决定要不要看全文。
 - **为长文设计的阅读器**：目录导航、排版设置，关键概念按阅读界面语言链接到维基百科。
 - **中英双语**：界面默认跟随浏览器语言，手动切换后会记住；整理、导读和小节摘要的指令跟随单集的语言，英文节目产出英文稿件。
-- **Markdown 归你所有**：每篇稿件都是带 YAML front matter 的 Markdown 文件。Cloudflare 部署存进你的 GitHub 仓库；启用 Notion 稿件库时，则存进可编辑的 Notion 数据库，并在 R2 留下不可变快照。Docker 部署存进本地目录，可直接放进 Obsidian。阅读器里也能下载任意一篇。
+- **Markdown 归你所有**：每篇稿件都是带 YAML front matter 的 Markdown 文件。Cloudflare 部署默认存进你的 GitHub 仓库；设置 `MANUSCRIPT_STORE=notion-r2` 时，则存进可编辑的 Notion 数据库，并在 R2 留下不可变快照。Docker 部署存进本地目录，可直接放进 Obsidian。阅读器里也能下载任意一篇。
 - **公开只读浏览**：访客在 `/` 可以浏览订阅和已发布稿件；所有会改变状态的操作都在 `/manage` 之下。
 - **可分享、可订阅**：每篇稿件都有带链接预览的永久链接 `/a/<id>`；`/feed.xml` 是附带导读的 Atom 订阅源，任意 RSS 阅读器都能订阅新稿件。
 - **自托管，模型自选**：部署在 Cloudflare Workers 或单台 Docker 主机；转写可用本地 Whisper（Apple Silicon 上的 MLX、Docker 内的 Faster-Whisper）、OpenAI 兼容的上传代理或百炼 DashScope；整理可用任意 OpenAI 兼容的 LLM API。
+
+## 稿件后端
+
+每个部署只有一个 Canonical Manuscript Store，在环境装配时用 `MANUSCRIPT_STORE` 选定，没有设置页开关。标识你自己 Notion 工作区或 GitHub 仓库的凭据只放在 secret 和 git-ignore 的环境文件里。
+
+| `MANUSCRIPT_STORE` | 写入位置 | 默认 |
+|---|---|---|
+| `github` | 你自己的仓库里的 Markdown（`OWNER/REPO`） | Cloudflare |
+| `local` | 主机上的目录（`MANUSCRIPT_PATH`） | Docker（设置了该路径时） |
+| `notion-r2` | 可编辑的 Notion 页，外加对象存储里的不可变快照 | 需显式开启 |
+
+`NOTION_MANUSCRIPT_STORE=true` 是 `notion-r2` 的别名。仅有 Notion token 和数据源 id 不会自动切换后端。把 `NOTION_TOKEN` 和 `NOTION_PODCAST_DATA_SOURCE_ID` 放进 Worker secret / `.deploy.env` / `.env`；仓库里的示例只用 `secret_xxx`、`your-notion-data-source-id` 这类占位符。详见 [Notion + R2 稿件库](docs/DEPLOYMENT.md#notion--r2-manuscript-store)。
 
 ## 横向对比
 
@@ -114,7 +126,7 @@ Read Podcast 发布的是这样的 *（[在线体验](https://read-podcast.xiele
 |---|---|---|---|---|
 | 得到什么 | 简短回顾或章节要点 | 逐字转写稿 | 你标记片段的剪辑与笔记 | 经过整理的完整长稿 |
 | 对论证的保留 | 只有结论，推理很少 | 全部保留，连同口头禅和说错重来 | 只有你划过的部分 | 保留推理和例子；默认不少于转写稿 70% 篇幅 |
-| 文字存在哪里 | App 内部 | 你导出的文件 | App 内，可导出 | 你的 GitHub 仓库、带 R2 快照的 Notion 数据库，或本地目录里的 Markdown |
+| 文字存在哪里 | App 内部 | 你导出的文件 | App 内，可导出 | 你的 GitHub 仓库、可选的带 R2 快照的 Notion 数据库，或本地目录里的 Markdown |
 | 能否自托管 | 不能 | 通常只有托管服务 | 一般不能 | 可以——Cloudflare 或 Docker，MIT 许可 |
 | 费用模式 | 随 App 或其订阅附带 | 按分钟或订阅计费 | 免费增值或订阅 | 自己的托管费用加 LLM 用量；本地转写不产生 API 费用 |
 | 上手成本 | 无 | 无 | 无 | 需要自己部署，并准备 LLM API key |
@@ -135,11 +147,11 @@ docker compose up -d
 
 ### Cloudflare：部署在边缘的阅读站
 
-运行在 Workers、D1、Workflows 和 R2 上，稿件发布到你自己的 GitHub 仓库（启用 Notion 稿件库时改为 Notion 加 R2 快照）。需要一个转写后端（通过 Tunnel 接入的自建[转写服务](docs/DEPLOYMENT.md#3-transcription-service)，或无需自己跑服务的[百炼 DashScope](docs/DEPLOYMENT.md#4-cloud-transcription-dashscope-paraformer)），以及 LLM API key。
+运行在 Workers、D1、Workflows 和 R2 上，稿件默认发布到你自己的 GitHub 仓库（设置 `MANUSCRIPT_STORE=notion-r2` 时改为 Notion 加 R2 快照）。需要一个转写后端（通过 Tunnel 接入的自建[转写服务](docs/DEPLOYMENT.md#3-transcription-service)，或无需自己跑服务的[百炼 DashScope](docs/DEPLOYMENT.md#4-cloud-transcription-dashscope-paraformer)），以及 LLM API key。
 
 **一键部署到 workers.dev。** [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/xielevi/read-podcast)
 
-按钮会把本仓库复制到你的 GitHub 账号，创建 D1 数据库和 R2 存储桶，执行数据库迁移，并部署到 `*.workers.dev`。在部署页上填写 `/manage` 的 Basic Auth 用户名和密码、LLM API key、用于保存稿件的 GitHub token 和仓库，以及转写方式。部署完成后登录 `/manage`，在 **设置 → 高级设置** 中填写 LLM 的 API 地址和模型。详见[一键部署](docs/DEPLOYMENT.md#deploy-to-cloudflare-template-one-click-deployment)。
+按钮会把本仓库复制到你的 GitHub 账号，创建 D1 数据库和 R2 存储桶，执行数据库迁移，并部署到 `*.workers.dev`。在部署页上填写 `/manage` 的 Basic Auth 用户名和密码、LLM API key、用于保存稿件的 GitHub token 和仓库，以及转写方式。部署完成后登录 `/manage`，在 **设置 → 高级设置** 中填写 LLM 的 API 地址和模型。Notion 稿件库在部署后再配置（`MANUSCRIPT_STORE=notion-r2`，并用 Worker secret 注入 `NOTION_TOKEN`）。详见[一键部署](docs/DEPLOYMENT.md#deploy-to-cloudflare-template-one-click-deployment)。
 
 **使用自己的域名和 Cloudflare Access。** 如果域名托管在 Cloudflare，初始化脚本会创建同样的资源，并引导你配置 Access：
 
@@ -160,6 +172,7 @@ npm run setup                     # 幂等：创建 D1/R2、交互录入密钥�
 
 - [部署指南](docs/DEPLOYMENT.md)：初始化、凭据、安全边界、冒烟测试和 Free 限制
 - [架构](docs/ARCHITECTURE.md)：任务生命周期、检查点与稿件存储
+- [稿件后端](#稿件后端)：GitHub（Cloudflare 默认）、本地目录（Docker 默认）、可选的 Notion + R2
 - [升级指南](docs/UPGRADING.md)：备份和数据库迁移
 - [更新记录](CHANGELOG.md)
 
@@ -174,7 +187,7 @@ npm run db:migrate:local
 npm run dev                       # http://localhost:8787，管理界面在 /manage
 ```
 
-本地开发没有 Access 保护。要实际生成稿件，还需在 `.dev.vars` 配好转写服务、LLM key 和稿件库（GitHub 仓库，或在开启 `NOTION_MANUSCRIPT_STORE` 时使用 Notion）；示例配置指向本机 `http://127.0.0.1:28100` 的转写服务。
+本地开发没有 Access 保护。要实际生成稿件，还需在 `.dev.vars` 配好转写服务、LLM key 和稿件库（默认 GitHub 仓库，或在 `MANUSCRIPT_STORE=notion-r2` 时使用 Notion）；示例配置指向本机 `http://127.0.0.1:28100` 的转写服务。
 
 如果 Read Podcast 帮你省下了一次重听，**在 GitHub 上点个 ⭐**，能让更多人发现它。
 

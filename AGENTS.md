@@ -19,13 +19,13 @@ publication.
 | Cloudflare application (D1, ProcessingWorkflow, R2) | Worker / D1 / Workflows / R2 |
 | Transcription Service — replaceable transcription compute | `transcription_service/` |
 | Refinement Provider — replaceable LLM compute | any OpenAI-compatible API |
-| Canonical Manuscript Store — final manuscript persistence | user-configured GitHub repository (Cloudflare deployment) or local directory (Docker deployment, default; GitHub optional fallback) |
+| Canonical Manuscript Store — final manuscript persistence | GitHub repository (Cloudflare default), local directory (Docker default), or optional Notion + object-store snapshots (`MANUSCRIPT_STORE=notion-r2`) |
 
 ## Invariants
 
 - D1 is the durable business record; the ProcessingWorkflow is the execution owner with
   durable checkpoints; R2 holds raw / refined / upload payload checkpoints; published manuscripts live only in the
-  Canonical Manuscript Store (GitHub repository on Cloudflare; local directory by default on Docker).
+  Canonical Manuscript Store chosen at environment assembly (`MANUSCRIPT_STORE=github|notion-r2|local`).
 - The Transcription Service holds no business state and no Cloudflare, R2 or LLM credential —
   and no application token or user-maintained configuration. The macOS reference deployment is
   zero-configuration (`deploy/macos/install.sh` creates runtime directories only); remote
@@ -49,10 +49,11 @@ publication.
 - The repository is self-contained: runtime, build, test, deployment and upgrade depend on this
   repository only.
 - Secrets live in Wrangler secrets only: Cloudflare holds the transcription endpoint, the Access
-  service token, R2, GitHub and refinement credentials. The Transcription Service holds none (except
+  service token, R2, GitHub, Notion (when that backend is selected) and refinement credentials. The Transcription Service holds none (except
   the opt-in `openai-proxy` upstream key above), and no API ever returns a secret value. Documentation and examples use placeholders
   (`your-domain.example`, `your-github-username`, `your-manuscript-repository`,
-  `podcasts/transcripts`), never personal domains, repositories or paths.
+  `podcasts/transcripts`, `your-notion-data-source-id`, `secret_xxx`), never personal domains,
+  repositories, Notion ids or paths.
 - Deployment-specific values (custom domain, D1 database id, transcription URL, Store repository)
   never live in the repository: `wrangler.jsonc` stays deployment-neutral and `scripts/deploy.mjs`
   (`npm run deploy:production`, also used by CI) injects them from `.deploy.env` or environment variables.
@@ -61,10 +62,11 @@ publication.
 
 ## Concept versus implementation
 
-Two concrete Canonical Manuscript Store implementations exist (GitHub repository, local
-directory), so they stand behind the minimal `ManuscriptStore` platform interface; do not add
-further abstraction beyond it: no runtime backend selector, `output_backend` column or Settings
-backend switch — the store is chosen once at environment assembly. Keep
+Three concrete Canonical Manuscript Store implementations exist (GitHub repository, local
+directory, optional Notion + object-store snapshots), so they stand behind the minimal
+`ManuscriptStore` platform interface; do not add further abstraction beyond it: no runtime
+backend selector, `output_backend` column or Settings backend switch — the store is chosen
+once at environment assembly via `MANUSCRIPT_STORE`. Keep
 implementation identifiers stable (`transcription_service/`, `TRANSCRIPTION_SERVICE_*`, D1
 columns, API paths, `deploy/macos/`) instead of renaming them for vocabulary.
 

@@ -213,7 +213,7 @@ export async function readPodcastContent(env: Env, path: string, ref: string = e
  * Canonical Manuscript Store 的 GitHub 实现（Cloudflare 部署装配；Docker 未配置本地目录时回落）。
  * publish / read 包装既有 Git Data API 与 Contents API 逻辑，一行不变；version = git commit sha。
  */
-/** GitHub 凭据齐全时，Notion store 仍可用它读取尚未导入的旧快照。 */
+/** GitHub 凭据齐全时，notion-r2 仍可用它读取仓库路径 + 40 位 commit 的旧快照。 */
 export function githubManuscriptConfigured(env: {
   GITHUB_TOKEN?: string;
   GITHUB_OWNER?: string;

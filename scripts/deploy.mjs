@@ -29,16 +29,23 @@ export const OPTIONAL = {
   READ_PODCAST_TRANSCRIPTION_LANGUAGE: "TRANSCRIPTION_LANGUAGE",
   READ_PODCAST_TRANSCRIPTION_PROVIDER: "TRANSCRIPTION_PROVIDER",
   READ_PODCAST_TIME_ZONE: "MANUSCRIPT_TIME_ZONE",
+  READ_PODCAST_MANUSCRIPT_STORE: "MANUSCRIPT_STORE",
   READ_PODCAST_NOTION_MANUSCRIPT_STORE: "NOTION_MANUSCRIPT_STORE",
   READ_PODCAST_NOTION_DATA_SOURCE_ID: "NOTION_PODCAST_DATA_SOURCE_ID",
   READ_PODCAST_NOTION_DATABASE_ID: "NOTION_PODCAST_DATABASE_ID",
+  READ_PODCAST_NOTION_SCHEMA: "NOTION_SCHEMA",
+  READ_PODCAST_NOTION_SHOW_OPTIONS: "NOTION_SHOW_OPTIONS",
   READ_PODCAST_MANUSCRIPT_PUBLIC_ORIGIN: "MANUSCRIPT_PUBLIC_ORIGIN",
 };
 
 const NOTION_ID = /^[0-9a-f]{32}$|^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MANUSCRIPT_STORES = new Set(["github", "notion-r2", "local"]);
 
 function notionStoreRequested(value) {
-  return /^(1|true|yes|on)$/i.test(value("READ_PODCAST_NOTION_MANUSCRIPT_STORE"));
+  const store = (value("READ_PODCAST_MANUSCRIPT_STORE") || "").trim().toLowerCase();
+  if (store === "notion-r2" || store === "notion") return true;
+  if (store === "github" || store === "local") return false;
+  return /^(1|true|yes|on|notion-r2)$/i.test(value("READ_PODCAST_NOTION_MANUSCRIPT_STORE"));
 }
 
 const TRANSCRIPTION_PROVIDERS = new Set(["self-hosted", "dashscope"]);
@@ -62,7 +69,8 @@ export function parseDeployEnv(text) {
 }
 
 function isPlaceholder(value) {
-  return /(^|\.)(your-domain\.)?example(\.[a-z]+)?$/i.test(value) || /your-(github-username|manuscript-repository|domain)/i.test(value);
+  return /(^|\.)(your-domain\.)?example(\.[a-z]+)?$/i.test(value)
+    || /your-(github-username|manuscript-repository|domain|notion-data-source-id|notion-database-id)/i.test(value);
 }
 
 /** 校验部署输入并生成 wrangler deploy 的参数；输入不完整或仍是占位值时抛错。 */
@@ -86,7 +94,7 @@ export function buildDeployArgs(input, passthrough = []) {
   if (notionOn) {
     const source = value("READ_PODCAST_NOTION_DATA_SOURCE_ID");
     const database = value("READ_PODCAST_NOTION_DATABASE_ID");
-    if (!source && !database) errors.push("READ_PODCAST_NOTION_DATA_SOURCE_ID or READ_PODCAST_NOTION_DATABASE_ID is required when READ_PODCAST_NOTION_MANUSCRIPT_STORE is true");
+    if (!source && !database) errors.push("READ_PODCAST_NOTION_DATA_SOURCE_ID or READ_PODCAST_NOTION_DATABASE_ID is required when MANUSCRIPT_STORE=notion-r2");
     if (source && !NOTION_ID.test(source)) errors.push("READ_PODCAST_NOTION_DATA_SOURCE_ID must be a Notion id");
     if (database && !NOTION_ID.test(database)) errors.push("READ_PODCAST_NOTION_DATABASE_ID must be a Notion id");
   }
@@ -105,6 +113,13 @@ export function buildDeployArgs(input, passthrough = []) {
   }
   if (value("READ_PODCAST_TRANSCRIPTION_PROVIDER") && !TRANSCRIPTION_PROVIDERS.has(provider)) {
     errors.push(`READ_PODCAST_TRANSCRIPTION_PROVIDER must be self-hosted or dashscope (got ${value("READ_PODCAST_TRANSCRIPTION_PROVIDER")})`);
+  }
+  const manuscriptStore = value("READ_PODCAST_MANUSCRIPT_STORE").toLowerCase();
+  if (manuscriptStore && !MANUSCRIPT_STORES.has(manuscriptStore === "notion" ? "notion-r2" : manuscriptStore)) {
+    errors.push(`READ_PODCAST_MANUSCRIPT_STORE must be github, notion-r2 or local (got ${value("READ_PODCAST_MANUSCRIPT_STORE")})`);
+  }
+  if (manuscriptStore === "local") {
+    errors.push("READ_PODCAST_MANUSCRIPT_STORE=local is a Docker backend; Cloudflare deployments use github or notion-r2");
   }
   if (errors.length) throw new Error(`Deployment values are incomplete:\n  - ${errors.join("\n  - ")}\nSee docs/DEPLOYMENT.md (Deployment values).`);
 

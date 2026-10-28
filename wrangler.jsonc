@@ -68,10 +68,9 @@
     //   R2_ACCESS_KEY_ID             ── 同上（access key id）
     //   R2_SECRET_ACCESS_KEY         ── 同上（secret access key）
     //   GITHUB_TOKEN / NOTION_TOKEN / REFINER_API_KEY
-    //   NOTION_TOKEN 只在 Notion 稿件库开启时需要（见 docs/DEPLOYMENT.md）。
-    //   开启后用 --var 注入 NOTION_MANUSCRIPT_STORE、NOTION_PODCAST_DATA_SOURCE_ID
-    //   （或 NOTION_PODCAST_DATABASE_ID）和可选的 MANUSCRIPT_PUBLIC_ORIGIN。
-    //   GITHUB_* 在该模式下可选，仅用于读取尚未导入的旧快照。
+    //   MANUSCRIPT_STORE=github（默认）| notion-r2。notion-r2 需要 NOTION_TOKEN
+    //   以及 NOTION_PODCAST_DATA_SOURCE_ID（或 NOTION_PODCAST_DATABASE_ID）。
+    //   GITHUB_* 在 notion-r2 下可选，仅用于继续读取已发布到 GitHub 的旧快照。
     // 注入方式见 docs/DEPLOYMENT.md：npx wrangler secret put <NAME>
     // Canonical Manuscript Store 的 branch / path（可选）。部署者自己的值刻意不放在这里：
     // TRANSCRIPTION_SERVICE_URL / GITHUB_OWNER / GITHUB_REPO / TRANSCRIPTION_PROVIDER 在生产由 scripts/deploy.mjs
