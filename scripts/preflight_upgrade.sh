@@ -14,11 +14,10 @@ TARGET="--remote"
 SQL="SELECT id, status, progress, substr(episode_title, 1, 40) AS title, updated_at FROM tasks WHERE status IN ('queued', 'transcribing', 'refining', 'finalizing') ORDER BY created_at"
 
 echo "=== 升级预检（${TARGET#--}）：仍在处理中的任务 ==="
-OUTPUT="$(npx wrangler d1 execute DB "${TARGET}" --json --command "${SQL}")"
+OUTPUT="$(node "$(dirname "$0")/d1.mjs" query "${TARGET}" "${SQL}")"
 COUNT="$(printf '%s' "${OUTPUT}" | python3 -c '
 import json, sys
-text = sys.stdin.read()
-rows = json.loads(text[text.index("["):])[0]["results"]
+rows = json.load(sys.stdin)
 for row in rows:
     print("  {id}  {status:<14} {progress:>3}%  {title}  (updated {updated_at})".format(**row), file=sys.stderr)
 print(len(rows))

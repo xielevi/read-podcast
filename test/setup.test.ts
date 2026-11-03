@@ -1,6 +1,6 @@
 /**
- * scripts/setup.mjs：参数解析、"已存在就跳过"的判断，以及对 wrangler 调用的编排。
- * 所有 wrangler / 网络 / 文件访问都走注入的 fake，测试绝不触碰真实云资源或本地 .deploy.env。
+ * scripts/setup.mjs：参数解析、"已存在就跳过"的判断，以及对 cf / wrangler 调用的编排。
+ * 所有 CLI / 网络 / 文件访问都走注入的 fake，测试绝不触碰真实云资源或本地 .deploy.env。
  */
 import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 type LifecycleRule = { name: string; prefix: string; expireDays: number; abortMultipartDays?: number };
-type WranglerResult = { status: number; stdout: string; stderr: string };
+type CliResult = { status: number; stdout: string; stderr: string };
 type Deps = {
   argv?: string[];
   isInteractive?: boolean;
@@ -16,7 +16,8 @@ type Deps = {
   readConfig: () => string;
   readFile: (path: string) => string | Promise<string>;
   writeFile: (path: string, content: string) => void | Promise<void>;
-  runWrangler: (args: string[], options?: { input?: string }) => WranglerResult | Promise<WranglerResult>;
+  runCf: (args: string[], options?: { input?: string }) => CliResult | Promise<CliResult>;
+  runWrangler: (args: string[], options?: { input?: string }) => CliResult | Promise<CliResult>;
   prompt: (query: string, defaultValue: string) => string | Promise<string>;
   promptHidden: (query: string) => string | Promise<string>;
   fetch: (url: string, init?: unknown) => { status: number; headers: { get(name: string): string | null } } | Promise<{ status: number; headers: { get(name: string): string | null } }>;
@@ -34,9 +35,11 @@ const setup = (await import("../scripts/setup.mjs")) as {
   parseJsonc(text: string): unknown;
   extractJson(text: string): unknown;
   resourcesFromConfig(config: unknown): { workerName: string; d1Binding: string; d1DatabaseName: string; r2BucketName: string };
-  parseLifecycleRuleIds(text: string): string[];
+  findDatabaseId(databases: unknown, name: string): string | null;
+  parseLifecycleRules(text: string): { id: string }[] | null;
   missingLifecycleRules(existingIds: string[], rules?: LifecycleRule[]): LifecycleRule[];
-  lifecycleAddArgs(bucket: string, rule: LifecycleRule): string[];
+  lifecycleRuleBody(rule: LifecycleRule): Record<string, unknown>;
+  lifecycleUpdateArgs(bucket: string, existing: { id: string }[], missing: LifecycleRule[]): string[];
   deployEnvContent(values: Record<string, string>): string;
   smokeChecks(domain: string): { name: string; url: string; status: number; locationIncludes?: string }[];
   runSetup(deps: Deps): Promise<number>;
@@ -53,19 +56,20 @@ const VALID_ENV = {
   READ_PODCAST_GITHUB_REPO: "notes",
 };
 
-// wrangler 4.x `r2 bucket lifecycle list` 的真实输出形态（含 Cloudflare 默认规则）。
-const FULL_LIFECYCLE_TABLE = ["Default Multipart Abort Rule", "raw-7d", "refined-7d", "uploads-1d"]
-  .map(name => `name:     ${name}\nenabled:  Yes\nprefix:   x/\naction:   Expire objects after 7 days\n`)
-  .join("\n");
+// `cf r2 buckets lifecycle get` 的真实输出形态（含 Cloudflare 默认规则）。
+const DEFAULT_LIFECYCLE_RULE = { id: "Default Multipart Abort Rule", enabled: true, conditions: {} };
+const lifecycleOutput = (...ids: string[]) => JSON.stringify({ rules: [DEFAULT_LIFECYCLE_RULE, ...ids.map(id => ({ id, enabled: true }))] });
+const FULL_LIFECYCLE = lifecycleOutput("raw-7d", "refined-7d", "uploads-1d");
+const DATABASE_ID = "11111111-2222-4333-8444-555555555555";
 
-/** 按 args 前缀分发的 fake wrangler：记录全部调用，绝不真正 spawn。 */
-function fakeWrangler(handlers: [string, (args: string[]) => WranglerResult][], calls: { args: string[]; input?: string }[]) {
+/** 按 args 前缀分发的 fake CLI：记录全部调用，绝不真正 spawn。 */
+function fakeCli(handlers: [string, (args: string[]) => CliResult][], calls: { args: string[]; input?: string }[]) {
   return async (args: string[], options: { input?: string } = {}) => {
     calls.push({ args, input: options.input });
     for (const [prefix, handle] of handlers) {
       if (args.join(" ").startsWith(prefix)) return handle(args);
     }
-    throw new Error(`fake wrangler: unexpected command \`${args.join(" ")}\``);
+    throw new Error(`fake cli: unexpected command \`${args.join(" ")}\``);
   };
 }
 
@@ -79,6 +83,7 @@ function baseDeps(overrides: Partial<Deps> = {}): Deps {
       throw new Error("ENOENT");
     },
     writeFile: () => {},
+    runCf: async () => ({ status: 0, stdout: "", stderr: "" }),
     runWrangler: async () => ({ status: 0, stdout: "", stderr: "" }),
     prompt: (_query, defaultValue) => defaultValue,
     promptHidden: async () => "",
@@ -156,10 +161,10 @@ describe("wrangler.jsonc 与配置解析", () => {
 });
 
 describe("生命周期规则", () => {
-  it("从 lifecycle list 输出（含 ANSI 转义）取规则 id", () => {
-    const ansi = `\x1b[1m${FULL_LIFECYCLE_TABLE}\x1b[0m`;
-    expect(setup.parseLifecycleRuleIds(ansi)).toEqual(["Default Multipart Abort Rule", "raw-7d", "refined-7d", "uploads-1d"]);
-    expect(setup.parseLifecycleRuleIds("There are no lifecycle rules for bucket 'x'.")).toEqual([]);
+  it("docs/DEPLOYMENT.md 的规则表与 LIFECYCLE_RULES 一致", () => {
+    for (const rule of setup.LIFECYCLE_RULES) {
+      expect(deploymentDoc).toContain(`| \`${rule.name}\` | \`${rule.prefix}\` |`);
+    }
   });
 
   it("missingLifecycleRules 只返回缺失项", () => {
@@ -168,21 +173,30 @@ describe("生命周期规则", () => {
     expect(setup.missingLifecycleRules(["raw-7d", "refined-7d", "uploads-1d"])).toEqual([]);
   });
 
-  it("lifecycleAddArgs 与 wrangler.jsonc 注释中的命令一致", () => {
-    const [raw, refined, uploads] = setup.LIFECYCLE_RULES;
-    expect(setup.lifecycleAddArgs("read-podcast-edge-raw", raw)).toEqual(
-      ["r2", "bucket", "lifecycle", "add", "read-podcast-edge-raw", "raw-7d", "raw/", "--expire-days", "7"],
-    );
-    expect(setup.lifecycleAddArgs("read-podcast-edge-raw", uploads)).toEqual(
-      ["r2", "bucket", "lifecycle", "add", "read-podcast-edge-raw", "uploads-1d", "uploads/", "--expire-days", "1", "--abort-multipart-days", "1"],
-    );
-    expect(refined.expireDays).toBe(7);
+  it("lifecycleUpdateArgs 保留已有规则并追加缺失规则（PUT 整组替换）", () => {
+    const [raw, , uploads] = setup.LIFECYCLE_RULES;
+    const args = setup.lifecycleUpdateArgs("read-podcast-edge-raw", [DEFAULT_LIFECYCLE_RULE], [raw, uploads]);
+    expect(args.slice(0, 6)).toEqual(["r2", "buckets", "lifecycle", "update", "read-podcast-edge-raw", "--rules"]);
+    expect(JSON.parse(args[6])).toEqual([
+      DEFAULT_LIFECYCLE_RULE,
+      { id: "raw-7d", enabled: true, conditions: { prefix: "raw/" }, deleteObjectsTransition: { condition: { type: "Age", maxAge: 604800 } } },
+      {
+        id: "uploads-1d",
+        enabled: true,
+        conditions: { prefix: "uploads/" },
+        deleteObjectsTransition: { condition: { type: "Age", maxAge: 86400 } },
+        abortMultipartUploadsTransition: { condition: { type: "Age", maxAge: 86400 } },
+      },
+    ]);
   });
 
-  it("与 docs/DEPLOYMENT.md 的三条手动命令保持同步", () => {
-    for (const rule of setup.LIFECYCLE_RULES) {
-      expect(deploymentDoc).toContain(`lifecycle add read-podcast-edge-raw ${rule.name} ${rule.prefix} --expire-days ${rule.expireDays}`);
-    }
+  it("findDatabaseId 只接受精确同名，parseLifecycleRules 拒绝非预期输出", () => {
+    const databases = [{ name: "read-podcast-edge-old", uuid: "wrong" }, { name: "read-podcast-edge", uuid: DATABASE_ID }];
+    expect(setup.findDatabaseId(databases, "read-podcast-edge")).toBe(DATABASE_ID);
+    expect(setup.findDatabaseId([{ name: "read-podcast-edge-old", uuid: "wrong" }], "read-podcast-edge")).toBeNull();
+    expect(setup.findDatabaseId(null, "read-podcast-edge")).toBeNull();
+    expect(setup.parseLifecycleRules(FULL_LIFECYCLE)?.map(rule => rule.id)).toContain("raw-7d");
+    expect(setup.parseLifecycleRules("not json")).toBeNull();
   });
 });
 
@@ -249,7 +263,7 @@ describe("secrets 与部署值", () => {
   });
 });
 
-describe("runSetup 编排（wrangler 全 mock）", () => {
+describe("runSetup 编排（CLI 全 mock）", () => {
   it("全新账号：创建 D1/R2、补齐三条规则、secrets 逐项经 stdin 写入、生成 .deploy.env", async () => {
     const calls: { args: string[]; input?: string }[] = [];
     const logs: string[] = [];
@@ -268,19 +282,21 @@ describe("runSetup 编排（wrangler 全 mock）", () => {
       },
       log: text => logs.push(text),
       error: text => errors.push(text),
-      runWrangler: fakeWrangler([
-        ["whoami", () => ({ status: 0, stdout: JSON.stringify({ loggedIn: true, email: "me@test.dev", accounts: [{ id: "a1", name: "my account" }] }), stderr: "" })],
+      runCf: fakeCli([
+        ["auth whoami", () => ({ status: 0, stdout: JSON.stringify({ authenticated: true, tokenValid: true, email: "owner@mydomain.net", accounts: [{ id: "a1", name: "my account" }] }), stderr: "" })],
         ["d1 list", () => ({ status: 0, stdout: "[]", stderr: "" })],
-        ["d1 create", () => ({ status: 0, stdout: "created", stderr: "" })],
+        ["d1 create", () => ({ status: 0, stdout: JSON.stringify({ uuid: DATABASE_ID, name: "read-podcast-edge" }), stderr: "" })],
         ["d1 migrations", () => ({ status: 0, stdout: "applied", stderr: "" })],
-        ["r2 bucket info", () => ({ status: 1, stdout: "", stderr: "not found" })],
-        ["r2 bucket create", () => ({ status: 0, stdout: "created", stderr: "" })],
-        ["r2 bucket lifecycle list", () => {
+        ["r2 buckets get", () => ({ status: 1, stdout: "", stderr: "not found" })],
+        ["r2 buckets create", () => ({ status: 0, stdout: "created", stderr: "" })],
+        ["r2 buckets lifecycle get", () => {
           lifecycleListCalls++;
-          return { status: 0, stdout: lifecycleListCalls === 1 ? "There are no lifecycle rules." : FULL_LIFECYCLE_TABLE, stderr: "" };
+          return { status: 0, stdout: lifecycleListCalls === 1 ? lifecycleOutput() : FULL_LIFECYCLE, stderr: "" };
         }],
-        ["r2 bucket lifecycle add", () => ({ status: 0, stdout: "added", stderr: "" })],
-        ["secret list", () => ({ status: 1, stdout: "", stderr: "worker not found" })],
+        ["r2 buckets lifecycle update", () => ({ status: 0, stdout: "updated", stderr: "" })],
+        ["workers secrets list", () => ({ status: 1, stdout: "", stderr: "worker not found" })],
+      ], calls),
+      runWrangler: fakeCli([
         ["secret put", () => ({ status: 0, stdout: "uploaded", stderr: "" })],
       ], calls),
     });
@@ -291,18 +307,16 @@ describe("runSetup 编排（wrangler 全 mock）", () => {
 
     const joined = calls.map(call => call.args.join(" "));
     expect(joined).toEqual([
-      "whoami --json",
-      "d1 list --json",
-      "d1 create read-podcast-edge",
-      "d1 migrations apply DB --remote",
-      "r2 bucket info read-podcast-edge-raw --json",
-      "r2 bucket create read-podcast-edge-raw",
-      "r2 bucket lifecycle list read-podcast-edge-raw",
-      "r2 bucket lifecycle add read-podcast-edge-raw raw-7d raw/ --expire-days 7",
-      "r2 bucket lifecycle add read-podcast-edge-raw refined-7d refined/ --expire-days 7",
-      "r2 bucket lifecycle add read-podcast-edge-raw uploads-1d uploads/ --expire-days 1 --abort-multipart-days 1",
-      "r2 bucket lifecycle list read-podcast-edge-raw",
-      "secret list --format json",
+      "auth whoami",
+      "d1 list --name read-podcast-edge",
+      "d1 create --name read-podcast-edge",
+      `d1 migrations apply ${DATABASE_ID}`,
+      "r2 buckets get read-podcast-edge-raw",
+      "r2 buckets create --name read-podcast-edge-raw",
+      "r2 buckets lifecycle get read-podcast-edge-raw",
+      expect.stringMatching(/^r2 buckets lifecycle update read-podcast-edge-raw --rules .*raw-7d.*refined-7d.*uploads-1d/),
+      "r2 buckets lifecycle get read-podcast-edge-raw",
+      "workers secrets list --worker read-podcast-edge",
       "secret put GITHUB_TOKEN",
       "secret put CF_ACCESS_CLIENT_ID",
     ]);
@@ -335,13 +349,13 @@ describe("runSetup 编排（wrangler 全 mock）", () => {
       writeFile: (path, content) => {
         written = { path, content };
       },
-      runWrangler: fakeWrangler([
-        ["whoami", () => ({ status: 0, stdout: JSON.stringify({ loggedIn: true, accounts: [{ name: "a" }] }), stderr: "" })],
-        ["d1 list", () => ({ status: 0, stdout: JSON.stringify([{ name: "read-podcast-edge" }]), stderr: "" })],
+      runCf: fakeCli([
+        ["auth whoami", () => ({ status: 0, stdout: JSON.stringify({ authenticated: true, accounts: [{ name: "a" }] }), stderr: "" })],
+        ["d1 list", () => ({ status: 0, stdout: JSON.stringify([{ name: "read-podcast-edge", uuid: DATABASE_ID }]), stderr: "" })],
         ["d1 migrations", () => ({ status: 0, stdout: "No migrations to apply", stderr: "" })],
-        ["r2 bucket info", () => ({ status: 0, stdout: "{}", stderr: "" })],
-        ["r2 bucket lifecycle list", () => ({ status: 0, stdout: FULL_LIFECYCLE_TABLE, stderr: "" })],
-        ["secret list", () => ({ status: 0, stdout: JSON.stringify([{ name: "GITHUB_TOKEN" }]), stderr: "" })],
+        ["r2 buckets get", () => ({ status: 0, stdout: "{}", stderr: "" })],
+        ["r2 buckets lifecycle get", () => ({ status: 0, stdout: FULL_LIFECYCLE, stderr: "" })],
+        ["workers secrets list", () => ({ status: 0, stdout: JSON.stringify([{ name: "GITHUB_TOKEN" }]), stderr: "" })],
       ], calls),
     });
 
@@ -349,14 +363,14 @@ describe("runSetup 编排（wrangler 全 mock）", () => {
     expect(code).toBe(0);
     const joined = calls.map(call => call.args.join(" "));
     expect(joined).toEqual([
-      "whoami --json",
-      "d1 list --json",
-      "d1 migrations apply DB --remote",
-      "r2 bucket info read-podcast-edge-raw --json",
-      "r2 bucket lifecycle list read-podcast-edge-raw",
-      "secret list --format json",
+      "auth whoami",
+      "d1 list --name read-podcast-edge",
+      `d1 migrations apply ${DATABASE_ID}`,
+      "r2 buckets get read-podcast-edge-raw",
+      "r2 buckets lifecycle get read-podcast-edge-raw",
+      "workers secrets list --worker read-podcast-edge",
     ]);
-    expect(joined.some(args => args.includes("create") || args.includes("add") || args.includes("put"))).toBe(false);
+    expect(joined.some(args => args.includes("create") || args.includes("update") || args.includes("put"))).toBe(false);
     expect(written?.content).toContain("READ_PODCAST_DOMAIN=old.mydomain.net");
     expect(written?.content).toContain("READ_PODCAST_GITHUB_BRANCH=dev");
   });
@@ -378,7 +392,6 @@ describe("runSetup 编排（wrangler 全 mock）", () => {
       writeFile: (_path, content) => {
         writes.push(content);
       },
-      runWrangler: async () => ({ status: 0, stdout: "", stderr: "" }),
     });
 
     const code = await setup.runSetup(deps);
@@ -388,17 +401,29 @@ describe("runSetup 编排（wrangler 全 mock）", () => {
     expect(writes[0]).toContain("READ_PODCAST_DOMAIN=podcast.mydomain.net");
   });
 
-  it("wrangler 失败时停在该步并以 1 退出", async () => {
+  it("cf 失败时停在该步并以 1 退出", async () => {
     const calls: { args: string[] }[] = [];
     const deps = baseDeps({
-      runWrangler: fakeWrangler([
-        ["whoami", () => ({ status: 0, stdout: "{}", stderr: "" })],
+      runCf: fakeCli([
+        ["auth whoami", () => ({ status: 0, stdout: JSON.stringify({ authenticated: true }), stderr: "" })],
         ["d1 list", () => ({ status: 1, stdout: "", stderr: "boom" })],
       ], calls),
     });
     const code = await setup.runSetup(deps);
     expect(code).toBe(1);
-    expect(calls.map(call => call.args.join(" "))).toEqual(["whoami --json", "d1 list --json"]);
+    expect(calls.map(call => call.args.join(" "))).toEqual(["auth whoami", "d1 list --name read-podcast-edge"]);
+  });
+
+  it("whoami 退出码为 0 但令牌失效时仍判定未登录", async () => {
+    const errors: string[] = [];
+    const deps = baseDeps({
+      error: text => errors.push(text),
+      runCf: fakeCli([
+        ["auth whoami", () => ({ status: 0, stdout: JSON.stringify({ authenticated: true, tokenValid: false }), stderr: "" })],
+      ], []),
+    });
+    expect(await setup.runSetup(deps)).toBe(1);
+    expect(errors.join("\n")).toContain("npx cf auth login");
   });
 
   it("--step smoke 显式执行：边界检查全过为 0，控制面匿名可达为 1", async () => {

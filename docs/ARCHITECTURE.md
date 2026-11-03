@@ -248,9 +248,9 @@ Cloudflare Access can enforce the boundary before a request reaches the applicat
   defaults without mutating D1.
 - The application has no users, sessions, JWTs, OAuth or account tables. The maintainer's
   custom-domain deployment explicitly opts into `CONTROL_AUTH_MODE=access`, with Access
-  protecting `/manage*` and `/api/control/*` at the edge; its checked-in Wrangler config
-  keeps `workers_dev` and preview URLs disabled. Community deployments use a temporary
-  workers.dev-enabled config and Basic Auth for those paths. Missing credentials deny
+  protecting `/manage*` and `/api/control/*` at the edge; its checked-in resource manifest
+  (`wrangler.jsonc`) keeps `workers_dev` and preview URLs disabled. Community deployments use the
+  workers.dev-enabled `community` mode of `cloudflare.config.ts` and Basic Auth for those paths. Missing credentials deny
   control requests by default, and workers.dev is never exempted by Access mode. Static
   assets under `/manage*` run the Worker first so they cannot bypass the guard.
 

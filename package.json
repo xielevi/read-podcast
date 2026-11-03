@@ -10,12 +10,12 @@
     "dev": "cf dev",
     "deploy": "node scripts/deploy_community.mjs",
     "deploy:production": "node scripts/deploy.mjs",
-    "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "db:migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "db:migrate:local": "node scripts/d1.mjs migrate --local",
+    "db:migrate:remote": "node scripts/d1.mjs migrate --remote",
     "setup": "node scripts/setup.mjs",
     "build:server": "node scripts/build_frontend.mjs && node scripts/build_server.mjs",
     "start": "node dist/server.js",
-    "build:cloudflare": "cf build"
+    "build:cloudflare": "cf build --mode community"
   },
   "cloudflare": {
     "bindings": {
@@ -100,6 +100,7 @@
     }
   },
   "devDependencies": {
+    "@cloudflare/vite-plugin": "2.0.0-beta.v.11",
     "@cloudflare/workers-types": "^5.20260918.1",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^22.20.4",
@@ -107,8 +108,7 @@
     "esbuild": "^0.28.2",
     "jsdom": "^30.1.1",
     "typescript": "^5.9.2",
-    "vitest": "^5.0.5",
-    "wrangler": "^4.151.3"
+    "vitest": "^5.0.5"
   },
   "dependencies": {
     "fast-xml-parser": "^5.7.0"

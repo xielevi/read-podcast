@@ -22,7 +22,7 @@ When upgrading, the following core principles must be maintained:
 
 - **Zero Data Loss for Published Manuscripts**: published Markdown in the configured Manuscript Store is durable and must never be altered or cascade-deleted by an upgrade.
 - **Graceful In-flight Task Handling**: inspect active tasks before schema or workflow changes and follow the target release notes for any migration-specific handling.
-- **Idempotent and Tracked Migrations**: D1 migrations are sequential SQL files tracked by Wrangler; SQLite applies the same migration set locally on Node startup.
+- **Idempotent and Tracked Migrations**: D1 migrations are sequential SQL files tracked in the `d1_migrations` table; SQLite applies the same migration set locally on Node startup.
 
 ---
 
@@ -65,7 +65,7 @@ For local development databases:
 npm run db:migrate:local
 ```
 
-Wrangler automatically checks which migrations have already been applied and executes only new
+`cf` automatically checks which migrations have already been applied and executes only new
 `migrations/*.sql` files in numerical order. In particular, v1.0's bilingual UI needs
 `0022_i18n_support.sql`: confirm it appears in the remote migration history before
 deploying code that reads `ui_preferences.locale`. A Worker deploy does not apply D1 migrations.
@@ -133,7 +133,7 @@ Verify that the upgrade succeeded:
 
 ## Docker / Node Upgrade Procedure
 
-The Cloudflare D1 / R2 / Wrangler steps above do **not** apply to Docker. On a single-host
+The Cloudflare D1 / R2 / secret steps above do **not** apply to Docker. On a single-host
 Docker deployment, stop creating new tasks and wait for active tasks to finish where possible.
 Back up the Compose `web-data` volume (SQLite database, signing key and temporary checkpoints),
 `./manuscripts/` (including `.versions/`), and your `.env` securely before changing images or
@@ -202,7 +202,7 @@ Release notes must place a prominent warning banner at the top, followed by stru
 
 ### 3. Storage & R2 Rules
 - Introduced new R2 object prefix `refined/`.
-- **Action**: Run `npx wrangler r2 bucket lifecycle add read-podcast-edge-raw refined-7d refined/ --expire-days 7`.
+- **Action**: Run `npm run setup -- --step r2`.
 
 ### 4. Transcription Service
 - Updated dependencies in `transcription_service/pyproject.toml`.

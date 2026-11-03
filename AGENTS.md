@@ -55,10 +55,10 @@ publication.
   `podcasts/transcripts`, `your-notion-data-source-id`, `secret_xxx`), never personal domains,
   repositories, Notion ids or paths.
 - Deployment-specific values (custom domain, D1 database id, transcription URL, Store repository)
-  never live in the repository: `cloudflare.config.ts` and the community `wrangler.jsonc` stay deployment-neutral and `scripts/deploy.mjs`
+  never live in the repository: `cloudflare.config.ts` and the `wrangler.jsonc` resource manifest stay deployment-neutral and `scripts/deploy.mjs`
   (`npm run deploy:production`, also used by CI) injects them from `.deploy.env` or environment variables.
   `npm run deploy` is the community Workers Builds path; it applies D1 migrations and deploys
-  from a temporary workers.dev-enabled config, leaving the checked-in production config unchanged.
+  with the workers.dev-enabled `community` mode, leaving the checked-in manifest unchanged.
 
 ## Concept versus implementation
 
@@ -75,9 +75,10 @@ Queues or permanent polling without a real need.
 
 ## Cloudflare CLI
 
-Use `cf auth login` for local development and production deployment. CI uses `CLOUDFLARE_API_TOKEN`.
-`npm run deploy:production` runs cf; community Workers Builds and initial resource setup keep Wrangler.
-Use Wrangler for live logs and individual secrets.
+Use `cf auth login` for local development and deployment. CI uses `CLOUDFLARE_API_TOKEN`.
+Wrangler is not a dependency: `cf` builds through `@cloudflare/vite-plugin`, and only live logs and
+individual secrets, which `cf` cannot do yet, run on demand with `npx wrangler`. Keep `wrangler.jsonc`:
+the Deploy to Cloudflare button reads and rewrites it, and `cloudflare.config.ts` derives from it.
 
 ## Validation
 
@@ -85,5 +86,5 @@ Use Wrangler for live logs and individual secrets.
 npm run check
 npm run check:frontend
 UV_CACHE_DIR=/tmp/read-podcast-edge-uv-cache uv run --directory transcription_service pytest -q
-npx cf deploy --dry-run
+npm run deploy -- --dry-run
 ```

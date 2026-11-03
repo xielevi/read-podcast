@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 把 public/js/NN-*.js 按文件名顺序逐字节拼成运行时加载的 public/app.js（生成物，不入库）。
-// wrangler.jsonc 的 build.command 在 deploy / dev / dry-run 前调用；Docker 由 npm run build:server 调用；
+// vite.config.ts 在 deploy / dev / dry-run 前调用；Docker 由 npm run build:server 调用；
 // 测试直接用 assembleFrontend()。'use strict' 只由 bundle 第一行提供：指令只在脚本开头生效，
 // 写在分片里会随拼接落到中间而静默失效，因此分片中一律禁止。
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";

@@ -24,7 +24,7 @@ Fixes #
 - [ ] `npm run check` (TypeScript 类型检查 + 单元测试通过)
 - [ ] `npm run check:frontend` (前端语法与打包产物一致性通过)
 - [ ] `UV_CACHE_DIR=/tmp/read-podcast-edge-uv-cache uv run --directory transcription_service pytest -q` (若修改转录服务)
-- [ ] `npx wrangler deploy --dry-run` (部署配置与 bundle 验证通过)
+- [ ] `npm run deploy -- --dry-run` (部署配置与 bundle 验证通过)
 - [ ] 手动测试 / 冒烟测试记录（如下）：
 <!-- 描述手动测试步骤与结果（注意日志与输出脱敏） -->
 
