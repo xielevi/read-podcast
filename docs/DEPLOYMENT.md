@@ -41,7 +41,7 @@ names belong in git-ignored env files and Worker secrets, never in this reposito
 
 `npm run setup` automates most of this section interactively. Every step is idempotent — existing
 resources are detected and skipped, so it is safe to rerun at any time and after a failed run. It
-checks `wrangler` authentication, creates the D1 database (by the `wrangler.jsonc` `database_name`)
+checks `cf` authentication, creates the D1 database (by the `wrangler.jsonc` `database_name`)
 and applies remote migrations, creates the R2 bucket with the three lifecycle rules and verifies
 them, prompts for every secret (input hidden, never written to any file), generates `.deploy.env`
 with the same validation as `npm run deploy:production` (documentation placeholders are refused), and prints
@@ -68,11 +68,11 @@ your domain. The subsections below document the same steps without the script.
 The [Deploy to Cloudflare flow](https://developers.cloudflare.com/workers/platform/deploy-buttons/)
 copies this repository into your GitHub account, provisions the D1 database and R2 bucket you name
 on the deploy page, and runs Workers Builds with the deploy command `npm run deploy`
-(`scripts/deploy_community.mjs`, also usable from a checkout). The script deploys from a temporary
-copy of `wrangler.jsonc` with `workers_dev: true`; the checked-in config stays `workers_dev: false`
-for the custom-domain production pipeline. In order it:
+(`scripts/deploy_community.mjs`, also usable from a checkout). The script deploys with `cf deploy --mode community`,
+which derives a `workers_dev: true` configuration from `wrangler.jsonc`; the checked-in manifest stays
+`workers_dev: false` for the custom-domain production pipeline. In order it:
 
-1. applies remote D1 migrations by the `DB` binding (after the first deploy if the database does not
+1. applies remote D1 migrations to the database named in `wrangler.jsonc` (after the first deploy if the database does not
    exist yet), then deploys the Worker, Workflow (`<worker-name>-processing`), recovery cron and
    static assets;
 2. adds any missing R2 lifecycle rules (`raw-7d`, `refined-7d`, `uploads-1d`; warns instead of failing).
@@ -104,13 +104,12 @@ workers.dev never falls back to Access mode.
 ### D1
 
 ```bash
-npx wrangler d1 create read-podcast-edge      # no need to copy the id into wrangler.jsonc
+npx cf d1 create --name read-podcast-edge     # no need to copy the id into wrangler.jsonc
 npm run db:migrate:remote
 ```
 
-`wrangler.jsonc` deliberately has no `database_id`: Wrangler finds the database by its name,
-`read-podcast-edge`, for migrations and for deploys. If Wrangler offers to add the new database to
-the config, decline.
+`wrangler.jsonc` deliberately has no `database_id`: `cf deploy` and the repository's migration
+scripts find the database by its name, `read-podcast-edge`.
 
 Upgrading an existing deployment? See [UPGRADING.md](UPGRADING.md) and run `scripts/preflight_upgrade.sh`
 first to list tasks that are still processing.
@@ -118,12 +117,15 @@ first to list tasks that are still processing.
 ### R2 and lifecycle rules
 
 ```bash
-npx wrangler r2 bucket create read-podcast-edge-raw
-npx wrangler r2 bucket lifecycle add read-podcast-edge-raw raw-7d raw/ --expire-days 7
-npx wrangler r2 bucket lifecycle add read-podcast-edge-raw refined-7d refined/ --expire-days 7
-npx wrangler r2 bucket lifecycle add read-podcast-edge-raw uploads-1d uploads/ --expire-days 1 --abort-multipart-days 1
-npx wrangler r2 bucket lifecycle list read-podcast-edge-raw
+npm run setup -- --step r2                       # creates the bucket and merges in the rules below
+npx cf r2 buckets lifecycle get read-podcast-edge-raw
 ```
+
+| Rule | Prefix | Action |
+|---|---|---|
+| `raw-7d` | `raw/` | Delete objects after 7 days |
+| `refined-7d` | `refined/` | Delete objects after 7 days |
+| `uploads-1d` | `uploads/` | Delete objects and abort multipart uploads after 1 day |
 
 The `refined/` rule is required before deploying the refined-checkpoint pipeline, including
 when upgrading an existing bucket. Refined payloads remain for 7 days even after success so
@@ -142,9 +144,17 @@ it where allowed and retry the task after upgrading (a new attempt uses the new 
 
 Local development and maintainer deployment use the project-pinned `cf` CLI. Sign in with
 `npx cf auth login`; check with `npx cf auth whoami`. CI uses its existing API token.
-`cloudflare.config.ts` defines the Worker, while `wrangler.config.ts` configures its bundler.
-The community Workers Builds path and `npm run setup` keep Wrangler for resource provisioning
-and individual secrets; sign in with `npx wrangler login` when using those commands.
+`cloudflare.config.ts` defines the Worker, `vite.config.ts` configures its bundler, and
+`wrangler.jsonc` remains the resource manifest the Deploy to Cloudflare button reads and rewrites.
+
+Wrangler is not a project dependency. `cf` cannot yet set a single secret or stream live logs, so
+`npx wrangler secret put` and `npx wrangler tail` run on demand, as Cloudflare's
+[Wrangler to cf reference](https://developers.cloudflare.com/cf/wrangler/reference/#commands-not-yet-supported)
+recommends. Wrangler keeps its own login: run `npx wrangler login` or set `CLOUDFLARE_API_TOKEN`.
+
+`cf deploy` keeps secrets across deployments but has no `keep_vars` equivalent. On community
+deployments, store values you set in the dashboard as **Secret**, not plain text; undeclared plain
+variables do not survive a redeploy.
 
 ### Deployment values
 
@@ -798,7 +808,7 @@ multi-task cron recovery) need production evidence. Free tier quotas relevant to
 
 ### Production Boundary Verification Checklist
 
-Local tests and `wrangler deploy --dry-run` validate code logic and syntax, but cannot measure
+Local tests and `npm run deploy -- --dry-run` validate code logic and syntax, but cannot measure
 production edge CPU or enforce the Free-plan subrequest budget. The first two scenarios have
 already been exercised; record the feed/episode and Workers Observability evidence if a
 resource-limit claim is needed. Publication and multi-task recovery checks below remain useful

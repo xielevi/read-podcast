@@ -105,8 +105,8 @@ jobs:
           node-version: 22
           cache: npm
       # npm ci 是部署的硬前提，不要删除：
-      # 1) 部署使用 package-lock.json 锁定的 cf / Wrangler bundler 版本，与本地一致；
-      # 2) Worker 入口依赖 fast-xml-parser，需要 node_modules 才能被 wrangler 打包。
+      # 1) 部署使用 package-lock.json 锁定的 cf / Vite bundler 版本，与本地一致；
+      # 2) Worker 入口依赖 fast-xml-parser，需要 node_modules 才能被 Vite 打包。
       - run: npm ci
       # 与本地相同的生产部署入口：scripts/deploy.mjs 校验上面的部署值，注入 cloudflare.config.ts 后执行 cf deploy。
       - name: Deploy to Cloudflare Workers

@@ -1,6 +1,5 @@
 node_modules
 .wrangler/
-.wrangler.community.*.json
 public/app.js
 .dev.vars
 .deploy.env

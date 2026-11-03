@@ -40,7 +40,7 @@ npm run db:migrate:local
 npm run dev
 ```
 
-本地开发环境下，`/` 为公开浏览视图，`/manage` 为主人管理视图（本地不经过 Cloudflare Access 拦截，D1 与 R2 由 Wrangler 本地模拟）。
+本地开发环境下，`/` 为公开浏览视图，`/manage` 为主人管理视图（本地不经过 Cloudflare Access 拦截，D1 与 R2 由 cf 本地模拟）。
 
 ### 本地运行转录服务（可选）
 
@@ -72,10 +72,10 @@ npm run check:frontend
 UV_CACHE_DIR=/tmp/read-podcast-edge-uv-cache uv run --directory transcription_service pytest -q
 
 # 4. 验证 Worker 打包与配置有效性（Dry Run，不产生实际部署）
-npx wrangler deploy --dry-run
+npm run deploy -- --dry-run
 ```
 
-`public/app.js` 是 `public/js/` 分片的生成物，不入库；`npm run check:frontend`、`wrangler dev/deploy` 与 Docker 构建都会自动重新生成。
+`public/app.js` 是 `public/js/` 分片的生成物，不入库；`npm run check:frontend`、`cf dev/deploy` 与 Docker 构建都会自动重新生成。
 
 ---
 

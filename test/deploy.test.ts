@@ -8,6 +8,8 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error 无类型声明
+import { rowsFromRaw } from "../scripts/d1.mjs";
+// @ts-expect-error 无类型声明
 import { communityConfig, communityDeploySteps } from "../scripts/deploy_community.mjs";
 // @ts-expect-error 无类型声明
 import { parseJsonc } from "../scripts/setup.mjs";
@@ -262,11 +264,11 @@ describe("仓库不含部署者自己的值", () => {
 });
 
 describe("scripts/deploy_community.mjs", () => {
-  it("只在临时配置中开放 workers.dev，并按实例名隔离 Workflow 与 R2 变量", () => {
+  it("只在 community 模式开放 workers.dev，并按实例名隔离 Workflow 与 R2 变量", () => {
     const source = read("wrangler.jsonc");
     const config = communityConfig(source.replace('"name": "read-podcast-edge"', '"name": "my-podcast"').replaceAll("read-podcast-edge-raw", "my-raw"));
     expect(source).toContain('"workers_dev": false');
-    expect(config).toMatchObject({ workers_dev: true, preview_urls: false, keep_vars: true });
+    expect(config).toMatchObject({ workers_dev: true, preview_urls: false });
     expect(config.assets.run_worker_first).toContain("/manage*");
     expect(config.workflows[0].name).toBe("my-podcast-processing");
     expect(config.vars.R2_BUCKET_NAME).toBe("my-raw");
@@ -277,17 +279,30 @@ describe("scripts/deploy_community.mjs", () => {
     }
   });
 
-  it("库已存在先迁移再部署；首次部署由 wrangler 自动创建资源后再迁移；dry-run 不碰远端", () => {
-    const migrate = ["d1", "migrations", "apply", "DB", "--remote"];
-    expect(communityDeploySteps([])).toEqual([migrate, ["deploy"]]);
-    expect(communityDeploySteps([], false)).toEqual([["deploy"], migrate]);
-    expect(communityDeploySteps(["--dry-run"], false)).toEqual([["deploy", "--dry-run"]]);
+  it("库已存在先按 ID 迁移再部署；库不存在只部署（由 cf 自动创建后再迁移）；dry-run 不碰远端", () => {
+    const deploy = ["deploy", "--mode", "community"];
+    expect(communityDeploySteps([], "db-id")).toEqual([["d1", "migrations", "apply", "db-id"], deploy]);
+    expect(communityDeploySteps([], null)).toEqual([deploy]);
+    expect(communityDeploySteps(["--dry-run"], "db-id")).toEqual([[...deploy, "--dry-run"]]);
+  });
+
+  it("D1 raw 结果还原为行对象，非预期输出直接报错", () => {
+    const output = JSON.stringify([{ results: { columns: ["id", "status"], rows: [["t1", "queued"]] }, success: true }]);
+    expect(rowsFromRaw(output)).toEqual([{ id: "t1", status: "queued" }]);
+    expect(() => rowsFromRaw("not json")).toThrow("could not parse");
+  });
+
+  it("项目依赖不含 Wrangler，打包走 Vite 插件", () => {
+    const pkg = JSON.parse(read("package.json")) as { devDependencies: Record<string, string>; scripts: Record<string, string> };
+    expect(pkg.devDependencies).not.toHaveProperty("wrangler");
+    expect(pkg.devDependencies).toHaveProperty("@cloudflare/vite-plugin");
+    expect(JSON.stringify(pkg.scripts)).not.toContain("wrangler");
   });
 
   it("子进程 --print-args 返回执行计划", () => {
     const script = fileURLToPath(new URL("scripts/deploy_community.mjs", ROOT));
     const result = spawnSync(process.execPath, [script, "--print-args", "--dry-run"], { encoding: "utf-8" });
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout)).toEqual([["deploy", "--dry-run"]]);
+    expect(JSON.parse(result.stdout)).toEqual([["deploy", "--mode", "community", "--dry-run"]]);
   });
 });

@@ -1,11 +1,14 @@
 import { bindings, defineConfig, exports, triggers } from "cf/config";
 import { readFileSync } from "node:fs";
+import { LOCAL_DATABASE_ID } from "./scripts/d1.mjs";
+import { COMMUNITY_MODE, communityConfig } from "./scripts/deploy_community.mjs";
 import { parseJsonc } from "./scripts/setup.mjs";
 
-// Shared resource names and defaults keep Workers Builds and cf deployments aligned.
-const source = parseJsonc(readFileSync(new URL("./wrangler.jsonc", import.meta.url), "utf8"));
+// wrangler.jsonc stays the resource manifest the Deploy to Cloudflare button reads and rewrites.
+const manifest = readFileSync(new URL("./wrangler.jsonc", import.meta.url), "utf8");
 
 export default defineConfig(({ mode }) => {
+  const source = mode === COMMUNITY_MODE ? communityConfig(manifest) : parseJsonc(manifest);
   const production = mode === "production";
   if (production && !process.env.READ_PODCAST_CF_DEPLOY) {
     throw new Error("Use npm run deploy:production to load deployment values.");
@@ -30,6 +33,8 @@ export default defineConfig(({ mode }) => {
         ...Object.fromEntries(Object.entries(deployment?.vars ?? {}).map(([key, value]) => [key, bindings.text(value as string)])),
         DB: bindings.d1({
           name: source.d1_databases[0].database_name,
+          // cf's local D1 commands need an ID; a fixed one lets them share data with cf dev.
+          ...(mode === "development" ? { id: LOCAL_DATABASE_ID } : {}),
         }),
         RAW_BUCKET: bindings.r2({
           name: source.r2_buckets[0].bucket_name,

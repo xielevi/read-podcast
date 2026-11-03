@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // 维护者生产部署入口（npm run deploy:production）：把部署者自己的值注入 cf 配置并执行 cf deploy。
 //
-// wrangler.jsonc 只保存与部署者无关的结构；域名、转录服务地址与稿件仓库这类
+// wrangler.jsonc（资源清单）只保存与部署者无关的结构；域名、转录服务地址与稿件仓库这类
 // 每个部署各不相同的值，从环境变量或仓库根目录下不提交的 .deploy.env 读取
 // （环境变量优先；READ_PODCAST_DEPLOY_ENV 可指定其他文件），由 cloudflare.config.ts 读取。
 // 见 docs/DEPLOYMENT.md。

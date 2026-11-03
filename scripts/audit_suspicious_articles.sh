@@ -15,7 +15,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 echo "== 历史伪稿风险候选（只读） =="
-wrangler d1 execute DB --remote --json --command "
+node scripts/d1.mjs query --remote "
   SELECT id, source_type, podcast_name, episode_title, status,
          transcript_source, refinement_success,
          created_at, completed_at, final_content_path
@@ -31,8 +31,7 @@ wrangler d1 execute DB --remote --json --command "
   ORDER BY completed_at ASC
 " | python3 -c "
 import json, sys
-data = json.load(sys.stdin)
-rows = [r for res in data for r in res.get('results', [])]
+rows = json.load(sys.stdin)
 if not rows:
     print('未发现候选：所有 success 任务均为 ai_refined 且在 strict 修复之后。')
 else:

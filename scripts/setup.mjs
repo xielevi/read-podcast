@@ -3,8 +3,9 @@
 //
 // 每一步都可重复执行：已存在的资源（D1、R2 桶、生命周期规则、secrets、.deploy.env
 // 里的值）直接跳过或以当前值作为默认。部署值校验复用 scripts/deploy.mjs 的逻辑，
-// 文档占位值一律拒绝。secrets 只经 stdin 传给 wrangler secret put，不回显、不写入
-// 任何文件。Access 与 Tunnel 属于脚本做不了的部分，只输出手动清单；见 docs/DEPLOYMENT.md。
+// 文档占位值一律拒绝。云资源操作走 cf；cf 尚不能写单个 secret，secrets 只经 stdin 传给
+// 按需运行的 wrangler secret put（不是项目依赖），不回显、不写入任何文件。
+// Access 与 Tunnel 属于脚本做不了的部分，只输出手动清单；见 docs/DEPLOYMENT.md。
 //
 //   npm run setup                      交互式执行全部步骤
 //   npm run setup -- --step d1         只执行某一步（login|d1|r2|secrets|env|checklist|smoke，可重复传）
@@ -18,10 +19,12 @@ import { OPTIONAL, REQUIRED, buildDeployArgs, parseDeployEnv } from "./deploy.mj
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 
+// cf 尚不支持单个 secret 写入；Cloudflare 官方指引是按需 npx wrangler，这里固定版本。
+const WRANGLER_ON_DEMAND = "wrangler@4.151.3";
+
 export const STEP_ORDER = ["login", "d1", "r2", "secrets", "env", "checklist", "smoke"];
 
-// 与 wrangler.jsonc 注释、docs/DEPLOYMENT.md「R2 and lifecycle rules」的三条命令保持一致
-// （test/setup.test.ts 校验三者同步）。
+// docs/DEPLOYMENT.md「R2 and lifecycle rules」的规则表与此保持一致（test/setup.test.ts 校验）。
 export const LIFECYCLE_RULES = [
   { name: "raw-7d", prefix: "raw/", expireDays: 7 },
   { name: "refined-7d", prefix: "refined/", expireDays: 7 },
@@ -49,7 +52,7 @@ Interactive, idempotent deployment setup for a fresh Cloudflare account.
 Existing resources are detected and skipped.
 
 Steps (run in this order):
-  login       verify \`wrangler\` authentication
+  login       verify \`cf\` authentication
   d1          create the D1 database (by wrangler.jsonc database_name) and apply remote migrations
   r2          create the R2 bucket and the three lifecycle rules, then verify them
   secrets     prompt for each secret (input hidden, never written to any file)
@@ -122,7 +125,7 @@ export function parseJsonc(text) {
   return JSON.parse(out);
 }
 
-/** wrangler 可能把警告打在 JSON 前：先直接 parse，失败再从第一个 { 或 [ 截取；解析不了返回 null。 */
+/** CLI 可能把警告打在 JSON 前：先直接 parse，失败再从第一个 { 或 [ 截取；解析不了返回 null。 */
 export function extractJson(text) {
   try {
     return JSON.parse(text);
@@ -151,21 +154,36 @@ export function resourcesFromConfig(config) {
   };
 }
 
-/** `wrangler r2 bucket lifecycle list` 每条规则输出一行 `name: <id>`。 */
-export function parseLifecycleRuleIds(text) {
-  return [...text.replace(/\x1b\[[0-9;]*m/g, "").matchAll(/^name:\s*(.+?)\s*$/gm)].map(match => match[1]);
+/** 从 `cf d1 list` 的结果按精确名字取数据库 ID；不存在返回 null。 */
+export function findDatabaseId(databases, name) {
+  return Array.isArray(databases) ? databases.find(database => database.name === name)?.uuid ?? null : null;
+}
+
+/** `cf r2 buckets lifecycle get` 返回 { rules: [...] }；解析不了返回 null。 */
+export function parseLifecycleRules(text) {
+  const rules = extractJson(text)?.rules;
+  return Array.isArray(rules) ? rules : null;
 }
 
 export function missingLifecycleRules(existingIds, rules = LIFECYCLE_RULES) {
   return rules.filter(rule => !existingIds.includes(rule.name));
 }
 
-export function lifecycleAddArgs(bucket, rule) {
-  return [
-    "r2", "bucket", "lifecycle", "add", bucket, rule.name, rule.prefix,
-    "--expire-days", String(rule.expireDays),
-    ...(rule.abortMultipartDays ? ["--abort-multipart-days", String(rule.abortMultipartDays)] : []),
-  ];
+const age = days => ({ condition: { type: "Age", maxAge: days * 86400 } });
+
+export function lifecycleRuleBody(rule) {
+  return {
+    id: rule.name,
+    enabled: true,
+    conditions: { prefix: rule.prefix },
+    deleteObjectsTransition: age(rule.expireDays),
+    ...(rule.abortMultipartDays ? { abortMultipartUploadsTransition: age(rule.abortMultipartDays) } : {}),
+  };
+}
+
+/** lifecycle update 是整组替换（PUT）：必须带上已有规则（含 Cloudflare 默认规则）。 */
+export function lifecycleUpdateArgs(bucket, existing, missing) {
+  return ["r2", "buckets", "lifecycle", "update", bucket, "--rules", JSON.stringify([...existing, ...missing.map(lifecycleRuleBody)])];
 }
 
 /** 生成 .deploy.env 内容：必填四项 + 当前已有的可选值；含空白或 # 的值加单引号。 */
@@ -260,9 +278,9 @@ export async function runSetup(deps) {
     return 1;
   }
 
-  const run = async (args, options = {}) => {
-    const result = await deps.runWrangler(args, options);
-    // 检查类命令成功时静默（步骤自己输出结论）；失败或变更类命令原样展示 wrangler 输出。
+  const execute = async (runner, args, options = {}) => {
+    const result = await runner(args, options);
+    // 检查类命令成功时静默（步骤自己输出结论）；失败或变更类命令原样展示 CLI 输出。
     if (result.status === 0 && options.quiet) return result;
     for (const text of [result.stdout, result.stderr]) {
       const trimmed = (text ?? "").trim();
@@ -270,63 +288,70 @@ export async function runSetup(deps) {
     }
     return result;
   };
+  const run = (args, options) => execute(deps.runCf, args, options);
 
   // ── login ──
   const stepLogin = async () => {
-    deps.log("Checking wrangler authentication…");
-    const result = await run(["whoami", "--json"], { input: "", quiet: true });
-    if (result.status !== 0) {
-      return fail("Not logged in. Run `npx wrangler login` in an interactive terminal (or set CLOUDFLARE_API_TOKEN), then rerun.", deps);
-    }
+    deps.log("Checking cf authentication…");
+    const result = await run(["auth", "whoami"], { input: "", quiet: true });
     const info = extractJson(result.stdout);
-    if (!info) return fail("could not parse `wrangler whoami --json` output.", deps);
+    // 令牌失效时 cf auth whoami 仍可能以 0 退出，以输出里的认证状态为准。
+    if (result.status !== 0 || !info?.authenticated || info.tokenValid === false) {
+      return fail("Not logged in. Run `npx cf auth login` in an interactive terminal (or set CLOUDFLARE_API_TOKEN), then rerun.", deps);
+    }
     const account = info.accounts?.[0]?.name ?? "(unknown account)";
     return ok(`✓ Logged in${info.email ? ` as ${info.email}` : ""}, account: ${account}`, deps);
   };
 
   // ── d1 ──
   const stepD1 = async () => {
-    deps.log(`Checking D1 database ${resources.d1DatabaseName}…`);
-    const list = await run(["d1", "list", "--json"], { input: "", quiet: true });
-    if (list.status !== 0) return fail(`wrangler d1 list failed (exit ${list.status}).`, deps);
+    const name = resources.d1DatabaseName;
+    deps.log(`Checking D1 database ${name}…`);
+    const list = await run(["d1", "list", "--name", name], { input: "", quiet: true });
+    if (list.status !== 0) return fail(`cf d1 list failed (exit ${list.status}).`, deps);
     const databases = extractJson(list.stdout);
-    if (!Array.isArray(databases)) return fail("could not parse `wrangler d1 list` output.", deps);
-    if (databases.some(db => db.name === resources.d1DatabaseName)) {
-      deps.log(`D1 database ${resources.d1DatabaseName} already exists, skipping creation.`);
+    if (!Array.isArray(databases)) return fail("could not parse `cf d1 list` output.", deps);
+    let databaseId = findDatabaseId(databases, name);
+    if (databaseId) {
+      deps.log(`D1 database ${name} already exists, skipping creation.`);
     } else {
-      const created = await run(["d1", "create", resources.d1DatabaseName], { input: "" });
-      if (created.status !== 0) return fail(`wrangler d1 create failed (exit ${created.status}).`, deps);
+      const created = await run(["d1", "create", "--name", name], { input: "" });
+      if (created.status !== 0) return fail(`cf d1 create failed (exit ${created.status}).`, deps);
+      databaseId = extractJson(created.stdout)?.uuid;
+      if (!databaseId) return fail("could not parse `cf d1 create` output.", deps);
     }
     deps.log("Applying remote D1 migrations (only unapplied ones run; safe to repeat)…");
-    const applied = await run(["d1", "migrations", "apply", resources.d1Binding, "--remote"], { input: "" });
-    if (applied.status !== 0) return fail(`wrangler d1 migrations apply failed (exit ${applied.status}).`, deps);
+    const applied = await run(["d1", "migrations", "apply", databaseId], { input: "" });
+    if (applied.status !== 0) return fail(`cf d1 migrations apply failed (exit ${applied.status}).`, deps);
     return ok("✓ D1 ready.", deps);
   };
 
   // ── r2 ──
   const stepR2 = async () => {
-    deps.log(`Checking R2 bucket ${resources.r2BucketName}…`);
-    const info = await run(["r2", "bucket", "info", resources.r2BucketName, "--json"], { input: "", quiet: true });
+    const bucket = resources.r2BucketName;
+    deps.log(`Checking R2 bucket ${bucket}…`);
+    const info = await run(["r2", "buckets", "get", bucket], { input: "", quiet: true });
     if (info.status === 0) {
-      deps.log(`R2 bucket ${resources.r2BucketName} already exists, skipping creation.`);
+      deps.log(`R2 bucket ${bucket} already exists, skipping creation.`);
     } else {
-      const created = await run(["r2", "bucket", "create", resources.r2BucketName], { input: "" });
-      if (created.status !== 0) return fail(`wrangler r2 bucket create failed (exit ${created.status}).`, deps);
+      const created = await run(["r2", "buckets", "create", "--name", bucket], { input: "" });
+      if (created.status !== 0) return fail(`cf r2 buckets create failed (exit ${created.status}).`, deps);
     }
-    const listArgs = ["r2", "bucket", "lifecycle", "list", resources.r2BucketName];
-    const listed = await run(listArgs, { input: "", quiet: true });
-    if (listed.status !== 0) return fail(`wrangler r2 bucket lifecycle list failed (exit ${listed.status}).`, deps);
-    const missing = missingLifecycleRules(parseLifecycleRuleIds(listed.stdout));
+    const getArgs = ["r2", "buckets", "lifecycle", "get", bucket];
+    const listed = await run(getArgs, { input: "", quiet: true });
+    if (listed.status !== 0) return fail(`cf r2 buckets lifecycle get failed (exit ${listed.status}).`, deps);
+    const existing = parseLifecycleRules(listed.stdout);
+    if (!existing) return fail("could not parse `cf r2 buckets lifecycle get` output.", deps);
+    const missing = missingLifecycleRules(existing.map(rule => rule.id));
     if (!missing.length) {
       return ok(`✓ R2 ready, all three lifecycle rules already exist: ${LIFECYCLE_RULES.map(rule => rule.name).join(", ")}`, deps);
     }
-    for (const rule of missing) {
-      const added = await run(lifecycleAddArgs(resources.r2BucketName, rule), { input: "" });
-      if (added.status !== 0) return fail(`adding lifecycle rule ${rule.name} failed (exit ${added.status}).`, deps);
-    }
-    const verified = await run(listArgs, { input: "", quiet: true });
-    if (verified.status !== 0) return fail("could not verify lifecycle rules.", deps);
-    const stillMissing = missingLifecycleRules(parseLifecycleRuleIds(verified.stdout));
+    const updated = await run(lifecycleUpdateArgs(bucket, existing, missing), { input: "" });
+    if (updated.status !== 0) return fail(`adding lifecycle rules failed (exit ${updated.status}).`, deps);
+    const verified = await run(getArgs, { input: "", quiet: true });
+    const after = verified.status === 0 ? parseLifecycleRules(verified.stdout) : null;
+    if (!after) return fail("could not verify lifecycle rules.", deps);
+    const stillMissing = missingLifecycleRules(after.map(rule => rule.id));
     if (stillMissing.length) return fail(`lifecycle verification failed, missing: ${stillMissing.map(rule => rule.name).join(", ")}`, deps);
     return ok(`✓ R2 ready, lifecycle verified: ${LIFECYCLE_RULES.map(rule => rule.name).join(", ")}`, deps);
   };
@@ -335,7 +360,7 @@ export async function runSetup(deps) {
   const stepSecrets = async () => {
     deps.log("Setting Worker secrets (input is hidden and never written to any file)…");
     let existing = [];
-    const listed = await run(["secret", "list", "--format", "json"], { input: "", quiet: true });
+    const listed = await run(["workers", "secrets", "list", "--worker", resources.workerName], { input: "", quiet: true });
     if (listed.status === 0) {
       try {
         existing = extractJson(listed.stdout).map(secret => secret.name);
@@ -355,8 +380,8 @@ export async function runSetup(deps) {
         deps.log(`Skipped ${name}${already ? " (kept)" : ""}.`);
         continue;
       }
-      const put = await run(["secret", "put", name], { input: secret });
-      if (put.status !== 0) return fail(`writing secret ${name} failed (exit ${put.status}).`, deps);
+      const put = await execute(deps.runWrangler, ["secret", "put", name], { input: secret });
+      if (put.status !== 0) return fail(`writing secret ${name} failed (exit ${put.status}). This step uses Wrangler: run \`npx wrangler login\` or set CLOUDFLARE_API_TOKEN.`, deps);
       deps.log(`✓ ${name} written (value not recorded anywhere).`);
     }
     return ok(undefined, deps);
@@ -471,14 +496,23 @@ After deploying, run \`npm run setup -- --smoke\` for the boundary smoke test.`)
 
 // ── 真实依赖：进程内默认实现 ──
 
-function defaultRunWrangler(args, { input } = {}) {
-  const result = spawnSync("npx", ["wrangler", ...args], {
+function runNpx(command, { input, stdio } = {}) {
+  const result = spawnSync("npx", command, {
     cwd: ROOT,
-    input: input ?? "",
+    input: stdio ? undefined : input ?? "",
+    stdio,
     encoding: "utf-8",
     shell: process.platform === "win32",
   });
   return { status: result.status ?? 1, stdout: result.stdout ?? "", stderr: result.stderr ?? String(result.error ?? "") };
+}
+
+export function runCf(args, options) {
+  return runNpx(["cf", ...args], options);
+}
+
+function defaultRunWrangler(args, options) {
+  return runNpx(["--yes", WRANGLER_ON_DEMAND, ...args], options);
 }
 
 function defaultPrompt(query, defaultValue) {
@@ -549,6 +583,7 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
     readConfig: () => readFileSync(`${ROOT}/wrangler.jsonc`, "utf-8"),
     readFile: path => readFileSync(path, "utf-8"),
     writeFile: (path, content) => writeFileSync(path, content),
+    runCf,
     runWrangler: defaultRunWrangler,
     prompt: defaultPrompt,
     promptHidden: defaultPromptHidden,
