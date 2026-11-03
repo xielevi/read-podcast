@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// 维护者生产部署入口（npm run deploy:production）：把部署者自己的值注入 wrangler deploy。
+// 维护者生产部署入口（npm run deploy:production）：把部署者自己的值注入 cf 配置并执行 cf deploy。
 //
 // wrangler.jsonc 只保存与部署者无关的结构；域名、转录服务地址与稿件仓库这类
 // 每个部署各不相同的值，从环境变量或仓库根目录下不提交的 .deploy.env 读取
-// （环境变量优先；READ_PODCAST_DEPLOY_ENV 可指定其他文件），再以 --domain / --var 传给 wrangler。
+// （环境变量优先；READ_PODCAST_DEPLOY_ENV 可指定其他文件），由 cloudflare.config.ts 读取。
 // 见 docs/DEPLOYMENT.md。
 //
 //   npm run deploy:production                     部署
-//   npm run deploy:production -- --dry-run        只打包校验，不上线（其余参数原样传给 wrangler deploy）
-//   node scripts/deploy.mjs --print-args          打印将执行的 wrangler 参数（JSON）后退出
+//   npm run deploy:production -- --dry-run        只打包校验，不上线（其余参数原样传给 cf deploy）
+//   node scripts/deploy.mjs --print-args          打印部署域名与变量映射（JSON）后退出
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -18,7 +18,7 @@ const DEPLOY_ENV_FILE = ".deploy.env";
 
 // 部署输入 → Worker vars。键名刻意不以 GITHUB_ 开头：GitHub Actions 不允许这样命名变量。
 export const REQUIRED = {
-  READ_PODCAST_DOMAIN: null, // → --domain（Custom Domain）
+  READ_PODCAST_DOMAIN: null, // → Custom Domain
   READ_PODCAST_TRANSCRIPTION_URL: "TRANSCRIPTION_SERVICE_URL",
   READ_PODCAST_GITHUB_OWNER: "GITHUB_OWNER",
   READ_PODCAST_GITHUB_REPO: "GITHUB_REPO",
@@ -73,7 +73,7 @@ function isPlaceholder(value) {
     || /your-(github-username|manuscript-repository|domain|notion-data-source-id|notion-database-id)/i.test(value);
 }
 
-/** 校验部署输入并生成 wrangler deploy 的参数；输入不完整或仍是占位值时抛错。 */
+/** 校验部署输入并生成域名和变量映射；输入不完整或仍是占位值时抛错。 */
 export function buildDeployArgs(input, passthrough = []) {
   const errors = [];
   const value = key => (input[key] ?? "").trim();
@@ -140,6 +140,16 @@ function loadInput() {
   return { ...fromFile, ...fromEnv };
 }
 
+function deploymentValues(args) {
+  const vars = Object.fromEntries(args.flatMap((arg, index) => {
+    if (arg !== "--var") return [];
+    const value = args[index + 1];
+    const separator = value.indexOf(":");
+    return [[value.slice(0, separator), value.slice(separator + 1)]];
+  }));
+  return { domain: args[2], vars };
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const printOnly = argv.includes("--print-args");
@@ -157,7 +167,10 @@ function main() {
     console.log(JSON.stringify(args));
     return;
   }
-  const result = spawnSync("npx", ["wrangler", ...args], { cwd: ROOT, stdio: "inherit", shell: process.platform === "win32" });
+  const result = spawnSync("npx", ["cf", "deploy", "--mode", "production", ...passthrough], {
+    cwd: ROOT, stdio: "inherit", shell: process.platform === "win32",
+    env: { ...process.env, READ_PODCAST_CF_DEPLOY: JSON.stringify(deploymentValues(args)) },
+  });
   process.exit(result.status ?? 1);
 }
 

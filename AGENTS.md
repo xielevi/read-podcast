@@ -48,14 +48,14 @@ publication.
 - No cloud-drive export, OAuth connectors or conversational assistant — removed by design.
 - The repository is self-contained: runtime, build, test, deployment and upgrade depend on this
   repository only.
-- Secrets live in Wrangler secrets only: Cloudflare holds the transcription endpoint, the Access
+- Secrets live in Worker secrets only: Cloudflare holds the transcription endpoint, the Access
   service token, R2, GitHub, Notion (when that backend is selected) and refinement credentials. The Transcription Service holds none (except
   the opt-in `openai-proxy` upstream key above), and no API ever returns a secret value. Documentation and examples use placeholders
   (`your-domain.example`, `your-github-username`, `your-manuscript-repository`,
   `podcasts/transcripts`, `your-notion-data-source-id`, `secret_xxx`), never personal domains,
   repositories, Notion ids or paths.
 - Deployment-specific values (custom domain, D1 database id, transcription URL, Store repository)
-  never live in the repository: `wrangler.jsonc` stays deployment-neutral and `scripts/deploy.mjs`
+  never live in the repository: `cloudflare.config.ts` and the community `wrangler.jsonc` stay deployment-neutral and `scripts/deploy.mjs`
   (`npm run deploy:production`, also used by CI) injects them from `.deploy.env` or environment variables.
   `npm run deploy` is the community Workers Builds path; it applies D1 migrations and deploys
   from a temporary workers.dev-enabled config, leaving the checked-in production config unchanged.
@@ -73,11 +73,17 @@ columns, API paths, `deploy/macos/`) instead of renaming them for vocabulary.
 Architecture changes update `docs/ARCHITECTURE.md` first. Do not introduce Durable Objects,
 Queues or permanent polling without a real need.
 
+## Cloudflare CLI
+
+Use `cf auth login` for local development and production deployment. CI uses `CLOUDFLARE_API_TOKEN`.
+`npm run deploy:production` runs cf; community Workers Builds and initial resource setup keep Wrangler.
+Use Wrangler for live logs and individual secrets.
+
 ## Validation
 
 ```bash
 npm run check
 npm run check:frontend
 UV_CACHE_DIR=/tmp/read-podcast-edge-uv-cache uv run --directory transcription_service pytest -q
-npx wrangler deploy --dry-run
+npx cf deploy --dry-run
 ```

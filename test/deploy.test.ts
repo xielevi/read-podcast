@@ -2,7 +2,9 @@
  * 部署可移植性：仓库本身不带任何部署者自己的值，部署值只经 scripts/deploy.mjs 注入。
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 // @ts-expect-error 无类型声明
@@ -45,6 +47,32 @@ describe("scripts/deploy.mjs", () => {
       "--var", "MANUSCRIPT_TIME_ZONE:Europe/Berlin",
       "--dry-run",
     ]);
+  });
+
+  it("生产入口通过 cf 配置注入部署值，CLI 只接收支持的选项", () => {
+    const bin = mkdtempSync(join(tmpdir(), "read-podcast-cf-"));
+    const npx = join(bin, "npx");
+    writeFileSync(npx, `#!/usr/bin/env node
+console.log(JSON.stringify({ args: process.argv.slice(2), config: JSON.parse(process.env.READ_PODCAST_CF_DEPLOY) }));
+`);
+    chmodSync(npx, 0o755);
+    try {
+      const result = spawnSync(process.execPath, [SCRIPT, "--dry-run"], {
+        env: { ...process.env, ...VALID, READ_PODCAST_DEPLOY_ENV: "/nonexistent/.deploy.env", PATH: `${bin}:${process.env.PATH}` },
+        encoding: "utf-8",
+      });
+      expect(result.status).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output.args).toEqual(["cf", "deploy", "--mode", "production", "--dry-run"]);
+      expect(output.config).toEqual({ domain: VALID.READ_PODCAST_DOMAIN, vars: {
+        CONTROL_AUTH_MODE: "access",
+        TRANSCRIPTION_SERVICE_URL: VALID.READ_PODCAST_TRANSCRIPTION_URL,
+        GITHUB_OWNER: VALID.READ_PODCAST_GITHUB_OWNER,
+        GITHUB_REPO: VALID.READ_PODCAST_GITHUB_REPO,
+      } });
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
   });
 
   it("缺少必填值时拒绝部署", () => {
