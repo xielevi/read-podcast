@@ -138,12 +138,20 @@ completed `refine` steps contain streams, while the new pipeline expects R2 keys
 resume those old checkpoints under the new code. If an old workflow cannot finish, cancel
 it where allowed and retry the task after upgrading (a new attempt uses the new format).
 
+### Cloudflare CLI
+
+Local development and maintainer deployment use the project-pinned `cf` CLI. Sign in with
+`npx cf auth login`; check with `npx cf auth whoami`. CI uses its existing API token.
+`cloudflare.config.ts` defines the Worker, while `wrangler.config.ts` configures its bundler.
+The community Workers Builds path and `npm run setup` keep Wrangler for resource provisioning
+and individual secrets; sign in with `npx wrangler login` when using those commands.
+
 ### Deployment values
 
 The repository contains no deployment-specific values: `wrangler.jsonc` has no custom domain,
 no database id and empty store settings. `npm run deploy:production` runs `scripts/deploy.mjs`, which reads
 your values, refuses to deploy while one is missing or still a documentation placeholder, and
-passes them to `wrangler deploy` as `--domain` and `--var`. Put them in a `.deploy.env` file at
+passes them into `cloudflare.config.ts` before running `cf deploy --mode production`. Put them in a `.deploy.env` file at
 the repository root (git-ignored; start from `.deploy.env.example`) or export them as
 environment variables, which take precedence:
 
@@ -166,10 +174,10 @@ environment variables, which take precedence:
 | `READ_PODCAST_TRANSCRIPTION_PROVIDER` | no | `TRANSCRIPTION_PROVIDER`, `self-hosted` (default) or `dashscope` — see [Cloud transcription (DashScope Paraformer)](#cloud-transcription-dashscope-paraformer) |
 | `READ_PODCAST_TIME_ZONE` | no | `MANUSCRIPT_TIME_ZONE`, the IANA time zone of `processed_at` in manuscript front matter, default `Asia/Shanghai` |
 
-`node scripts/deploy.mjs --print-args` shows the resulting `wrangler deploy` arguments without
+`node scripts/deploy.mjs --print-args` shows the domain and Worker variable mapping without
 deploying. `npm run setup` writes `.deploy.env` for you (existing values are kept as defaults).
 `GITHUB_API_BASE` (GitHub Enterprise or the 525 relay) and `NOTION_API_BASE` (default
-`https://api.notion.com`) can still be set as vars in `wrangler.jsonc`. The Worker calls
+`https://api.notion.com`) can still be set as vars in the shared `wrangler.jsonc`. The Worker calls
 Notion directly. A zone that already reaches `api.notion.com` does not need a relay.
 
 ### Notion + R2 manuscript store

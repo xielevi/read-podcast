@@ -105,25 +105,23 @@ jobs:
           node-version: 22
           cache: npm
       # npm ci 是部署的硬前提，不要删除：
-      # 1) 部署使用 package-lock.json 锁定的 wrangler 版本，与本地一致；
+      # 1) 部署使用 package-lock.json 锁定的 cf / Wrangler bundler 版本，与本地一致；
       # 2) Worker 入口依赖 fast-xml-parser，需要 node_modules 才能被 wrangler 打包。
       - run: npm ci
-      # 与本地相同的生产部署入口：scripts/deploy.mjs 校验上面的部署值，并以 --domain / --var 注入 wrangler deploy。
+      # 与本地相同的生产部署入口：scripts/deploy.mjs 校验上面的部署值，注入 cloudflare.config.ts 后执行 cf deploy。
       - name: Deploy to Cloudflare Workers
         id: deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: npm run deploy:production
-      # 记录本次上线的 Version / Deployment（wrangler 部署输出本身也会保留在日志里）。
+      # 记录本次上线的 Version / Deployment（cf 部署输出本身也会保留在日志里）。
       - name: Record deployment
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npx wrangler deployments status --name read-podcast-edge
-          echo '--- recent deployments ---'
-          npx wrangler deployments list --name read-podcast-edge | head -40
+          npx cf workers deployments list --worker read-podcast-edge --per-page 5
       # 边缘冒烟（最终 Access 边界）：
       #   - 公开浏览（/、/api/public/*）必须匿名直达并返回 200；
       #   - 控制面（/manage*、/api/control/*）必须由 Cloudflare Access 拦截。
